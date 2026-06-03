@@ -576,7 +576,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("Бот қўлда тўхтатилди.")
         '''
-        import os
+import os
 from aiohttp import web
 
 # 🌐 Жуда оддий веб-саҳифа (Render ботни ўчириб қўймаслиги учун "тириклик" белгиси)
