@@ -537,7 +537,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("Бот тўхтатилди.")
 
-'''
+
 # ----------- БОТНИ ИШГА ТУШИРИШ -----------
 async def main_loop():
     # Базани фақат бир марта ишга туширишда яратамиз
@@ -568,6 +568,50 @@ async def main_loop():
             #bot.session = new_session
 
             # 15 сония сервер тинчланишини кутамиз
+            await asyncio.sleep(15)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main_loop())
+    except KeyboardInterrupt:
+        print("Бот қўлда тўхтатилди.")
+        '''
+        import os
+from aiohttp import web
+
+# 🌐 Жуда оддий веб-саҳифа (Render ботни ўчириб қўймаслиги учун "тириклик" белгиси)
+async def handle(request):
+    return web.Response(text="Бот муваффақиятли ишламоқда!")
+
+# ----------- БОТНИ ИШГА ТУШИРИШ -----------
+async def main_loop():
+    # Базани фақат бир марта ишга туширишда яратамиз
+    init_db()
+
+    # 🚀 Веб-серверни созлаш (Render портини эшитиши учун)
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    # Render талаб қиладиган махсус PORT созламаси (агар топилмаса 10000)
+    port = int(os.getenv("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"[*] Веб-сервер {port}-портда ишга тушди.")
+
+    while True:
+        try:
+            print("Бот Телеграм серверига уланмоқда...")
+            # Проксисиз, тўғридан-тўғри тоза уланиш учун:
+            await bot.delete_webhook(drop_pending_updates=True)
+
+            # Ботни тинглаш режимини бошлаймиз
+            await dp.start_polling(bot)
+
+        except Exception as e:
+            print(f"\n[!] Хатолик юз берди: {e}")
+            print("[!] 15 сониядан кейин автоматик қайта уриниш бошланади...\n")
             await asyncio.sleep(15)
 
 if __name__ == "__main__":
