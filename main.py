@@ -50,6 +50,12 @@ def init_db():
             status TEXT DEFAULT 'active'
         )
     """)
+    # 🆕 ЯНГИ: Фойдаланувчиларни сақлаш учун жадвал
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -263,7 +269,69 @@ async def back_action(message: types.Message, state: FSMContext):
 # ----------- БОТ БУЙРУҚЛАРИ -----------
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
+    # Фойдаланувчини базага қўшиш (агар аввал кирмаган бўлса)
+    conn = sqlite3.connect("chorva.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (message.from_user.id,))
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Базага ёзишда хатолик: {e}")
+    finally:
+        conn.close()
+
     await message.answer("Ассалому алайкум! Чорва бозор ботига хуш келибсиз.", reply_markup=main_menu())
+
+@dp.message(Command("broadcast_users"))
+async def broadcast_to_users(message: types.Message):
+    # Хавфсизлик учун: фақат сиз (админ) хабар тарқата олишингиз учун текширув
+    # (Ўзингизнинг Телеграм ID рақамингизни қўйиб қўйинг, масалан: 1234567)
+    ADMIN_ID = message.from_user.id  # Ҳозирча буйруқни берган одамга рухсат беради
+    
+    # Буйруқдан кейинги матнни ажратиб олиш
+    command_len = len("/broadcast_users")
+    broadcast_text = message.text[command_len:].strip()
+    
+    if not broadcast_text:
+        await message.answer("⚠️ Илтимос, буйруқдан кейин тарқатиладиган матнни ҳам ёзинг.\n\nМасалан:\n`/broadcast_users Салом ҳаммага` (формат: HTML)", parse_mode="Markdown")
+        return
+
+    # Базадан барча фойдаланувчиларни олиш
+    conn = sqlite3.connect("chorva.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM users")
+    users = cursor.fetchall()
+    conn.close()
+
+    if not users:
+        await message.answer("Базада ҳозирча ҳеч қандай фойдаланувчи йўқ.")
+        return
+
+    sent_count = 0
+    failed_count = 0
+
+    status_message = await message.answer(f"⏳ Хабар юбориш бошланди (Жами: {len(users)} та фойдаланувчи)...")
+
+    for user in users:
+        uid = user[0]
+        try:
+            # Хабарни фойдаланувчига юбориш
+            await bot.send_message(chat_id=uid, text=broadcast_text, parse_mode="HTML")
+            sent_count += 1
+            # Телеграм лимитларига тушиб қолмаслик учун кичик пауза
+            await asyncio.sleep(0.05)
+        except Exception:
+            failed_count += 1
+
+    await status_message.edit_text(
+        f"📢 **Тарқатиш якунланди!**\n\n"
+        f"✅ Муваффақиятли етказилди: {sent_count} та\n"
+        f"❌ Юборилмади (ботдан чиқиб кетганлар): {failed_count} та",
+        parse_mode="Markdown"
+    )
+
+
+
 
 
 # ----------- ЭЪЛОН БЕРИШ ЖАРАЁНИ -----------
