@@ -508,105 +508,38 @@ async def handle_ad_action(callback: types.CallbackQuery):
 
     conn.close()
 
-'''
-# ----------- БОТНИ ИШГА ТУШИРИШ -----------
-async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
-
-
-# ----------- БОТНИ ИШГА ТУШИРИШ -----------
-async def main_loop():
-    while True:
-        try:
-            init_db()
-            await bot.delete_webhook(drop_pending_updates=True)
-            await dp.start_polling(bot)
-        except Exception as e:
-            # Агар хатолик бўлса, 10 сония кутиб, ботни қайта ишга туширади
-            print(f"Хатолик юз берди, 10 сониядан кейин қайта уриниш: {e}")
-            await asyncio.sleep(10)
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main_loop())
-    except KeyboardInterrupt:
-        print("Бот тўхтатилди.")
-
-
-# ----------- БОТНИ ИШГА ТУШИРИШ -----------
-async def main_loop():
-    # Базани фақат бир марта ишга туширишда яратамиз
-    init_db()
-
-    while True:
-        try:
-            print("Бот Телеграм серверига уланмоқда...")
-            # Прокси узилиб-ёнишида эски хабарлар йиғилиб, ботни қийнаб қўймаслиги учун:
-            await bot.delete_webhook(drop_pending_updates=True)
-
-            # Ботни тинглаш режимини бошлаймиз
-            await dp.start_polling(bot)
-
-        except Exception as e:
-            print(f"\n[!] Хатолик юз берди: {e}")
-            print("[!] 15 сониядан кейин автоматик қайта уриниш бошланади...\n")
-
-            # Узилиш пайтида қотиб қолган эски тармоқ сессиясини ёпамиз
-            #try:
-            #    await bot.session.close()
-            #except:
-            #    pass
-
-            # Янги тоза алоқа сессиясини бошидан яратамиз
-            #from aiogram.client.session.aiohttp import AiohttpSession
-            #new_session = AiohttpSession(proxy="http://proxy.server:3128")
-            #bot.session = new_session
-
-            # 15 сония сервер тинчланишини кутамиз
-            await asyncio.sleep(15)
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main_loop())
-    except KeyboardInterrupt:
-        print("Бот қўлда тўхтатилди.")
-        '''
-import os
+# ----------- БОТНИ ИШГА ТУШИРИШ (RENDER УЧУН ВЕБ-СЕРВЕР БИЛАН) -----------
 from aiohttp import web
 
-# 🌐 Жуда оддий веб-саҳифа (Render ботни ўчириб қўймаслиги учун "тириклик" белгиси)
-async def handle(request):
+# 🌐 Render ботни ўчириб қўймаслиги учун "тириклик" белгисини берувчи саҳифа
+async def handle_render_health_check(request):
     return web.Response(text="Бот муваффақиятли ишламоқда!")
 
-# ----------- БОТНИ ИШГА ТУШИРИШ -----------
 async def main_loop():
-    # Базани фақат бир марта ишга туширишда яратамиз
+    # 1. Маълумотлар базасини ишга тушириш
     init_db()
 
-    # 🚀 Веб-серверни созлаш (Render портини эшитиши учун)
+    # 🚀 Веб-серверни созлаш (Render портини банд қилиб туриш учун)
     app = web.Application()
-    app.router.add_get("/", handle)
+    app.router.add_get("/", handle_render_health_check)
     runner = web.AppRunner(app)
     await runner.setup()
     
-    # Render талаб қиладиган махсус PORT созламаси (агар топилмаса 10000)
+    # Render талаб қиладиган махсус PORT созламаси (Free тарифда автоматик 10000 бўлади)
     port = int(os.getenv("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    print(f"[*] Веб-сервер {port}-портда ишга тушди.")
+    print(f"[*] Веб-сервер {port}-портда муваффақиятли ишга тушди.")
 
+    # 2. Ботнинг асосий тинглаш (Polling) цикли
     while True:
         try:
-            print("Бот Телеграм серверига уланмоқда...")
-            # Проксисиз, тўғридан-тўғри тоза уланиш учун:
+            print("[*] Бот Телеграм серверига уланмоқда...")
+            
+            # Узилиш пайтида йиғилиб қолган эски хабарларни тозалаш
             await bot.delete_webhook(drop_pending_updates=True)
 
-            # Ботни тинглаш режимини бошлаймиз
+            # Ботни ишга тушириш
             await dp.start_polling(bot)
 
         except Exception as e:
