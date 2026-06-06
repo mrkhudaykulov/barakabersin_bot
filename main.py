@@ -12,7 +12,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 # ----------- СОЗЛАМАЛАР -----------
-BOT_TOKEN = os.getenv("BOT_TOKEN","8972267334:AAEPwI5u1lK34EkbExhDPScl3ewMoUu5qbE")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = -1001419724490  # Канал ID си (minus белгиси билан бўлиши шарт)
 
 logging.basicConfig(level=logging.INFO)
