@@ -281,7 +281,7 @@ async def cancel_action(message: types.Message, state: FSMContext):
         reply_markup=main_menu()
     )
 
-
+'''
 @dp.message(F.text == "🔙 Орқага")
 async def back_action(message: types.Message, state: FSMContext):
     print("BACK_HANDLER")
@@ -338,7 +338,7 @@ async def back_action(message: types.Message, state: FSMContext):
         await state.set_state(AdStates.description)
         await message.answer("🔙 Изоҳ бўлимига қайтилди. Қўшимча изоҳ ёзинг ёки тугмани босинг:",
                              reply_markup=description_keyboard())
-
+'''
 
 # ----------- БОТ БУЙРУҚЛАРИ -----------
 @dp.message(Command("start"))
