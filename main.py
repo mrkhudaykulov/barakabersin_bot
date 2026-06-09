@@ -96,8 +96,8 @@ class CalcStates(StatesGroup):
 # ----------- КЛАВИАТУРАЛАР -----------
 def main_menu():
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🗂 Менинг эълонларим"), KeyboardButton(text="/start")],
-        [KeyboardButton(text="🧮 Ферма калькулятори")] # 👈 Янги қўшилди
+        [KeyboardButton(text="🗂 Менинг эълонларим"), KeyboardButton(text="➕ Эълон бериш")],
+        [KeyboardButton(text="🧮 Ферма калькулятори"), KeyboardButton(text="/start")]
     ], resize_keyboard=True)
 
 # 🆕 Калькулятор учун янги клавиатуралар (Исталган жойига қўшинг)
