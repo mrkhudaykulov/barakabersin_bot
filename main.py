@@ -246,7 +246,7 @@ def phone_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
-
+'''
 # ----------- УМУМИЙ БЕКОР ҚИЛИШ ВА ОРҚАГА ҚАЙТИШ (ХЭНДЛЕРЛАР ТЕПАГА ОЛИНДИ) -----------
 @dp.message(F.text == "❌ Бекор қилиш")
 async def cancel_action(message: types.Message, state: FSMContext):
@@ -288,7 +288,7 @@ async def back_action(message: types.Message, state: FSMContext):
 
     if current_state is None:
         return
-'''
+
     # Агар фойдаланувчи калькулятор блокида бўлса, ушбу хэндлер ишламайди
     # (Калькуляторнинг ўз ички "Орқага" мантиғи бор)
     if current_state in [
@@ -304,7 +304,7 @@ async def back_action(message: types.Message, state: FSMContext):
         CalcStates.qm_em_narx.state,
     ]:
         return
-'''
+
 
     # ЭЪЛОН БЕРИШ ЖАРАЁНИ УЧУН ОРҚАГА ҚАЙТИШ МАНТИҚИ:
     
@@ -354,7 +354,7 @@ async def back_action(message: types.Message, state: FSMContext):
             "🔙 Изоҳ бўлимига қайтилди. Қўшимча изоҳ ёзинг ёки тугмани босинг:",
             reply_markup=description_keyboard()
         )
-
+'''
 
 # ----------- БОТ БУЙРУҚЛАРИ -----------
 @dp.message(Command("start"))
@@ -440,80 +440,81 @@ async def calc_main_menu(message: types.Message, state: FSMContext):
     await state.set_state(CalcStates.menu)
     await message.answer("🌾 *Чорвачилик калькулятори* бўлимига хуш келибсиз.\nНимани ҳисобламоқчисиз?", parse_mode="Markdown", reply_markup=calc_menu_keyboard())
 
-# ==========================================
-# 🔙 КАЛЬКУЛЯТОР УЧУН ЯГОНА ОРҚАГА ҚАЙТИШ ХЭНДЛЕРИ
-# (Бу код бошқа CalcStates сон кутувчи хэндлерлардан ТЕПАДА туриши шарт!)
-# ==========================================
-@dp.message(F.text == "🔙 Орқага")
-async def global_calc_back_handler(message: types.Message, state: FSMContext):
-    # 1. Жорий ҳолатни матн (string) кўринишида оламиз
+# ==============================================================================
+# 🎛 МАРКАЗЛАШТИРИЛГАН НАВИГАЦИЯ ТИЗИМИ (❌ БЕКОР ҚИЛИШ ВА 🔙 ОРҚАГА)
+# (Бу тизим кодда барча сон/матн кутувчи хэндлерлардан ТЕПАДА туриши шарт!)
+# ==============================================================================
+
+@dp.message(F.text == "❌ Бекор қилиш")
+async def global_cancel_handler(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
-    
-    # 2. Агар фойдаланувчида ҳеч қандай ҳолат (state) фаол бўлмаса, функцияни тўхтатамиз
+    if current_state is None:
+        await message.answer("❌ Фаол жараён мавжуд эмас.", reply_markup=main_menu())
+        return
+
+    # Агар фойдаланувчи калькулятор бўлимларидан бирида бўлса
+    if current_state in [
+        CalcStates.menu.state, CalcStates.qoy_bosh.state, CalcStates.qoy_narx.state,
+        CalcStates.qoy_qozi_narx.state, CalcStates.qoy_em_narx.state, CalcStates.qm_bosh.state,
+        CalcStates.qm_yon.state, CalcStates.qm_sut_vazn.state, CalcStates.qm_narx.state, CalcStates.qm_em_narx.state
+    ]:
+        await state.set_state(CalcStates.menu)
+        await message.answer("🌾 *Чорвачилик калькулятори* бош менюси:", parse_mode="Markdown", reply_markup=calc_menu_keyboard())
+        return
+
+    # Агар эълон бериш ёки бошқа жараёнда бўлса
+    await state.clear()
+    await message.answer("❌ Жараён бекор қилинди.", reply_markup=main_menu())
+
+
+@dp.message(F.text == "🔙 Орқага")
+async def global_back_handler(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
     if current_state is None:
         return
 
-    # ==========================================
+    # ------------------------------------------
     # 🐑 ҚЎЙ КАЛЬКУЛЯТОРИ ОҚИМИ
-    # ==========================================
-    # 💡 Энди .state сўзини ишлатмай, тўғридан-тўғри ўзгарувчининг ўзи билан солиштирамиз:
-    if current_state == CalcStates.qoy_bosh:
+    # ------------------------------------------
+    if current_state == CalcStates.qoy_bosh.state:
         await state.set_state(CalcStates.menu)
-        await message.answer(
-            "🌾 *Чорвачилик калькулятори* бўлимига хуш келибсиз.\nНимани ҳисобламоқчисиз?",
-            parse_mode="Markdown", reply_markup=calc_menu_keyboard()
-        )
+        await message.answer("🌾 *Чорвачилик калькулятори* бўлимига хуш килибсиз.\nНимани ҳисобламоқчисиз?", parse_mode="Markdown", reply_markup=calc_menu_keyboard())
         return
 
-    elif current_state == CalcStates.qoy_narx:
+    elif current_state == CalcStates.qoy_narx.state:
         await state.set_state(CalcStates.qoy_bosh)
-        await message.answer(
-            "1️⃣ *Совлиқ қўйлар сонини* киритинг:\n_(масалан: 20)_",
-            parse_mode="Markdown", reply_markup=standard_step_keyboard()
-        )
+        await message.answer("1️⃣ *Совлиқ қўйлар сонини* киритинг:\n_(масалан: 20)_", parse_mode="Markdown", reply_markup=standard_step_keyboard())
         return
 
-    elif current_state == CalcStates.qoy_qozi_narx:
+    elif current_state == CalcStates.qoy_qozi_narx.state:
         await state.set_state(CalcStates.qoy_narx)
-        await message.answer(
-            "2️⃣ *1 та совлиқ қўй ўртача нархини* киритинг (сўм):\n_(масалан: 3 500 000)_",
-            parse_mode="Markdown", reply_markup=standard_step_keyboard()
-        )
+        await message.answer("2️⃣ *1 та совлиқ қўй ўртача нархини* киритинг (сўм):\n_(масалан: 3 500 000)_", parse_mode="Markdown", reply_markup=standard_step_keyboard())
         return
 
-    elif current_state == CalcStates.qoy_em_narx:
+    elif current_state == CalcStates.qoy_em_narx.state:
         await state.set_state(CalcStates.qoy_qozi_narx)
-        await message.answer(
-            "3️⃣ *1 та қўзининг сотилиш нархини* киритинг (сўм):\n_(масалан: 1 200 000)_",
-            parse_mode="Markdown", reply_markup=standard_step_keyboard()
-        )
+        await message.answer("3️⃣ *1 та қўзининг сотилиш нархини* киритинг (сўм):\n_(масалан: 1 200 000)_", parse_mode="Markdown", reply_markup=standard_step_keyboard())
         return
 
-    # ==========================================
+    # ------------------------------------------
     # 🐄 ҚОРАМОЛ КАЛЬКУЛЯТОРИ ОҚИМИ
-    # ==========================================
-    elif current_state == CalcStates.qm_bosh:
+    # ------------------------------------------
+    elif current_state == CalcStates.qm_bosh.state:
         await state.set_state(CalcStates.menu)
-        await message.answer(
-            "🌾 *Чорвачилик калькулятори* бўлимига хуш келибсиз.\nНимани ҳисобламоқчисиз?",
-            parse_mode="Markdown", reply_markup=calc_menu_keyboard()
-        )
+        await message.answer("🌾 *Чорвачилик калькулятори* бўлимига хуш келибсиз.\nНимани ҳисобламоқчисиз?", parse_mode="Markdown", reply_markup=calc_menu_keyboard())
         return
 
-    elif current_state == CalcStates.qm_yon:
+    elif current_state == CalcStates.qm_yon.state:
         await state.set_state(CalcStates.qm_bosh)
-        await message.answer(
-            "1️⃣ *Сигирлар (ёки она моллар) сонини* киритинг:\n_(масалан: 10)_",
-            parse_mode="Markdown", reply_markup=standard_step_keyboard()
-        )
+        await message.answer("1️⃣ *Сигирлар (ёки она моллар) сонини* киритинг:\n_(масалан: 10)_", parse_mode="Markdown", reply_markup=standard_step_keyboard())
         return
 
-    elif current_state == CalcStates.qm_sut_vazn:
+    elif current_state == CalcStates.qm_sut_vazn.state:
         await state.set_state(CalcStates.qm_yon)
         await message.answer("2️⃣ *Йўналишни танланг:*", reply_markup=calc_qoramol_direction_keyboard())
         return
 
-    elif current_state == CalcStates.qm_narx:
+    elif current_state == CalcStates.qm_narx.state:
         await state.set_state(CalcStates.qm_sut_vazn)
         data = await state.get_data()
         if data.get("qm_yon") == "sut":
@@ -522,7 +523,7 @@ async def global_calc_back_handler(message: types.Message, state: FSMContext):
             await message.answer("3️⃣ *1 та молнинг ўртача тирик вазнини* киритинг (кг):\n_(масалан: 400)_", parse_mode="Markdown", reply_markup=standard_step_keyboard())
         return
 
-    elif current_state == CalcStates.qm_em_narx:
+    elif current_state == CalcStates.qm_em_narx.state:
         await state.set_state(CalcStates.qm_narx)
         data = await state.get_data()
         if data.get("qm_yon") == "sut":
@@ -530,6 +531,55 @@ async def global_calc_back_handler(message: types.Message, state: FSMContext):
         else:
             await message.answer("4️⃣ *1 кг тирик вазн нархини* киритинг (сўм):\n_(масалан: 25 000)_", parse_mode="Markdown", reply_markup=standard_step_keyboard())
         return
+
+    # ------------------------------------------
+    # 📝 ЭЪЛОН БЕРИШ ЖАРАЁНИ (AdStates) - Имловий хатолар тузатилди
+    # ------------------------------------------
+    elif current_state == AdStates.animal_type.state:
+        await state.set_state(AdStates.photo)
+        await message.answer("🔙 Расм юбориш босқичига қайтилди. Расм/видео юборинг ва 'Тасдиқлаш'ни босинг:", reply_markup=photo_confirm_keyboard())
+        return
+
+    elif current_state == AdStates.region.state:
+        await state.set_state(AdStates.animal_type)
+        await message.answer("🔙 Ҳайвон турини қайта танланг:", reply_markup=animal_types_keyboard())
+        return
+
+    elif current_state == AdStates.district.state:
+        await state.set_state(AdStates.region)
+        await message.answer("🔙 Вилоятни қайта танланг:", reply_markup=regions_keyboard())
+        return
+
+    elif current_state == AdStates.mfy.state:
+        data = await state.get_data()
+        await state.set_state(AdStates.district)
+        await message.answer("🔙 Туманни қайта танланг:", reply_markup=districts_keyboard(data.get('region')))
+        return
+
+    elif current_state == AdStates.quantity.state:
+        await state.set_state(AdStates.mfy)
+        await message.answer("🔙 МФЙ номини қайта ёзинг:", reply_markup=standard_step_keyboard())
+        return
+
+    elif current_state == AdStates.price.state:
+        await state.set_state(AdStates.quantity)
+        await message.answer("🔙 Сонини қайта киритинг:", reply_markup=standard_step_keyboard())
+        return
+
+    elif current_state == AdStates.description.state:
+        await state.set_state(AdStates.price)  # 👈 Тузатилди: CalcStates эмас, AdStates бўлди
+        await message.answer("🔙 Нархини қайта киритинг:", reply_markup=standard_step_keyboard())
+        return
+
+    elif current_state == AdStates.phone.state:
+        await state.set_state(AdStates.description)
+        await message.answer("🔙 Изоҳ бўлимига қайтилди. Қўшимча изоҳ ёзинг ёки тугмани босинг:", reply_markup=description_keyboard())
+        return
+
+# ==============================================================================
+
+
+
 
 
 
