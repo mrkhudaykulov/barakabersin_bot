@@ -28,7 +28,7 @@ def qoy_hisobla(ona, narx, qozi_narx, em_kg):
     re = "🟢" if rent >= 20 else ("🟡" if rent >= 0 else "🔴")
 
     return (
-        f"🐑 *Қўй фермаси — йиллик ҳисоб*\n"
+        f"🐑 *Қўй боқиш — йиллик ҳисоб*\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
         f"📊 *Умумий:* {ona} Қўй + {jami} жами бош\n\n"
         f"📈 *Даромадлар*\n"
@@ -39,7 +39,7 @@ def qoy_hisobla(ona, narx, qozi_narx, em_kg):
         f"▸ *Жами: `{fmt(r_total)}` сўм*\n\n"
         f"📉 *Харажатлар*\n"
         f"• Пичан: `{fmt(x_pich)}` сўм\n"
-        f"• Концентрат: `{fmt(x_em)}` сўм\n"
+        f"• Ем: `{fmt(x_em)}` сўм\n"
         f"• Ветеринария: `{fmt(x_vet)}` сўм\n"
         f"• Чўпон: `{fmt(x_chop)}` сўм\n"
         f"• Коммунал: `{fmt(x_kom)}` сўм\n"
@@ -48,7 +48,7 @@ def qoy_hisobla(ona, narx, qozi_narx, em_kg):
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"{fe} *Соф фойда: `{fmt(sof)}` сўм/йил*\n"
         f"💰 Ойлик: `{fmt(sof//12)}` сўм\n"
-        f"{re} Рентабеллик: *{rent}%*\n\n"
+        f"{re} Фойда ёки зарар фоизи (Рентабеллик): *{rent}%*\n\n"
         f"📌 _Натижалар тахминий._"
     )
 
@@ -86,7 +86,7 @@ def qm_hisobla_sut(bosh, kun_sut_l, sut_narx, em_kg):
         f"• Гўшт кассация ({kass} бош): `{fmt(r_gosh)}` сўм\n"
         f"▸ *Жами: `{fmt(r_total)}` сўм*\n\n"
         f"📉 *Харажатлар*\n"
-        f"• Пичон: `{fmt(x_pich)}` сўм\n"
+        f"• Пичан: `{fmt(x_pich)}` сўм\n"
         f"• Силос: `{fmt(x_silo)}` сўм\n"
         f"• Комбикорм: `{fmt(x_em)}` сўм\n"
         f"• Ветеринария: `{fmt(x_vet)}` сўм\n"
@@ -97,7 +97,7 @@ def qm_hisobla_sut(bosh, kun_sut_l, sut_narx, em_kg):
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"{fe} *Соф фойда: `{fmt(sof)}` сўм/йил*\n"
         f"💰 Ойлик: `{fmt(sof//12)}` сўм\n"
-        f"{re} Рентабеллик: *{rent}%*\n\n"
+        f"{re} Фойда ёки зарар фоизи (Рентабеллик): *{rent}%*\n\n"
         f"📌 _Натижалар тахминий._"
     )
 
@@ -133,7 +133,7 @@ def qm_hisobla_gosht(bosh, vazn, narx_kg, em_kg):
         f"• Бузоқ ({buz_soni} та): `{fmt(r_buzoq)}` сўм\n"
         f"▸ *Жами: `{fmt(r_total)}` сўм*\n\n"
         f"📉 *Харажатлар*\n"
-        f"• Пичон: `{fmt(x_pich)}` сўм\n"
+        f"• Пичан: `{fmt(x_pich)}` сўм\n"
         f"• Силос: `{fmt(x_silo)}` сўм\n"
         f"• Комбикорм: `{fmt(x_em)}` сўм\n"
         f"• Ветеринария: `{fmt(x_vet)}` сўм\n"
@@ -144,6 +144,6 @@ def qm_hisobla_gosht(bosh, vazn, narx_kg, em_kg):
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"{fe} *Соф фойда: `{fmt(sof)}` сўм/йил*\n"
         f"💰 Ойлик: `{fmt(sof//12)}` сўм\n"
-        f"{re} Рентабеллик: *{rent}%*\n\n"
+        f"{re} Фойда ёки зарар фоизи (Рентабеллик): *{rent}%*\n\n"
         f"📌 _Натижалар тахминий._"
     )
