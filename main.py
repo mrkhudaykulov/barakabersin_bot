@@ -255,17 +255,24 @@ async def cancel_action(message: types.Message, state: FSMContext):
     
     current_state = await state.get_state()
 
-    if current_state not in [
-        AdStates.photo.state,
-        AdStates.animal_type.state,
-        AdStates.region.state,
-        AdStates.district.state,
-        AdStates.mfy.state,
-        AdStates.quantity.state,
-        AdStates.price.state,
-        AdStates.description.state,
-        AdStates.phone.state,
+    if current_state in [
+        CalcStates.menu.state,
+        CalcStates.qoy_bosh.state,
+        CalcStates.qoy_narx.state,
+        CalcStates.qoy_qozi_narx.state,
+        CalcStates.qoy_em_narx.state,
+        CalcStates.qm_bosh.state,
+        CalcStates.qm_yon.state,
+        CalcStates.qm_sut_vazn.state,
+        CalcStates.qm_narx.state,
+        CalcStates.qm_em_narx.state,
     ]:
+        await state.set_state(CalcStates.menu)
+    
+        await message.answer(
+            "🌾 Чорвачилик калькулятори бўлими",
+            reply_markup=calc_menu_keyboard()
+        )
         return
 
     await state.clear()
@@ -280,18 +287,17 @@ async def back_action(message: types.Message, state: FSMContext):
     print("BACK_HANDLER")
     current_state = await state.get_state()
 
-    # Калькулятор ҳолатларида бўлса чиқиб кетсин
-    if current_state in [
-        CalcStates.menu.state,
-        CalcStates.qoy_bosh.state,
-        CalcStates.qoy_narx.state,
-        CalcStates.qoy_qozi_narx.state,
-        CalcStates.qoy_em_narx.state,
-        CalcStates.qm_bosh.state,
-        CalcStates.qm_yon.state,
-        CalcStates.qm_sut_vazn.state,
-        CalcStates.qm_narx.state,
-        CalcStates.qm_em_narx.state,
+    # Эълон бериш ҳолати бўлмаса чиқиб кетсин
+    if current_state not in [
+        AdStates.photo.state,
+        AdStates.animal_type.state,
+        AdStates.region.state,
+        AdStates.district.state,
+        AdStates.mfy.state,
+        AdStates.quantity.state,
+        AdStates.price.state,
+        AdStates.description.state,
+        AdStates.phone.state,
     ]:
         return
 
