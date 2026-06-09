@@ -137,7 +137,7 @@ def animal_types_keyboard():
     builder = ReplyKeyboardBuilder()
 
     # Ҳайвон турлари рўйхати
-    types_list = ["Буқа", "Сигир", "Тана", "Бузоқ", "Қўчқор", "Совлиқ", "Қўзи", "Эчки", "Улоқ", "От", "Эчки", "Парранда", "Бошқа"]
+    types_list = ["Буқа", "Сигир", "Тана", "Бузоқ", "Қўчқор", "Совлиқ", "Қўзи", "Эчки", "Улоқ", "От", "Туя", "Парранда", "Бошқа"]
 
     # 1. Ҳайвонларни кетма-кет қўшамиз
     for t in types_list:
@@ -337,11 +337,12 @@ async def home_menu(message: types.Message, state: FSMContext):
     )
 @dp.message(Command("broadcast_users"))
 async def broadcast_to_users(message: types.Message):
-    # Хавфсизлик учун: фақат сиз (админ) хабар тарқата олишингиз учун текширув
-    # (Ўзингизнинг Телеграм ID рақамингизни қўйиб қўйинг, масалан: 1234567)
-    ADMIN_ID = message.from_user.id  # Ҳозирча буйруқни берган одамга рухсат беради
-    
-    # Буйруқдан кейинги матнни ажратиб олиш
+
+    ADMINS = [72185847, 2134695872]  # Ўз Telegram ID ингиз
+
+    if message.from_user.id not in ADMINS:
+    return
+
     command_len = len("/broadcast_users")
     broadcast_text = message.text[command_len:].strip()
     
@@ -412,7 +413,7 @@ async def qoy_bosh_process(message: types.Message, state: FSMContext):
         return
     await state.update_data(qoy_bosh=int(val))
     await state.set_state(CalcStates.qoy_narx)
-    await message.answer("2️⃣ *1 та ona қўй ўртача нархини* киритинг (сўм):\n_(масалан: 3 500 000)_", parse_mode="Markdown", reply_markup=standard_step_keyboard())
+    await message.answer("2️⃣ *1 та совлиқ қўй ўртача нархини* киритинг (сўм):\n_(масалан: 3 500 000)_", parse_mode="Markdown", reply_markup=standard_step_keyboard())
 
 @dp.message(CalcStates.qoy_narx)
 async def qoy_narx_process(message: types.Message, state: FSMContext):
@@ -430,9 +431,9 @@ async def qoy_narx_process(message: types.Message, state: FSMContext):
 @dp.message(CalcStates.qoy_qozi_narx)
 async def qoy_qozi_process(message: types.Message, state: FSMContext):
     if message.text == "🔙 Орқага":
-        await state.set_state(CalcStates.qoy_bosh)
+        await state.set_state(CalcStates.qoy_narx)
         data = await state.get_data()
-        await message.answer(f"🔙 Сон қайта киритилади.\n1️⃣ Совлиқ қўйлар сони: {data.get('qoy_bosh')}\nЯнги сон ёзинг:")
+        await message.answer(f"🔙 Сон қайта киритилади.\n1️⃣ Совлиқ қўйлар нархи: {data.get('qoy_qozi_narx')}\nЯнги сон ёзинг:")
         return
     val = message.text.replace(" ", "")
     if not val.isdigit() or int(val) < 100:
@@ -459,9 +460,25 @@ async def qoy_em_process(message: types.Message, state: FSMContext):
     qozi = data.get("qoy_qozi_narx")
     em = int(val)
     
+    try:
     natija = qoy_hisobla(ona, narx, qozi, em)
-    await message.answer(natija, parse_mode="Markdown", reply_markup=calc_menu_keyboard())
+
+    await message.answer(
+        natija,
+        parse_mode="Markdown",
+        reply_markup=calc_menu_keyboard()
+    )
+
     await state.set_state(CalcStates.menu)
+
+    except Exception as e:
+    logging.error(f"Қўй калькулятори хатоси: {e}")
+
+    await message.answer(
+        f"⚠️ Ҳисоблашда хатолик юз берди:\n{e}"
+    )
+
+
 
 # 🐄 ҚОРАМОЛ КАЛЬКУЛЯТОРИ ОҚИМИ
 @dp.message(CalcStates.menu, F.text == "🐄 Қорамол калькулятори")
@@ -503,10 +520,13 @@ async def qm_yon_process(message: types.Message, state: FSMContext):
 @dp.message(CalcStates.qm_sut_vazn)
 async def qm_sut_vazn_process(message: types.Message, state: FSMContext):
     if message.text == "🔙 Орқага":
-        await state.set_state(CalcStates.qm_bosh)
-        await message.answer("🔙 Сонни қайта киритинг:")
-        return
-    val = message.text.replace(" ", "")
+        await state.set_state(CalcStates.qm_yon)
+        await message.answer(
+            "🔙 Йўналишни қайта танланг:",
+            reply_markup=calc_qoramol_direction_keyboard()
+        )
+        
+        val = message.text.replace(" ", "")
     if not val.isdigit() or int(val) < 1:
         await message.answer("⚠️ ХАТО. Тўғри қиймат киритинг:")
         return
@@ -551,13 +571,39 @@ async def qm_em_process(message: types.Message, state: FSMContext):
     narx = data.get("qm_narx")
     em = int(val)
     
+    try:
+
     if yon == "sut":
-        natija = qm_hisobla_sut(bosh, sut_vazn, narx, em)
+        natija = qm_hisobla_sut(
+            bosh,
+            sut_vazn,
+            narx,
+            em
+        )
     else:
-        natija = qm_hisobla_gosht(bosh, sut_vazn, narx, em)
-        
-    await message.answer(natija, parse_mode="Markdown", reply_markup=calc_menu_keyboard())
+        natija = qm_hisobla_gosht(
+            bosh,
+            sut_vazn,
+            narx,
+            em
+        )
+
+    await message.answer(
+        natija,
+        parse_mode="Markdown",
+        reply_markup=calc_menu_keyboard()
+    )
+
     await state.set_state(CalcStates.menu)
+
+    except Exception as e:
+    logging.error(f"Қорамол калькулятори хатоси: {e}")
+
+    await message.answer(
+        f"⚠️ Ҳисоблашда хатолик юз берди:\n{e}"
+    )
+
+
 
 
 # ----------- ЭЪЛОН БЕРИШ ЖАРАЁНИ -----------
