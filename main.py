@@ -257,6 +257,22 @@ async def cancel_action(message: types.Message, state: FSMContext):
 @dp.message(F.text == "🔙 Орқага")
 async def back_action(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
+
+    # Калькулятор ҳолатларида бўлса чиқиб кетсин
+    if current_state in [
+        CalcStates.menu.state,
+        CalcStates.qoy_bosh.state,
+        CalcStates.qoy_narx.state,
+        CalcStates.qoy_qozi_narx.state,
+        CalcStates.qoy_em_narx.state,
+        CalcStates.qm_bosh.state,
+        CalcStates.qm_yon.state,
+        CalcStates.qm_sut_vazn.state,
+        CalcStates.qm_narx.state,
+        CalcStates.qm_em_narx.state,
+    ]:
+        return
+
     if current_state is None:
         return
 
@@ -312,6 +328,13 @@ async def start_cmd(message: types.Message):
 
     await message.answer("Ассалому алайкум! Чорва бозор ботига хуш келибсиз.", reply_markup=main_menu())
 
+@dp.message(F.text == "🏠 Бош меню")
+async def home_menu(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer(
+        "🏠 Асосий меню",
+        reply_markup=main_menu()
+    )
 @dp.message(Command("broadcast_users"))
 async def broadcast_to_users(message: types.Message):
     # Хавфсизлик учун: фақат сиз (админ) хабар тарқата олишингиз учун текширув
