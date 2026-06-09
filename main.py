@@ -658,6 +658,8 @@ async def start_ad(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.photo, F.photo | F.video)
 async def process_photo(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Орқага":
+        return
     user_data = await state.get_data()
     media_list = user_data.get("media_list", [])
     if message.photo:
@@ -672,6 +674,8 @@ async def process_photo(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.photo, F.text == "📥 Расмларни тасдиқлаш")
 async def confirm_photos(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Орқага":
+        return
     user_data = await state.get_data()
     media_list = user_data.get("media_list", [])
     if not media_list:
@@ -683,11 +687,15 @@ async def confirm_photos(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.photo)
 async def process_photo_invalid(message: types.Message):
+    if message.text == "🔙 Орқага":
+        return
     await message.answer("⚠️ Илтимос, фақат расм ёки видео юборинг ва кейин '📥 Расмларни тасдиқлаш' тугмасини босинг.")
 
 
 @dp.message(AdStates.animal_type)
 async def process_type(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Орқага":
+        return
     await state.update_data(animal_type=message.text)
     await state.set_state(AdStates.region)
     await message.answer("Вилоятни танланг:", reply_markup=regions_keyboard())
@@ -695,6 +703,8 @@ async def process_type(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.region)
 async def process_region(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Орқага":
+        return
     await state.update_data(region=message.text)
     await state.set_state(AdStates.district)
     await message.answer("Туманни танланг:", reply_markup=districts_keyboard(message.text))
@@ -702,6 +712,8 @@ async def process_region(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.district)
 async def process_district(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Орқага":
+        return
     await state.update_data(district=message.text)
     await state.set_state(AdStates.mfy)
     await message.answer("МФЙ номини ёзинг (матн кўринишида):", reply_markup=standard_step_keyboard())
@@ -709,6 +721,10 @@ async def process_district(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.mfy)
 async def process_mfy(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Орқага":
+        return
+    if message.text == "🔙 Орқага":
+        return
     await state.update_data(mfy=message.text)
     await state.set_state(AdStates.quantity)
     await message.answer("Сонини киритинг (масалан: 2 бош, 5 та):", reply_markup=standard_step_keyboard())
@@ -716,6 +732,8 @@ async def process_mfy(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.quantity)
 async def process_quantity(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Орқага":
+        return
     if not any(char.isdigit() for char in message.text):
         await message.answer("⚠️ Илтимос, сонини рақамларда кўрсатинг (масалан: 2 бош ёки 5 та):",
                              reply_markup=standard_step_keyboard())
@@ -727,6 +745,8 @@ async def process_quantity(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.price)
 async def process_price(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Орқага":
+        return
     if not any(char.isdigit() for char in message.text):
         await message.answer("⚠️ Илтимос, нархни рақамларда киритинг (масалан: 12 000 000 сўм):",
                              reply_markup=standard_step_keyboard())
@@ -739,6 +759,8 @@ async def process_price(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.description)
 async def process_description(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Орқага":
+        return
     if message.text == "⏭ Ёзмасдан ўтказиб юбориш":
         await state.update_data(description="Киритилмаган")
     else:
@@ -750,6 +772,8 @@ async def process_description(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.phone, F.contact | F.text)
 async def process_phone(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Орқага":
+        return
     if message.text and not any(char.isdigit() for char in message.text):
         await message.answer("⚠️ Илтимос, телефон рақамни тўғри форматда ёзинг.", reply_markup=phone_keyboard())
         return
@@ -770,7 +794,7 @@ async def process_phone(message: types.Message, state: FSMContext):
         f"📍 <b>Манзил:</b> {data['region']} в, {data['district']} т, {data['mfy']} МФЙ\n\n"
         f"📞 <b>Алоқа:</b> {phone}\n"
         f"💬 <b>Телеграм:</b> {username_text}\n\n"
-        f"Эъон бериш: @{(await bot.get_me()).username}\nКанал: @internetmolbozor"
+        f"Админсиз эълон жойлаш: @{(await bot.get_me()).username}\nКанал: @internetmolbozor"
     )
 
     media_list = data.get("media_list", [])
