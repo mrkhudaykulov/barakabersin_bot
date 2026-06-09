@@ -251,6 +251,8 @@ def phone_keyboard():
 @dp.message(F.text == "❌ Бекор қилиш")
 async def cancel_action(message: types.Message, state: FSMContext):
 
+    print("CANCEL_HANDLER")
+    
     current_state = await state.get_state()
 
     if current_state not in [
@@ -275,6 +277,7 @@ async def cancel_action(message: types.Message, state: FSMContext):
 
 @dp.message(F.text == "🔙 Орқага")
 async def back_action(message: types.Message, state: FSMContext):
+    print("BACK_HANDLER")
     current_state = await state.get_state()
 
     # Калькулятор ҳолатларида бўлса чиқиб кетсин
