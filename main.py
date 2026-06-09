@@ -376,7 +376,7 @@ async def calc_main_menu(message: types.Message, state: FSMContext):
 @dp.message(CalcStates.menu, F.text == "🐑 Қўй калькулятори")
 async def qoy_start(message: types.Message, state: FSMContext):
     await state.set_state(CalcStates.qoy_bosh)
-    await message.answer("🐑 *Қўй фермаси калькулятори*\n\n1️⃣ *Она қўйлар сонини* киритинг:\n_(масалан: 20)_", parse_mode="Markdown", reply_markup=standard_step_keyboard())
+    await message.answer("🐑 *Қўй фермаси калькулятори*\n\n1️⃣ *Совлиқ қўйлар сонини* киритинг:\n_(масалан: 20)_", parse_mode="Markdown", reply_markup=standard_step_keyboard())
 
 @dp.message(CalcStates.qoy_bosh)
 async def qoy_bosh_process(message: types.Message, state: FSMContext):
@@ -409,7 +409,7 @@ async def qoy_qozi_process(message: types.Message, state: FSMContext):
     if message.text == "🔙 Орқага":
         await state.set_state(CalcStates.qoy_bosh)
         data = await state.get_data()
-        await message.answer(f"🔙 Сон қайта киритилади.\n1️⃣ Она қўйлар сони: {data.get('qoy_bosh')}\nЯнги сон ёзинг:")
+        await message.answer(f"🔙 Сон қайта киритилади.\n1️⃣ Совлиқ қўйлар сони: {data.get('qoy_bosh')}\nЯнги сон ёзинг:")
         return
     val = message.text.replace(" ", "")
     if not val.isdigit() or int(val) < 100:
@@ -423,7 +423,7 @@ async def qoy_qozi_process(message: types.Message, state: FSMContext):
 async def qoy_em_process(message: types.Message, state: FSMContext):
     if message.text == "🔙 Орқага":
         await state.set_state(CalcStates.qoy_narx)
-        await message.answer("🔙 2️⃣ Она қўй нархини қайта киритинг:")
+        await message.answer("🔙 2️⃣ Совлиқ қўй нархини қайта киритинг:")
         return
     val = message.text.replace(" ", "")
     if not val.isdigit() or int(val) < 1:
