@@ -341,7 +341,7 @@ async def broadcast_to_users(message: types.Message):
     ADMINS = [72185847, 2134695872]  # Ўз Telegram ID ингиз
 
     if message.from_user.id not in ADMINS:
-    return
+        return
 
     command_len = len("/broadcast_users")
     broadcast_text = message.text[command_len:].strip()
@@ -461,22 +461,22 @@ async def qoy_em_process(message: types.Message, state: FSMContext):
     em = int(val)
     
     try:
-    natija = qoy_hisobla(ona, narx, qozi, em)
+        natija = qoy_hisobla(ona, narx, qozi, em)
 
-    await message.answer(
-        natija,
-        parse_mode="Markdown",
-        reply_markup=calc_menu_keyboard()
-    )
+        await message.answer(
+            natija,
+            parse_mode="Markdown",
+            reply_markup=calc_menu_keyboard()
+        )
 
-    await state.set_state(CalcStates.menu)
+        await state.set_state(CalcStates.menu)
 
     except Exception as e:
-    logging.error(f"Қўй калькулятори хатоси: {e}")
+        logging.error(f"Қўй калькулятори хатоси: {e}")
 
-    await message.answer(
-        f"⚠️ Ҳисоблашда хатолик юз берди:\n{e}"
-    )
+        await message.answer(
+            f"⚠️ Ҳисоблашда хатолик юз берди:\n{e}"
+        )
 
 
 
@@ -525,8 +525,9 @@ async def qm_sut_vazn_process(message: types.Message, state: FSMContext):
             "🔙 Йўналишни қайта танланг:",
             reply_markup=calc_qoramol_direction_keyboard()
         )
-        
-        val = message.text.replace(" ", "")
+        return
+    
+    val = message.text.replace(" ", "")
     if not val.isdigit() or int(val) < 1:
         await message.answer("⚠️ ХАТО. Тўғри қиймат киритинг:")
         return
@@ -573,36 +574,36 @@ async def qm_em_process(message: types.Message, state: FSMContext):
     
     try:
 
-    if yon == "sut":
-        natija = qm_hisobla_sut(
-            bosh,
-            sut_vazn,
-            narx,
-            em
+        if yon == "sut":
+            natija = qm_hisobla_sut(
+                bosh,
+                sut_vazn,
+                narx,
+                em
+            )
+        else:
+            natija = qm_hisobla_gosht(
+                bosh,
+                sut_vazn,
+                narx,
+                em
+            )
+    
+        await message.answer(
+            natija,
+            parse_mode="Markdown",
+            reply_markup=calc_menu_keyboard()
         )
-    else:
-        natija = qm_hisobla_gosht(
-            bosh,
-            sut_vazn,
-            narx,
-            em
-        )
-
-    await message.answer(
-        natija,
-        parse_mode="Markdown",
-        reply_markup=calc_menu_keyboard()
-    )
-
-    await state.set_state(CalcStates.menu)
-
+    
+        await state.set_state(CalcStates.menu)
+    
     except Exception as e:
-    logging.error(f"Қорамол калькулятори хатоси: {e}")
-
-    await message.answer(
-        f"⚠️ Ҳисоблашда хатолик юз берди:\n{e}"
-    )
-
+        logging.error(f"Қорамол калькулятори хатоси: {e}")
+    
+        await message.answer(
+            f"⚠️ Ҳисоблашда хатолик юз берди:\n{e}"
+        )
+    
 
 
 
