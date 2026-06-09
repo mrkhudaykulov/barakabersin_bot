@@ -446,12 +446,18 @@ async def calc_main_menu(message: types.Message, state: FSMContext):
 # ==========================================
 @dp.message(F.text == "🔙 Орқага")
 async def global_calc_back_handler(message: types.Message, state: FSMContext):
+    # 1. Жорий ҳолатни матн (string) кўринишида оламиз
     current_state = await state.get_state()
-    if not current_state:
+    
+    # 2. Агар фойдаланувчида ҳеч қандай ҳолат (state) фаол бўлмаса, функцияни тўхтатамиз
+    if current_state is None:
         return
 
-    # 🐑 Қўй калькулятори босқичлари бўйича орқага қайтариш
-    if current_state == CalcStates.qoy_bosh.state:
+    # ==========================================
+    # 🐑 ҚЎЙ КАЛЬКУЛЯТОРИ ОҚИМИ
+    # ==========================================
+    # 💡 Энди .state сўзини ишлатмай, тўғридан-тўғри ўзгарувчининг ўзи билан солиштирамиз:
+    if current_state == CalcStates.qoy_bosh:
         await state.set_state(CalcStates.menu)
         await message.answer(
             "🌾 *Чорвачилик калькулятори* бўлимига хуш келибсиз.\nНимани ҳисобламоқчисиз?",
@@ -459,7 +465,7 @@ async def global_calc_back_handler(message: types.Message, state: FSMContext):
         )
         return
 
-    elif current_state == CalcStates.qoy_narx.state:
+    elif current_state == CalcStates.qoy_narx:
         await state.set_state(CalcStates.qoy_bosh)
         await message.answer(
             "1️⃣ *Совлиқ қўйлар сонини* киритинг:\n_(масалан: 20)_",
@@ -467,7 +473,7 @@ async def global_calc_back_handler(message: types.Message, state: FSMContext):
         )
         return
 
-    elif current_state == CalcStates.qoy_qozi_narx.state:
+    elif current_state == CalcStates.qoy_qozi_narx:
         await state.set_state(CalcStates.qoy_narx)
         await message.answer(
             "2️⃣ *1 та совлиқ қўй ўртача нархини* киритинг (сўм):\n_(масалан: 3 500 000)_",
@@ -475,7 +481,7 @@ async def global_calc_back_handler(message: types.Message, state: FSMContext):
         )
         return
 
-    elif current_state == CalcStates.qoy_em_narx.state:
+    elif current_state == CalcStates.qoy_em_narx:
         await state.set_state(CalcStates.qoy_qozi_narx)
         await message.answer(
             "3️⃣ *1 та қўзининг сотилиш нархини* киритинг (сўм):\n_(масалан: 1 200 000)_",
@@ -483,8 +489,10 @@ async def global_calc_back_handler(message: types.Message, state: FSMContext):
         )
         return
 
-    # 🐄 Қорамол калькулятори босқичлари бўйича орқага қайтариш
-    elif current_state == CalcStates.qm_bosh.state:
+    # ==========================================
+    # 🐄 ҚОРАМОЛ КАЛЬКУЛЯТОРИ ОҚИМИ
+    # ==========================================
+    elif current_state == CalcStates.qm_bosh:
         await state.set_state(CalcStates.menu)
         await message.answer(
             "🌾 *Чорвачилик калькулятори* бўлимига хуш келибсиз.\nНимани ҳисобламоқчисиз?",
@@ -492,20 +500,20 @@ async def global_calc_back_handler(message: types.Message, state: FSMContext):
         )
         return
 
-    elif current_state == CalcStates.qm_yon.state:
+    elif current_state == CalcStates.qm_yon:
         await state.set_state(CalcStates.qm_bosh)
         await message.answer(
-            "1️⃣ *Сигирлар (oнa моллар) сонини* киритинг:\n_(масалан: 10)_",
+            "1️⃣ *Сигирлар (ёки она моллар) сонини* киритинг:\n_(масалан: 10)_",
             parse_mode="Markdown", reply_markup=standard_step_keyboard()
         )
         return
 
-    elif current_state == CalcStates.qm_sut_vazn.state:
+    elif current_state == CalcStates.qm_sut_vazn:
         await state.set_state(CalcStates.qm_yon)
         await message.answer("2️⃣ *Йўналишни танланг:*", reply_markup=calc_qoramol_direction_keyboard())
         return
 
-    elif current_state == CalcStates.qm_narx.state:
+    elif current_state == CalcStates.qm_narx:
         await state.set_state(CalcStates.qm_sut_vazn)
         data = await state.get_data()
         if data.get("qm_yon") == "sut":
@@ -514,7 +522,7 @@ async def global_calc_back_handler(message: types.Message, state: FSMContext):
             await message.answer("3️⃣ *1 та молнинг ўртача тирик вазнини* киритинг (кг):\n_(масалан: 400)_", parse_mode="Markdown", reply_markup=standard_step_keyboard())
         return
 
-    elif current_state == CalcStates.qm_em_narx.state:
+    elif current_state == CalcStates.qm_em_narx:
         await state.set_state(CalcStates.qm_narx)
         data = await state.get_data()
         if data.get("qm_yon") == "sut":
@@ -597,7 +605,7 @@ async def qoy_em_process(message: types.Message, state: FSMContext):
 @dp.message(CalcStates.menu, F.text == "🐄 Қорамол калькулятори")
 async def qoramol_start(message: types.Message, state: FSMContext):
     await state.set_state(CalcStates.qm_bosh)
-    await message.answer("🐄 *Қорамол фермаси калькулятори*\n\n1️⃣ *Сигирлар (ёки она моллар) сонини* киритинг:\n_(масалан: 10)_", parse_mode="Markdown", reply_markup=standard_step_keyboard())
+    await message.answer("🐄 *Қорамол фермаси калькулятори*\n\n1️⃣ *Сигирлар (она моллар) сонини* киритинг:\n_(масалан: 10)_", parse_mode="Markdown", reply_markup=standard_step_keyboard())
 
 @dp.message(CalcStates.qm_bosh)
 async def qm_bosh_process(message: types.Message, state: FSMContext):
