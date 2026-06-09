@@ -281,64 +281,79 @@ async def cancel_action(message: types.Message, state: FSMContext):
         reply_markup=main_menu()
     )
 
-'''
 @dp.message(F.text == "🔙 Орқага")
 async def back_action(message: types.Message, state: FSMContext):
     print("BACK_HANDLER")
     current_state = await state.get_state()
 
-    # Эълон бериш ҳолати бўлмаса чиқиб кетсин
-    if current_state not in [
-        AdStates.photo.state,
-        AdStates.animal_type.state,
-        AdStates.region.state,
-        AdStates.district.state,
-        AdStates.mfy.state,
-        AdStates.quantity.state,
-        AdStates.price.state,
-        AdStates.description.state,
-        AdStates.phone.state,
-    ]:
-        return
-
     if current_state is None:
         return
 
+    # Агар фойдаланувчи калькулятор блокида бўлса, ушбу хэндлер ишламайди
+    # (Калькуляторнинг ўз ички "Орқага" мантиғи бор)
+    if current_state in [
+        CalcStates.menu.state,
+        CalcStates.qoy_bosh.state,
+        CalcStates.qoy_narx.state,
+        CalcStates.qoy_qozi_narx.state,
+        CalcStates.qoy_em_narx.state,
+        CalcStates.qm_bosh.state,
+        CalcStates.qm_yon.state,
+        CalcStates.qm_sut_vazn.state,
+        CalcStates.qm_narx.state,
+        CalcStates.qm_em_narx.state,
+    ]:
+        return
+
+    # ЭЪЛОН БЕРИШ ЖАРАЁНИ УЧУН ОРҚАГА ҚАЙТИШ МАНТИҚИ:
+    
     if current_state == AdStates.animal_type.state:
+        # Ҳайвон туридан орқага қайтганда расм юбориш босқичига ўтади
         await state.set_state(AdStates.photo)
-        await message.answer("🔙 Расм юбориш босқичига қайтилди. Расм/видео юборинг ва 'Тасдиқлаш'ни босинг:",
-                             reply_markup=photo_confirm_keyboard())
+        await message.answer(
+            "🔙 Расм юбориш босқичига қайтилди. Расм/видео юборинг ва 'Тасдиқлаш'ни босинг:",
+            reply_markup=photo_confirm_keyboard()
+        )
 
     elif current_state == AdStates.region.state:
+        # Вилоятдан орқага — Ҳайвон турига
         await state.set_state(AdStates.animal_type)
         await message.answer("🔙 Ҳайвон турини қайта танланг:", reply_markup=animal_types_keyboard())
 
     elif current_state == AdStates.district.state:
+        # Тумандан орқага — Вилоятга
         await state.set_state(AdStates.region)
         await message.answer("🔙 Вилоятни қайта танланг:", reply_markup=regions_keyboard())
 
     elif current_state == AdStates.mfy.state:
+        # МФЙдан орқага — Туманга (бу ерда олдин танланган вилоят қайта ўқиб олинади)
         data = await state.get_data()
         await state.set_state(AdStates.district)
         await message.answer("🔙 Туманни қайта танланг:", reply_markup=districts_keyboard(data.get('region')))
 
     elif current_state == AdStates.quantity.state:
+        # Сонидан орқага — МФЙга
         await state.set_state(AdStates.mfy)
         await message.answer("🔙 МФЙ номини қайта ёзинг:", reply_markup=standard_step_keyboard())
 
     elif current_state == AdStates.price.state:
+        # Нархидан орқага — Сонига
         await state.set_state(AdStates.quantity)
         await message.answer("🔙 Сонини қайта киритинг:", reply_markup=standard_step_keyboard())
 
     elif current_state == AdStates.description.state:
+        # Изоҳдан орқага — Нархига
         await state.set_state(AdStates.price)
         await message.answer("🔙 Нархини қайта киритинг:", reply_markup=standard_step_keyboard())
 
     elif current_state == AdStates.phone.state:
+        # Телефондан орқага — Изоҳга
         await state.set_state(AdStates.description)
-        await message.answer("🔙 Изоҳ бўлимига қайтилди. Қўшимча изоҳ ёзинг ёки тугмани босинг:",
-                             reply_markup=description_keyboard())
-'''
+        await message.answer(
+            "🔙 Изоҳ бўлимига қайтилди. Қўшимча изоҳ ёзинг ёки тугмани босинг:",
+            reply_markup=description_keyboard()
+        )
+
 
 # ----------- БОТ БУЙРУҚЛАРИ -----------
 @dp.message(Command("start"))
@@ -658,8 +673,6 @@ async def start_ad(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.photo, F.photo | F.video)
 async def process_photo(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Орқага":
-        return
     user_data = await state.get_data()
     media_list = user_data.get("media_list", [])
     if message.photo:
@@ -674,8 +687,6 @@ async def process_photo(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.photo, F.text == "📥 Расмларни тасдиқлаш")
 async def confirm_photos(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Орқага":
-        return
     user_data = await state.get_data()
     media_list = user_data.get("media_list", [])
     if not media_list:
@@ -687,15 +698,11 @@ async def confirm_photos(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.photo)
 async def process_photo_invalid(message: types.Message):
-    if message.text == "🔙 Орқага":
-        return
     await message.answer("⚠️ Илтимос, фақат расм ёки видео юборинг ва кейин '📥 Расмларни тасдиқлаш' тугмасини босинг.")
 
 
 @dp.message(AdStates.animal_type)
 async def process_type(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Орқага":
-        return
     await state.update_data(animal_type=message.text)
     await state.set_state(AdStates.region)
     await message.answer("Вилоятни танланг:", reply_markup=regions_keyboard())
@@ -703,8 +710,6 @@ async def process_type(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.region)
 async def process_region(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Орқага":
-        return
     await state.update_data(region=message.text)
     await state.set_state(AdStates.district)
     await message.answer("Туманни танланг:", reply_markup=districts_keyboard(message.text))
@@ -712,8 +717,6 @@ async def process_region(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.district)
 async def process_district(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Орқага":
-        return
     await state.update_data(district=message.text)
     await state.set_state(AdStates.mfy)
     await message.answer("МФЙ номини ёзинг (матн кўринишида):", reply_markup=standard_step_keyboard())
@@ -721,10 +724,6 @@ async def process_district(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.mfy)
 async def process_mfy(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Орқага":
-        return
-    if message.text == "🔙 Орқага":
-        return
     await state.update_data(mfy=message.text)
     await state.set_state(AdStates.quantity)
     await message.answer("Сонини киритинг (масалан: 2 бош, 5 та):", reply_markup=standard_step_keyboard())
@@ -732,8 +731,6 @@ async def process_mfy(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.quantity)
 async def process_quantity(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Орқага":
-        return
     if not any(char.isdigit() for char in message.text):
         await message.answer("⚠️ Илтимос, сонини рақамларда кўрсатинг (масалан: 2 бош ёки 5 та):",
                              reply_markup=standard_step_keyboard())
@@ -745,8 +742,6 @@ async def process_quantity(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.price)
 async def process_price(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Орқага":
-        return
     if not any(char.isdigit() for char in message.text):
         await message.answer("⚠️ Илтимос, нархни рақамларда киритинг (масалан: 12 000 000 сўм):",
                              reply_markup=standard_step_keyboard())
@@ -759,8 +754,6 @@ async def process_price(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.description)
 async def process_description(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Орқага":
-        return
     if message.text == "⏭ Ёзмасдан ўтказиб юбориш":
         await state.update_data(description="Киритилмаган")
     else:
@@ -772,8 +765,6 @@ async def process_description(message: types.Message, state: FSMContext):
 
 @dp.message(AdStates.phone, F.contact | F.text)
 async def process_phone(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Орқага":
-        return
     if message.text and not any(char.isdigit() for char in message.text):
         await message.answer("⚠️ Илтимос, телефон рақамни тўғри форматда ёзинг.", reply_markup=phone_keyboard())
         return
