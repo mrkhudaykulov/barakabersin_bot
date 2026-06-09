@@ -253,23 +253,17 @@ async def cancel_action(message: types.Message, state: FSMContext):
 
     current_state = await state.get_state()
 
-    if current_state in [
-        CalcStates.menu.state,
-        CalcStates.qoy_bosh.state,
-        CalcStates.qoy_narx.state,
-        CalcStates.qoy_qozi_narx.state,
-        CalcStates.qoy_em_narx.state,
-        CalcStates.qm_bosh.state,
-        CalcStates.qm_yon.state,
-        CalcStates.qm_sut_vazn.state,
-        CalcStates.qm_narx.state,
-        CalcStates.qm_em_narx.state,
+    if current_state not in [
+        AdStates.photo.state,
+        AdStates.animal_type.state,
+        AdStates.region.state,
+        AdStates.district.state,
+        AdStates.mfy.state,
+        AdStates.quantity.state,
+        AdStates.price.state,
+        AdStates.description.state,
+        AdStates.phone.state,
     ]:
-        await state.set_state(CalcStates.menu)
-        await message.answer(
-            "🌾 Чорвачилик калькулятори бўлими",
-            reply_markup=calc_menu_keyboard()
-        )
         return
 
     await state.clear()
@@ -430,7 +424,12 @@ async def qoy_start(message: types.Message, state: FSMContext):
 @dp.message(CalcStates.qoy_bosh)
 async def qoy_bosh_process(message: types.Message, state: FSMContext):
     if message.text == "🔙 Орқага":
-        await calc_main_menu(message, state)
+        await state.set_state(CalcStates.menu)
+    
+        await message.answer(
+            "🌾 Чорвачилик калькулятори бўлимига хуш келибсиз.\nНимани ҳисобламоқчисиз?",
+            reply_markup=calc_menu_keyboard()
+        )
         return
     val = message.text.replace(" ", "")
     if not val.isdigit() or int(val) < 1:
