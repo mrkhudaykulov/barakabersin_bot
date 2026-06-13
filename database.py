@@ -2,7 +2,7 @@
 MAX_PRICE = 50_000_000
 
 import sqlite3
-
+import re
 
 def init_db():
     conn = sqlite3.connect("chorva.db")
@@ -341,3 +341,103 @@ def get_full_statistics():
 
     conn.close()
     return stats
+
+
+# ═══════════════════════════════════════
+# МАН ЭТИЛГАН СЎЗЛАР
+# ═══════════════════════════════════════
+
+BAD_WORDS = [
+    # Сўкишлар (узунроқ сўзлар аввал)
+    "кахба", "ҷалоб", "ғашт", "нарас",
+    "шалоп", "ғашак", "юзлик",
+
+    # Қисқа сўзлар — АЛОҲИДА текширилади
+    "ҳули", "сик", "пиз",
+]
+
+
+# ═══════════════════════════════════════
+# МАТННИ ТОЗАЛАШ
+# ═══════════════════════════════════════
+
+def normalize_word(word):
+    """Bitta so'zni tekshirishga tayyorlash"""
+    if not word:
+        return ""
+    word = word.lower().strip()
+
+    # Ko'p takrorlangan harflarni bittaga tushirish
+    word = re.sub(r'(.)\1{2,}', r'\1', word)
+
+    # Lotin → Kirill
+    latin_to_cyrillic = {
+        'a': 'а', 'b': 'б', 'c': 'с', 'd': 'д', 'e': 'е',
+        'f': 'ф', 'g': 'г', 'h': 'х', 'i': 'и', 'j': 'ж',
+        'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н', 'o': 'о',
+        'p': 'п', 'q': 'қ', 'r': 'р', 's': 'с', 't': 'т',
+        'u': 'у', 'v': 'в', 'x': 'х', 'y': 'й', 'z': 'з',
+    }
+    result = ""
+    for char in word:
+        result += latin_to_cyrillic.get(char, char)
+
+    # Faqat kirill harflarini qoldirish
+    result = re.sub(r'[^а-яёғқўҳ]', '', result)
+    return result
+
+
+def extract_words(text):
+    """Matndan alohida so'zlarni ajratib olish"""
+    if not text:
+        return []
+
+    # Belgilar va bo'shliqlar bo'yicha so'zlarga ajratish
+    words = re.split(r'[\s,.\-!?;:\(\)\[\]\"\'\/\\]+', text)
+    return [w for w in words if len(w) > 0]
+
+
+def contains_bad_word(text):
+    """Matnda yomon so'z bormi?
+
+    QOIDALAR:
+    1. Qisqa so'zlar (1-3 harf) — FAQAT alohida so'z sifatida tekshiriladi
+       Masalan: "ам" → "қалам" da topilmaydi ✅
+                "ам" → "ам жуда яхши" da topiladi ✅
+
+    2. Uzun so'zlar (4+ harf) — ichidan ham qidiriladi
+       Masalan: "кахба" → "кахбага" da topiladi ✅
+    """
+    if not text:
+        return False
+
+    words = extract_words(text)
+
+    # Har bir so'zni normalizatsiya qilish
+    normalized_words = [normalize_word(w) for w in words]
+
+    # BAD_WORDS ro'yxatini normalizatsiya qilish
+    normalized_bad = [normalize_word(w) for w in BAD_WORDS]
+
+    for bad_word in normalized_bad:
+        if not bad_word:
+            continue
+
+        # 1. QISQA SO'Z (1-3 harf) — faqat alohida so'z sifatida
+        if len(bad_word) <= 3:
+            for word in normalized_words:
+                if word == bad_word:
+                    return True
+
+        # 2. UZUN SO'Z (4+ harf) — alohida so'z YOKI so'z ichidan
+        else:
+            # Aloхida so'z sifatida
+            for word in normalized_words:
+                if word == bad_word:
+                    return True
+            # So'z ichidan ham (masalan: "кахбага")
+            for word in normalized_words:
+                if bad_word in word:
+                    return True
+
+    return False
