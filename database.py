@@ -278,10 +278,10 @@ def search_all(animal_type=None, region=None):
     all_prices = []
     for ad in result["ads"]:
         price = parse_price_text(ad[3])  # ← ad[3] = price
-        if 0 < price <= MAX_PRICE:
+        if MIN_PRICE <= price <= MAX_PRICE:
             all_prices.append(price)
     for mp in result["market_prices"]:
-        if 0 < mp[2] <= MAX_PRICE:
+        if MIN_PRICE <= mp[2] <= MAX_PRICE:
             all_prices.append(mp[2])
 
     if all_prices:
