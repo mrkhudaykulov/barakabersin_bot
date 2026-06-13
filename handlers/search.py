@@ -160,15 +160,17 @@ async def search_region(message: types.Message, state: FSMContext):
                     f"   📍 {safe_region}, {safe_dist}"
                 )
 
-                if safe_desc and safe_desc != "Киритилмаган":
-                    text += f"\n   📝 {safe_desc}"
-
                 # Эгаси ҳаволаси
                 if user_id and int(user_id) > 0:
                     text += (
-                        f'\n   <a href="tg://user?id={user_id}">'
+                        f'   <a href="tg://user?id={user_id}">'
                         f"👤 Эгаси</a>"
                     )
+                
+                if safe_desc and safe_desc != "Киритилмаган":
+                    text += f"   📝 {safe_desc}"
+
+               
 
                 await message.answer(
                     text,
