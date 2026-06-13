@@ -16,7 +16,7 @@ from states import AdStates, CalcStates, SearchStates, PriceInputStates
 router = Router()
 
 
-@dp_message_start = router.message(Command("start"))
+@router.message(Command("start"))
 async def start_cmd(message: types.Message):
     conn = sqlite3.connect("chorva.db")
     cursor = conn.cursor()
