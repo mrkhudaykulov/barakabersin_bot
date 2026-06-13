@@ -217,64 +217,6 @@ async def price_index_all(message: types.Message):
     )
 
 
-# ═══════════════════════════════════════
-# 📈 СТАТИСТИКА
-# ═══════════════════════════════════════
-
-@router.message(F.text == "📈 Статистика")
-async def show_statistics(message: types.Message):
-    stats = get_full_statistics()
-
-    text = "📈 *БОТ СТАТИСТИКАСИ*\n"
-    text += f"{'═' * 28}\n\n"
-
-    text += f"📋 Жами эълонлар: *{stats['total_ads']}* та\n"
-    text += f"✅ Фаол: *{stats['active_ads']}* та\n"
-    text += f"🤝 Сотилган: *{stats['sold_ads']}* та\n"
-    text += f"👥 Фойдаланувчилар: *{stats['total_users']}* та\n"
-    text += f"📊 Нарх маълумотлари: *{stats['market_price_entries']}* та\n\n"
-
-    if stats["by_animal"]:
-        text += f"🐾 *ҲАЙВОН ТУРЛАРИ БЎЙИЧА:*\n"
-        total_active = stats["active_ads"] or 1
-        for a_type, count in stats["by_animal"]:
-            pct = (count / total_active) * 100
-            bar = "█" * int(pct / 5) + "░" * (20 - int(pct / 5))
-            text += f"  {a_type}: {count} ({pct:.0f}%)\n  {bar}\n"
-        text += "\n"
-
-    if stats["by_region"]:
-        text += f"📍 *ВИЛОЯТЛАР БЎЙИЧА:*\n"
-        for region, count in stats["by_region"][:7]:
-            text += f"  {region}: {count} та\n"
-        text += "\n"
-
-    if stats["avg_prices"]:
-        text += f"💰 *ЎРТАЧА НАРХЛАР:*\n"
-        emoji_map = {
-            "Буқа": "🐂", "Сигир": "🐄", "Тана": "🐮", "Бузоқ": "🐮",
-            "Қўчқор": "🐏", "Совлиқ": "🐑", "Қўзи": "🐑",
-            "Эчки": "🐐", "От": "🐴", "Туя": "🐫", "Парранда": "🐓"
-        }
-        sorted_prices = sorted(
-            stats["avg_prices"].items(),
-            key=lambda x: x[1]["avg"],
-            reverse=True
-        )
-        for a_type, pdata in sorted_prices:
-            emoji = emoji_map.get(a_type, "🐾")
-            text += (
-                f"  {emoji} {a_type}\n"
-                f"     Ўртача: {fmt_number(pdata['avg'])} сўм\n"
-                f"     ({pdata['count']} та эълон)\n"
-            )
-
-    await message.answer(
-        text,
-        parse_mode="Markdown",
-        reply_markup=main_menu()
-    )
-
 
 # ═══════════════════════════════════════
 # 💰 НАРХ КИРИТИШ (CROWDSOURCED)
