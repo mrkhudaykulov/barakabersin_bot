@@ -5,9 +5,10 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 def main_menu():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
-        [KeyboardButton(text="📊 Нархлар индекси"), KeyboardButton(text="📈 Статистика")],
-        [KeyboardButton(text="💰 Нарх киритиш"), KeyboardButton(text="🧮 Ферма калькулятори")],
-        [KeyboardButton(text="🗂 Менинг эълонларим"), KeyboardButton(text="🏠 Бош меню")]
+        [KeyboardButton(text="📊 Нархлар индекси"), KeyboardButton(text="💰 Нарх киритиш")],
+        [KeyboardButton(text="🧮 Ферма калькулятори"), KeyboardButton(text="🗂 Менинг эълонларим")],
+        [KeyboardButton(text="🏠 Бош меню")]
+        
     ], resize_keyboard=True)
 
 
