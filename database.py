@@ -222,14 +222,17 @@ def search_ads_db(animal_type=None, region=None, max_price=None, limit=10):
     return rows
 
 
+
+
+
 def search_all(animal_type=None, region=None):
-    """3 манбадан қидириш: эълонлар, бозор нархлари, статистика"""
+    """3 манбадан қидириш"""
     conn = sqlite3.connect("chorva.db")
     cursor = conn.cursor()
 
     result = {"ads": [], "market_prices": [], "stats": {}}
 
-    # ═══ Эълонлар ═══
+    # ═══ Эълонлар (id va user_id bilan) ═══
     query_ads = """
         SELECT id, animal_type, region, price,
                district, description, quantity, user_id
@@ -248,12 +251,15 @@ def search_all(animal_type=None, region=None):
     if region:
         query_ads += " AND region = ?"
         params_ads.append(region)
-    query_ads += " ORDER BY id DESC LIMIT 20"
+    query_ads += " ORDER BY id DESC LIMIT 50"
     cursor.execute(query_ads, params_ads)
     result["ads"] = cursor.fetchall()
 
     # ═══ Бозор нархлари ═══
-    query_mp = "SELECT animal_type, region, price, created_at FROM market_prices WHERE 1=1"
+    query_mp = """
+        SELECT animal_type, region, price, created_at
+        FROM market_prices WHERE 1=1
+    """
     params_mp = []
     if animal_type:
         query_mp += " AND animal_type = ?"
@@ -270,7 +276,7 @@ def search_all(animal_type=None, region=None):
     # ═══ Статистика ═══
     all_prices = []
     for ad in result["ads"]:
-        price = parse_price_text(ad[3])
+        price = parse_price_text(ad[3])  # ← ad[3] = price
         if 0 < price <= MAX_PRICE:
             all_prices.append(price)
     for mp in result["market_prices"]:
@@ -286,6 +292,7 @@ def search_all(animal_type=None, region=None):
         }
 
     return result
+
 
 
 def get_full_statistics():
