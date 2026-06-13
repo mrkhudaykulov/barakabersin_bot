@@ -15,6 +15,7 @@ from keyboards import (
     animal_types_keyboard, regions_keyboard, districts_keyboard,
     standard_step_keyboard, description_keyboard, phone_keyboard
 )
+from database import contains_bad_word
 
 router = Router()
 
@@ -188,6 +189,30 @@ async def process_phone(message: types.Message, state: FSMContext):
     phone = message.contact.phone_number if message.contact else message.text
     data = await state.get_data()
 
+    # ═══ ЁМОН СЎЗЛАРНИ ТЕКШИРИШ ═══
+    check_fields = [
+        data.get('description', ''),
+        data.get('quantity', ''),
+        data.get('price', ''),
+        data.get('mfy', ''),
+        data.get('district', ''),
+        phone,
+    ]
+
+    for field in check_fields:
+        if contains_bad_word(field):
+            await message.answer(
+                "🚫 *Эълонингизда ножўя матн аниқланди!*\n\n"
+                "Илтимос, қайтадан тоза матн билан ёзинг.\n"
+                "Ҳайвон сотиш бўлимида илтимос одобли бўлинг.",
+                parse_mode="Markdown",
+                reply_markup=main_menu()
+            )
+            await state.clear()
+            return
+    
+    
+    
     if message.from_user.username:
         username_text = f"@{message.from_user.username}"
     else:
