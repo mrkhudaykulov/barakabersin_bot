@@ -10,11 +10,9 @@ from database import get_full_statistics, fmt_number
 
 router = Router()
 
-
 # ═══════════════════════════════════════
 # KIRILL TEKSHIRISH
 # ═══════════════════════════════════════
-
 VALID_ANIMALS = [
     "Буқа", "Сигир", "Тана", "Бузоқ", "Қўй",
     "Қўчқор", "Совлиқ", "Қўзи", "Эчки", "Улоқ",
@@ -27,7 +25,6 @@ VALID_REGIONS = [
     "Навоий", "Жиззах", "Сирдарё", "Хоразм",
     "Қорақалпоғистон"
 ]
-
 
 def is_latin(text):
     latin_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
@@ -49,11 +46,9 @@ def validate_region(text):
         return text
     return None
 
-
 # ═══════════════════════════════════════
 # 1. /addprice — Bitta narx qo'shish
 # ═══════════════════════════════════════
-
 @router.message(Command("addprice"))
 async def admin_add_price(message: types.Message):
     if message.from_user.id not in ADMINS:
@@ -128,11 +123,9 @@ async def admin_add_price(message: types.Message):
         parse_mode="Markdown"
     )
 
-
 # ═══════════════════════════════════════
 # 2. /addmulti — Ko'p narx qo'shish
 # ═══════════════════════════════════════
-
 @router.message(Command("addmulti"))
 async def admin_add_multi(message: types.Message):
     if message.from_user.id not in ADMINS:
@@ -202,11 +195,9 @@ async def admin_add_multi(message: types.Message):
 
     await message.answer(text, parse_mode="Markdown")
 
-
 # ═══════════════════════════════════════
 # 3. /viewprices — Narxlarni ko'rish (ID bilan)
 # ═══════════════════════════════════════
-
 @router.message(Command("viewprices"))
 async def admin_view_prices(message: types.Message):
     if message.from_user.id not in ADMINS:
@@ -247,7 +238,6 @@ async def admin_view_prices(message: types.Message):
             await message.answer(current, parse_mode="Markdown")
     else:
         await message.answer(text, parse_mode="Markdown")
-
 
 # ═══════════════════════════════════════
 # 4. /delprice — Bitta narxni o'chirish
@@ -305,7 +295,6 @@ async def admin_del_price(message: types.Message):
         f"💰 {price:,} сўм",
         parse_mode="Markdown"
     )
-
 
 # ═══════════════════════════════════════
 # 5. /delanimal — Hayvon turi bo'yicha o'chirish
@@ -368,7 +357,6 @@ async def admin_del_animal(message: types.Message):
         parse_mode="Markdown"
     )
 
-
 # ═══════════════════════════════════════
 # 6. /delregion — Viloyat bo'yicha o'chirish
 # ═══════════════════════════════════════
@@ -429,7 +417,6 @@ async def admin_del_region(message: types.Message):
         f"🗑 *{region}* — {count} та нарх ўчирилди.",
         parse_mode="Markdown"
     )
-
 
 # ═══════════════════════════════════════
 # 7. /clearprices — HAMMA narxni o'chirish (tasdiqlash bilan)
@@ -626,7 +613,7 @@ async def admin_help(message: types.Message):
         "👀 *Кўриш:*\n"
         "`/viewprices` — нархлар (ID билан)\n\n"
 
-        "🗑 *О'чириш:*\n"
+        "🗑 *Ўчириш:*\n"
         "`/delprice 5` — ID бўйича битта\n"
         "`/delanimal Сигир` — ҳайвон тури бўйича\n"
         "`/delregion Тошкент` — вилоят бўйича\n"
@@ -637,7 +624,11 @@ async def admin_help(message: types.Message):
 
         "👥 *Статистика:*\n"
         "`/stats` — бот статистикаси\n\n"
-
+        
+        "🚫 *Ёмон сўзлар:*\n"
+        "`/addbadword ўшасўз`\n"
+        "`/badwords` - Рўхат\n\n"
+        
         "ℹ️ *Ёрдам:*\n"
         "`/adminhelp` — шу хабар\n\n"
 
@@ -655,3 +646,59 @@ async def admin_help(message: types.Message):
         "Қорақалпоғистон",
         parse_mode="Markdown"
     )
+
+# ═══════════════════════════════════════
+# 11. /addbadword 
+# ═══════════════════════════════════════
+@router.message(Command("addbadword"))
+async def admin_add_badword(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer(
+            "📋 *Формат:*\n"
+            "`/addbadword ўшасўз`\n\n"
+            "⚠️ 3 ҳарфли сўзлар — фақат алоҳида сўз сифатида текширилади\n"
+            "4+ ҳарфли сўзлар — сўз ичидан ҳам қидирилади",
+            parse_mode="Markdown"
+        )
+        return
+
+    word = parts[1].strip().lower()
+    normalized = normalize_word(word)
+
+    if not normalized:
+        await message.answer("⚠️ Сўз топилмади.")
+        return
+
+    if word in BAD_WORDS:
+        await message.answer("⚠️ Бу сўз аллақачон рўхатда бор.")
+        return
+
+    BAD_WORDS.append(word)
+
+    if len(normalized) <= 3:
+        note = "ℹ️ Қисқа сўз — фақат алоҳида сўз сифатида текширилади"
+    else:
+        note = "ℹ️ Узун сўз — сўз ичидан ҳам қидирилади"
+
+    await message.answer(
+        f"✅ *Қўшилди:* `{word}`\n\n{note}",
+        parse_mode="Markdown"
+    )
+
+@router.message(Command("badwords"))
+async def admin_badwords(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+
+    text = f"🚫 *Ман этилган сўзлар ({len(BAD_WORDS)} та):*\n\n"
+    for i, word in enumerate(BAD_WORDS, 1):
+        text += f"{i}. `{word}`\n"
+
+    if len(text) > 4000:
+        await message.answer("Рўхат жуда узун. Базадан кўринг.")
+    else:
+        await message.answer(text, parse_mode="Markdown")
