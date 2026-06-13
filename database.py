@@ -1,3 +1,6 @@
+# ⚠️ Chegara: 50 mln dan oshiq narxlar xato deb hisoblanadi
+MAX_PRICE = 50_000_000
+
 import sqlite3
 
 
@@ -77,7 +80,7 @@ def get_price_index(animal_type=None):
     stats = {}
     for a_type, region, price_text in rows:
         price = parse_price_text(price_text)
-        if price == 0:
+        if price == 0 or price > MAX_PRICE:
             continue
         key = (a_type, region)
         if key not in stats:
@@ -126,6 +129,8 @@ def get_market_prices_index():
 
     result = {}
     for a_type, region, avg_p, min_p, max_p, cnt in rows:
+        if avg_p > MAX_PRICE:
+            continue
         if a_type not in result:
             result[a_type] = []
         result[a_type].append({
@@ -221,10 +226,10 @@ def search_all(animal_type=None, region=None):
     all_prices = []
     for ad in result["ads"]:
         price = parse_price_text(ad[2])
-        if price > 0:
+        if 0 < price <= MAX_PRICE:
             all_prices.append(price)
     for mp in result["market_prices"]:
-        if mp[2] > 0:
+        if 0 < mp[2] <= MAX_PRICE:
             all_prices.append(mp[2])
 
     if all_prices:
@@ -277,7 +282,7 @@ def get_full_statistics():
     price_by_animal = {}
     for a_type, price_text in raw_prices:
         price = parse_price_text(price_text)
-        if price > 0:
+        if 0 < price <= MAX_PRICE:
             if a_type not in price_by_animal:
                 price_by_animal[a_type] = []
             price_by_animal[a_type].append(price)
