@@ -118,14 +118,20 @@ async def search_region(message: types.Message, state: FSMContext):
         # Har bir эълон alohida xabar + havola
         for i, ad in enumerate(results["ads"][:10], 1):
             ad_id, a_type, region, price, district, desc, qty, user_id = ad
+            
+            # Матнни HTML белгилардан тозалаш
+            safe_price = str(price).replace("<", "").replace(">", "")
+            safe_qty = str(qty).replace("<", "").replace(">", "")
+            safe_district = str(district).replace("<", "").replace(">", "")
+            safe_desc = str(desc).replace("<", "").replace(">", "") if desc else ""
 
             text = (
-                f"*{i}.* 🐾 *{a_type}* — {qty}\n"
-                f"   💰 {price}\n"
-                f"   📍 {region}, {district}"
+                f"<b>{i}.</b> 🐾 <b>{a_type}</b> — {safe_qty}\n"
+                f"   💰 {safe_price}\n"
+                f"   📍 {region}, {safe_district}\n"
             )
-            if desc and desc != "---":
-                text += f"   📝 {desc}\n"
+            if safe_desc and safe_desc != "Киритилмаган":
+                text += f"   📝 {safe_desc}\n"
 
             # Эгаси — матн ичида havola
             if user_id:
