@@ -48,9 +48,49 @@ def init_db():
 
 
 def parse_price_text(text):
-    """Матндаги нархни рақамга айлантириш"""
-    cleaned = ''.join(c for c in str(text) if c.isdigit())
+    """Матндаги нархни рақамга айлантириш
+    Qo'llab-quvvatlanadigan formatlar:
+    - 3000000
+    - 3 000 000
+    - 3000000 сўм
+    - 3 млн сўм
+    - 3 млн
+    - 3,5 млн
+    """
+    text = str(text).lower().strip()
+
+    # 1. "сўм", "so'm" kabi so'zlarni olib tashlash
+    for word in ['сўм', "so'm", 'сум', 'sum', 'сом', 'som']:
+        text = text.replace(word, '')
+    text = text.strip()
+
+    # 2. МИЛЛИОН: млн, миллиoн, миллион
+    million_words = ['млн', 'миллиoн', 'миллион', 'милион', 'млион', 'милон', 'million', 'milion', 'mln']
+    for word in million_words:
+        if word in text:
+            num_part = text.replace(word, '').strip()
+            num_part = num_part.replace(',', '.').replace(' ', '')
+            try:
+                return int(float(num_part) * 1_000_000)
+            except ValueError:
+                continue
+
+    # 3. МИНГ: минг, миң
+    thousand_words = ['минг', 'миг', 'мин', 'миң', 'ming']
+    for word in thousand_words:
+        if word in text:
+            num_part = text.replace(word, '').strip()
+            num_part = num_part.replace(',', '.').replace(' ', '')
+            try:
+                return int(float(num_part) * 1_000)
+            except ValueError:
+                continue
+
+    # 4. ОДДИЙ РАҚАМ: faqat raqamlarni ajratib olish
+    cleaned = ''.join(c for c in text if c.isdigit())
     return int(cleaned) if cleaned else 0
+
+
 
 
 def fmt_number(n):
