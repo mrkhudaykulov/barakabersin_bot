@@ -15,7 +15,7 @@ from keyboards import (
     animal_types_keyboard, regions_keyboard, districts_keyboard,
     standard_step_keyboard, description_keyboard, phone_keyboard
 )
-from database import contains_bad_word
+from database import contains_bad_word, parse_price_text, MIN_PRICE, MAX_PRICE, fmt_number
 
 router = Router()
 
@@ -154,6 +154,45 @@ async def process_price(message: types.Message, state: FSMContext):
             reply_markup=standard_step_keyboard()
         )
         return
+
+    # ═══ НАРХНИ ТЕКШИРИШ ═══
+    price_value = parse_price_text(message.text)
+
+    # Raqam umuman topilmadi
+    if price_value == 0:
+        await message.answer(
+            "⚠️ Нарх топилмади. Илтимос, рақамда ёзинг:\n"
+            "Масалан: `15000000` ёки `15 млн` ёки `15000 минг`",
+            parse_mode="Markdown",
+            reply_markup=standard_step_keyboard()
+        )
+        return
+
+    # Juda kichik
+    if price_value < MIN_PRICE:
+        await message.answer(
+            f"⚠️ Нарх жуда кичик!\n\n"
+            f"Камида *{fmt_number(MIN_PRICE)} сўм* бўлгани маъқул.\n"
+            f"Қайтадан киритинг:",
+            parse_mode="Markdown",
+            reply_markup=standard_step_keyboard()
+        )
+        return
+
+    # Juda katta
+    if price_value > MAX_PRICE:
+        await message.answer(
+            f"⚠️ Нарх жуда катта!\n\n"
+            f"Энг кўпи *{fmt_number(MAX_PRICE)} сўм* бўлиши мумкин.\n"
+            f"Агар нарх тўғри бўлса, қисмларда ёзинг ёки "
+            f"админ билан боғланинг.\n\n"
+            f"Қайтадан киритинг:",
+            parse_mode="Markdown",
+            reply_markup=standard_step_keyboard()
+        )
+        return
+        
+    # ═══ БАРЧА ТЕКШИРИШДАН ЎТДИ ═══
     await state.update_data(price=message.text)
     await state.set_state(AdStates.description)
     await message.answer(
