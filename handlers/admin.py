@@ -601,19 +601,25 @@ async def admin_help(message: types.Message):
 
     await message.answer(
         "🔐 *ADMIN BUYRUQLARI:*\n\n"
-
+        
+        "📋 *Эълонлар:*\n"
+        "`/viewads` — эълонлар (ID билан)\n"
+        "`/delad 42` — ID бўйича битта эълон\n"
+        "`/deluserads 123456789` — фойдаланувчини барча эълонлари\n\n"
+       
         "📝 *Нарх қўшиш:*\n"
         "`/addprice Сигир Тошкент 15000000`\n"
         "— битта нарх\n\n"
+       
         "`/addmulti`\n"
         "Сигир Тошкент 15000000\n"
         "Қўй Самарқанд 3500000\n"
         "— кўп нархни бир вақтда\n\n"
-
-        "👀 *Кўриш:*\n"
+       
+        "👀 *Нархларни кўриш:*\n"
         "`/viewprices` — нархлар (ID билан)\n\n"
-
-        "🗑 *Ўчириш:*\n"
+        
+        "🗑 *Ўчириш-нарх:*\n"
         "`/delprice 5` — ID бўйича битта\n"
         "`/delanimal Сигир` — ҳайвон тури бўйича\n"
         "`/delregion Тошкент` — вилоят бўйича\n"
@@ -621,29 +627,18 @@ async def admin_help(message: types.Message):
 
         "📢 *Хабар:*\n"
         "`/broadcast_users матн` — фойдаланувчиларга\n\n"
-
-        "👥 *Статистика:*\n"
-        "`/stats` — бот статистикаси\n\n"
-        
+               
         "🚫 *Ёмон сўзлар:*\n"
         "`/addbadword ўшасўз`\n"
         "`/badwords` - Рўхат\n\n"
         
+         "👥 *Статистика:*\n"
+        "`/stats` — бот статистикаси\n\n"
+        
         "ℹ️ *Ёрдам:*\n"
         "`/adminhelp` — шу хабар\n\n"
 
-        "⚠️ *Нарх киритишда ФАҚАТ КИРИЛЛ алифбосидан фойдаланинг!*\n\n"
-
-        "*Ҳайвонлар:*\n"
-        "Буқа, Сигир, Тана, Бузоқ, Қўй, Қўчқор,\n"
-        "Совлиқ, Қўзи, Эчки, Улоқ, От, Туя,\n"
-        "Парранда\n\n"
-
-        "*Вилоятлар:*\n"
-        "Қашқадарё, Сурхондарё, Тошкент, Фарғона,\n"
-        "Андижон, Наманган, Самарқанд, Бухоро,\n"
-        "Навоий, Жиззах, Сирдарё, Хоразм,\n"
-        "Қорақалпоғистон",
+        "⚠️ *Нарх киритишда ФАҚАТ КИРИЛЛ алифбосидан фойдаланинг!*",
         parse_mode="Markdown"
     )
 
@@ -702,3 +697,208 @@ async def admin_badwords(message: types.Message):
         await message.answer("Рўхат жуда узун. Базадан кўринг.")
     else:
         await message.answer(text, parse_mode="Markdown")
+
+# ═══════════════════════════════════════
+# 12. /viewads — Эълонларни кўриш
+# ═══════════════════════════════════════
+
+@router.message(Command("viewads"))
+async def admin_view_ads(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Сизга рухсат йўқ.")
+        return
+
+    conn = sqlite3.connect("chorva.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, animal_type, quantity, price,
+               region, district, status, user_id
+        FROM ads ORDER BY id DESC LIMIT 50
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        await message.answer("❌ Базада эълонлар йўқ.")
+        return
+
+    status_emoji = {
+        "active": "✅",
+        "sold": "🤝",
+        "deleted": "🗑"
+    }
+
+    text = f"📋 *Эълонлар ({len(rows)} та):*\n\n"
+    text += f"_Ўчириш учун: /delad ID рақами_\n\n"
+
+    for ad_id, a_type, qty, price, region, dist, status, uid in rows:
+        emoji = status_emoji.get(status, "❓")
+        text += (
+            f"{emoji} `#{ad_id}` — 🐾 *{a_type}* | "
+            f"🔢 {qty} | 💰 {price}\n"
+            f"   📍 {region}, {dist} | 👤 {uid}\n\n"
+        )
+
+    if len(text) > 4000:
+        parts = text.split("\n\n")
+        current = ""
+        for part in parts:
+            if len(current) + len(part) > 3800:
+                await message.answer(current, parse_mode="Markdown")
+                current = part + "\n\n"
+            else:
+                current += part + "\n\n"
+        if current:
+            await message.answer(current, parse_mode="Markdown")
+    else:
+        await message.answer(text, parse_mode="Markdown")
+
+
+# ═══════════════════════════════════════
+# 13. /delad — Битта эълонни ўчириш
+# ═══════════════════════════════════════
+
+@router.message(Command("delad"))
+async def admin_del_ad(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Сизга рухсат йўқ.")
+        return
+
+    parts = message.text.split()
+
+    if len(parts) < 2:
+        await message.answer(
+            "📋 *Формат:*\n"
+            "`/delad ID`\n\n"
+            "*Мисол:* `/delad 42`\n\n"
+            "ID ни билиш учун: /viewads",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        ad_id = int(parts[1])
+    except ValueError:
+        await message.answer("⚠️ ID рақам бўлиши керак!")
+        return
+
+    conn = sqlite3.connect("chorva.db")
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT id, animal_type, quantity, price, region, "
+        "district, msg_id FROM ads WHERE id = ?",
+        (ad_id,)
+    )
+    row = cursor.fetchone()
+
+    if not row:
+        await message.answer(f"❌ ID={ad_id} топилмади.")
+        conn.close()
+        return
+
+    _, a_type, qty, price, region, dist, msg_ids_str = row
+
+    # Каналдан ўчириш
+    msg_ids = [int(mid) for mid in str(msg_ids_str).split(",")]
+    deleted_count = 0
+    for msg_id in msg_ids:
+        try:
+            await bot.delete_message(
+                chat_id=CHANNEL_ID, message_id=msg_id
+            )
+            deleted_count += 1
+        except Exception:
+            pass
+
+    # Базадан ўчириш
+    cursor.execute("DELETE FROM ads WHERE id = ?", (ad_id,))
+    conn.commit()
+    conn.close()
+
+    await message.answer(
+        f"🗑 *Ўчирилди!*\n\n"
+        f"🆔 ID: {ad_id}\n"
+        f"🐾 {a_type}\n"
+        f"🔢 {qty}\n"
+        f"💰 {price}\n"
+        f"📍 {region}, {dist}\n"
+        f"📨 Каналдан: {deleted_count} та хабар ўчирилди",
+        parse_mode="Markdown"
+    )
+
+
+# ═══════════════════════════════════════
+# 13. /deluserads — Битта фойдаланувчини эълонларини ўчириш
+# ═══════════════════════════════════════
+
+@router.message(Command("deluserads"))
+async def admin_del_user_ads(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Сизга рухсат йўқ.")
+        return
+
+    parts = message.text.split()
+
+    if len(parts) < 2:
+        await message.answer(
+            "📋 *Формат:*\n"
+            "`/deluserads USER_ID`\n\n"
+            "*Мисол:* `/deluserads 123456789`\n\n"
+            "USER_ID ни билиш учун: /viewads",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        await message.answer("⚠️ USER_ID рақам бўлиши керак!")
+        return
+
+    conn = sqlite3.connect("chorva.db")
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT COUNT(*) FROM ads WHERE user_id = ?",
+        (user_id,)
+    )
+    count = cursor.fetchone()[0]
+
+    if count == 0:
+        await message.answer(
+            f"❌ USER_ID={user_id} учун эълонлар топилмади."
+        )
+        conn.close()
+        return
+
+    # Каналдан ўчириш
+    cursor.execute(
+        "SELECT msg_id FROM ads WHERE user_id = ?",
+        (user_id,)
+    )
+    all_msg_ids = cursor.fetchall()
+
+    deleted_count = 0
+    for (msg_ids_str,) in all_msg_ids:
+        msg_ids = [int(mid) for mid in str(msg_ids_str).split(",")]
+        for msg_id in msg_ids:
+            try:
+                await bot.delete_message(
+                    chat_id=CHANNEL_ID, message_id=msg_id
+                )
+                deleted_count += 1
+            except Exception:
+                pass
+
+    # Базадан ўчириш
+    cursor.execute("DELETE FROM ads WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+    await message.answer(
+        f"🗑 USER_ID={user_id} — *{count} та* эълон ўчирилди.\n"
+        f"📨 Каналдан: {deleted_count} та хабар ўчирилди.",
+        parse_mode="Markdown"
+    )
+
