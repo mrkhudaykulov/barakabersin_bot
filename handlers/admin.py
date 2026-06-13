@@ -57,7 +57,7 @@ def validate_region(text):
 @router.message(Command("addprice"))
 async def admin_add_price(message: types.Message):
     if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Sizga ruxsat yo'q.")
+        await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
     parts = message.text.split(maxsplit=3)
@@ -103,11 +103,11 @@ async def admin_add_price(message: types.Message):
     try:
         price = int(parts[3].replace(" ", ""))
     except ValueError:
-        await message.answer("⚠️ Narx raqam bo'lishi kerak!")
+        await message.answer("⚠️ Нарх рақам бўлиши керак!")
         return
 
     if price < 1000:
-        await message.answer("⚠️ Narx juda kichik!")
+        await message.answer("⚠️ Нарх жуда кичик!")
         return
 
     conn = sqlite3.connect("chorva.db")
@@ -120,11 +120,11 @@ async def admin_add_price(message: types.Message):
     conn.close()
 
     await message.answer(
-        f"✅ *Narx kiritildi!*\n\n"
+        f"✅ *Нарх киритилди!*\n\n"
         f"🐾 {animal}\n"
         f"📍 {region}\n"
         f"💰 {price:,} so'm\n\n"
-        f"Ko'rish: /viewprices",
+        f"Кўриш: /viewprices",
         parse_mode="Markdown"
     )
 
@@ -136,7 +136,7 @@ async def admin_add_price(message: types.Message):
 @router.message(Command("addmulti"))
 async def admin_add_multi(message: types.Message):
     if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Sizga ruxsat yo'q.")
+        await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
     lines = message.text.strip().split("\n")
@@ -179,11 +179,11 @@ async def admin_add_multi(message: types.Message):
         try:
             price = int(parts[2].replace(" ", ""))
         except ValueError:
-            errors.append(f"❌ `{line.strip()}` — narx xato")
+            errors.append(f"❌ `{line.strip()}` — нарх хато")
             continue
 
         if price < 1000:
-            errors.append(f"❌ `{line.strip()}` — narx kichik")
+            errors.append(f"❌ `{line.strip()}` — нарх кичик")
             continue
 
         cursor.execute("""
@@ -195,9 +195,9 @@ async def admin_add_multi(message: types.Message):
     conn.commit()
     conn.close()
 
-    text = f"✅ *{success} ta narx kiritildi!*\n"
+    text = f"✅ *{success} та нарх киритилди!*\n"
     if errors:
-        text += f"\n❌ *Xatolar ({len(errors)}):*\n"
+        text += f"\n❌ *Хатолар ({len(errors)}):*\n"
         text += "\n".join(errors[:10])
 
     await message.answer(text, parse_mode="Markdown")
@@ -210,7 +210,7 @@ async def admin_add_multi(message: types.Message):
 @router.message(Command("viewprices"))
 async def admin_view_prices(message: types.Message):
     if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Sizga ruxsat yo'q.")
+        await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
     conn = sqlite3.connect("chorva.db")
@@ -224,12 +224,12 @@ async def admin_view_prices(message: types.Message):
 
     if not rows:
         await message.answer(
-            "❌ Bazada narxlar yo'q.\n\nKiritish: /addprice yoki /addmulti"
+            "❌ Базада нархлар йўқ.\n\nКиритиш: /addprice yoki /addmulti"
         )
         return
 
-    text = f"📊 *Bazadagi narxlar ({len(rows)} ta):*\n\n"
-    text += f"_O'chirish uchun: /delprice ID raqami_\n\n"
+    text = f"📊 *Базадаги нархлар ({len(rows)} та):*\n\n"
+    text += f"_Ўчириш учун: /delprice ID raqami_\n\n"
 
     for row_id, animal, region, price, date in rows:
         text += f"🆔 `{row_id}` — 🐾 *{animal}* | 📍 {region} | 💰 {price:,} so'm\n"
@@ -256,7 +256,7 @@ async def admin_view_prices(message: types.Message):
 @router.message(Command("delprice"))
 async def admin_del_price(message: types.Message):
     if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Sizga ruxsat yo'q.")
+        await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
     parts = message.text.split()
@@ -265,8 +265,8 @@ async def admin_del_price(message: types.Message):
         await message.answer(
             "📋 *Format:*\n"
             "`/delprice ID`\n\n"
-            "*Misol:* `/delprice 5`\n\n"
-            "ID ni bilish uchun: /viewprices",
+            "*Мисол:* `/delprice 5`\n\n"
+            "ID ни билиш учун: /viewprices",
             parse_mode="Markdown"
         )
         return
@@ -274,7 +274,7 @@ async def admin_del_price(message: types.Message):
     try:
         price_id = int(parts[1])
     except ValueError:
-        await message.answer("⚠️ ID raqam bo'lishi kerak!")
+        await message.answer("⚠️ ID рақам бўлиши керак!")
         return
 
     conn = sqlite3.connect("chorva.db")
@@ -287,7 +287,7 @@ async def admin_del_price(message: types.Message):
     row = cursor.fetchone()
 
     if not row:
-        await message.answer(f"❌ ID={price_id} topilmadi.")
+        await message.answer(f"❌ ID={price_id} топилмади.")
         conn.close()
         return
 
@@ -298,11 +298,11 @@ async def admin_del_price(message: types.Message):
     conn.close()
 
     await message.answer(
-        f"🗑 *O'chirildi!*\n\n"
+        f"🗑 *Ўчирилди!*\n\n"
         f"🆔 ID: {price_id}\n"
         f"🐾 {animal}\n"
         f"📍 {region}\n"
-        f"💰 {price:,} so'm",
+        f"💰 {price:,} сўм",
         parse_mode="Markdown"
     )
 
@@ -314,18 +314,18 @@ async def admin_del_price(message: types.Message):
 @router.message(Command("delanimal"))
 async def admin_del_animal(message: types.Message):
     if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Sizga ruxsat yo'q.")
+        await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
     parts = message.text.split()
 
     if len(parts) < 2:
         await message.answer(
-            "📋 *Format:*\n"
+            "📋 *Формат:*\n"
             "`/delanimal Ҳайвонтури`\n\n"
-            "*Misol:* `/delanimal Сигир`\n\n"
+            "*Мисол:* `/delanimal Сигир`\n\n"
             "⚠️ *Фақат кириллда ёзинг!*\n"
-            f"*Рўхат:* {', '.join(VALID_ANIMALS)}",
+            f"*Рўйхат:* {', '.join(VALID_ANIMALS)}",
             parse_mode="Markdown"
         )
         return
@@ -335,7 +335,7 @@ async def admin_del_animal(message: types.Message):
     if animal is None:
         await message.answer(
             f"⚠️ *Ҳайвон тури нотўғри:* `{parts[1]}`\n\n"
-            f"*Рўхатдан танланг:*\n"
+            f"*Рўйхатдан танланг:*\n"
             f"{', '.join(VALID_ANIMALS)}\n\n"
             f"⚠️ *Фақат кириллда ёзинг!*",
             parse_mode="Markdown"
@@ -364,7 +364,7 @@ async def admin_del_animal(message: types.Message):
     conn.close()
 
     await message.answer(
-        f"🗑 *{animal}* — {count} ta narx o'chirildi.",
+        f"🗑 *{animal}* — {count} та нарх ўчирилди.",
         parse_mode="Markdown"
     )
 
@@ -376,18 +376,18 @@ async def admin_del_animal(message: types.Message):
 @router.message(Command("delregion"))
 async def admin_del_region(message: types.Message):
     if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Sizga ruxsat yo'q.")
+        await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
     parts = message.text.split()
 
     if len(parts) < 2:
         await message.answer(
-            "📋 *Format:*\n"
+            "📋 *Формат:*\n"
             "`/delregion Вилоят`\n\n"
-            "*Misol:* `/delregion Тошкент`\n\n"
+            "*Мисол:* `/delregion Тошкент`\n\n"
             "⚠️ *Фақат кириллда ёзинг!*\n"
-            f"*Рўхат:* {', '.join(VALID_REGIONS)}",
+            f"*Рўйхат:* {', '.join(VALID_REGIONS)}",
             parse_mode="Markdown"
         )
         return
@@ -397,7 +397,7 @@ async def admin_del_region(message: types.Message):
     if region is None:
         await message.answer(
             f"⚠️ *Вилоят нотўғри:* `{parts[1]}`\n\n"
-            f"*Рўхатдан танланг:*\n"
+            f"*Рўйхатдан танланг:*\n"
             f"{', '.join(VALID_REGIONS)}\n\n"
             f"⚠️ *Фақат кириллда ёзинг!*",
             parse_mode="Markdown"
@@ -426,7 +426,7 @@ async def admin_del_region(message: types.Message):
     conn.close()
 
     await message.answer(
-        f"🗑 *{region}* — {count} ta narx o'chirildi.",
+        f"🗑 *{region}* — {count} та нарх ўчирилди.",
         parse_mode="Markdown"
     )
 
@@ -438,7 +438,7 @@ async def admin_del_region(message: types.Message):
 @router.message(Command("clearprices"))
 async def admin_clear_prices(message: types.Message):
     if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Sizga ruxsat yo'q.")
+        await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
     conn = sqlite3.connect("chorva.db")
@@ -448,12 +448,12 @@ async def admin_clear_prices(message: types.Message):
     conn.close()
 
     if count == 0:
-        await message.answer("❌ Bazada narxlar yo'q.")
+        await message.answer("❌ Базада нархлар йўқ.")
         return
 
     await message.answer(
         f"⚠️ *ДИҚҚАТ!*\n\n"
-        f"Базада *{count} ta* нарх маълумоти бор.\n"
+        f"Базада *{count} та* нарх маълумоти бор.\n"
         f"Буларнинг *БАРЧАСИ* ўчирилади!\n\n"
         f"Ишончингиз комил бўлса:\n"
         f"`/clearprices_confirm`\n\n"
@@ -465,7 +465,7 @@ async def admin_clear_prices(message: types.Message):
 @router.message(Command("clearprices_confirm"))
 async def admin_clear_prices_confirm(message: types.Message):
     if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Sizga ruxsat yo'q.")
+        await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
     conn = sqlite3.connect("chorva.db")
@@ -474,7 +474,7 @@ async def admin_clear_prices_confirm(message: types.Message):
     count = cursor.fetchone()[0]
 
     if count == 0:
-        await message.answer("❌ Bazada narxlar yo'q.")
+        await message.answer("❌ Базада нархлар йўқ.")
         conn.close()
         return
 
@@ -482,7 +482,7 @@ async def admin_clear_prices_confirm(message: types.Message):
     conn.commit()
     conn.close()
 
-    await message.answer(f"🗑 *{count} ta* narx o'chirildi.", parse_mode="Markdown")
+    await message.answer(f"🗑 *{count} та* нарх ўчирилди.", parse_mode="Markdown")
 
 
 # ═══════════════════════════════════════
@@ -609,7 +609,7 @@ async def admin_stats(message: types.Message):
 @router.message(Command("adminhelp"))
 async def admin_help(message: types.Message):
     if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Sizga ruxsat yo'q.")
+        await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
     await message.answer(
@@ -646,7 +646,7 @@ async def admin_help(message: types.Message):
         "*Ҳайвонлар:*\n"
         "Буқа, Сигир, Тана, Бузоқ, Қўй, Қўчқор,\n"
         "Совлиқ, Қўзи, Эчки, Улоқ, От, Туя,\n"
-        "Парранда, Қорамол\n\n"
+        "Парранда\n\n"
 
         "*Вилоятлар:*\n"
         "Қашқадарё, Сурхондарё, Тошкент, Фарғона,\n"
