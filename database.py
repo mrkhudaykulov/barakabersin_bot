@@ -1,5 +1,6 @@
 # ⚠️ Chegara: 50 mln dan oshiq narxlar xato deb hisoblanadi
 MAX_PRICE = 50_000_000
+MIN_PRICE = 100_000
 
 import sqlite3
 import re
