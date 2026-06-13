@@ -231,10 +231,15 @@ def search_all(animal_type=None, region=None):
 
     # ═══ Эълонлар ═══
     query_ads = """
-        SELECT animal_type, region, price,
-               district, description, quantity
+        SELECT id, animal_type, region, price,
+               district, description, quantity, user_id
         FROM ads
         WHERE status = 'active'
+            AND id IN (
+                SELECT id FROM ads
+                WHERE status = 'active'
+                ORDER BY id DESC LIMIT 50
+            )
     """
     params_ads = []
     if animal_type:
@@ -265,7 +270,7 @@ def search_all(animal_type=None, region=None):
     # ═══ Статистика ═══
     all_prices = []
     for ad in result["ads"]:
-        price = parse_price_text(ad[2])
+        price = parse_price_text(ad[3])
         if 0 < price <= MAX_PRICE:
             all_prices.append(price)
     for mp in result["market_prices"]:
