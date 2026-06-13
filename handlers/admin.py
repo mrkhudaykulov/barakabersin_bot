@@ -8,9 +8,51 @@ from aiogram.filters import Command
 from config import bot, ADMINS
 from database import get_full_statistics, fmt_number
 
-
 router = Router()
 
+
+# ═══════════════════════════════════════
+# KIRILL TEKSHIRISH
+# ═══════════════════════════════════════
+
+VALID_ANIMALS = [
+    "Буқа", "Сигир", "Тана", "Бузоқ", "Қўй",
+    "Қўчқор", "Совлиқ", "Қўзи", "Эчки", "Улоқ",
+    "От", "Туя", "Парранда", "Қорамол"
+]
+
+VALID_REGIONS = [
+    "Қашқадарё", "Сурхондарё", "Тошкент", "Фарғона",
+    "Андижон", "Наманган", "Самарқанд", "Бухоро",
+    "Навоий", "Жиззах", "Сирдарё", "Хоразм",
+    "Қорақалпоғистон"
+]
+
+
+def is_latin(text):
+    latin_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
+    return any(c in latin_chars for c in text)
+
+
+def validate_animal(text):
+    if is_latin(text):
+        return None
+    if text in VALID_ANIMALS:
+        return text
+    return None
+
+
+def validate_region(text):
+    if is_latin(text):
+        return None
+    if text in VALID_REGIONS:
+        return text
+    return None
+
+
+# ═══════════════════════════════════════
+# 1. /addprice — Bitta narx qo'shish
+# ═══════════════════════════════════════
 
 @router.message(Command("addprice"))
 async def admin_add_price(message: types.Message):
@@ -23,15 +65,40 @@ async def admin_add_price(message: types.Message):
     if len(parts) < 4:
         await message.answer(
             "📋 *Format:*\n"
-            "`/addprice Hayvon Viloyat Narx`\n\n"
-            "*Misol:*\n"
-            "`/addprice Sigir Toshkent 15000000`",
+            "`/addprice Сигир Тошкент 15000000`\n\n"
+            "⚠️ *Фақат кириллда ёзинг!*\n"
+            "Рўхат: /adminhelp",
             parse_mode="Markdown"
         )
         return
 
-    animal = parts[1]
-    region = parts[2]
+    animal = validate_animal(parts[1])
+    region = validate_region(parts[2])
+
+    if animal is None:
+        await message.answer(
+            f"⚠️ *Ҳайвон тури нотўғри:* `{parts[1]}`\n\n"
+            f"*Рўхатдан танланг:*\n"
+            f"Буқа, Сигир, Тана, Бузоқ, Қўй, Қўчқор,\n"
+            f"Совлиқ, Қўзи, Эчки, Улоқ, От, Туя,\n"
+            f"Парранда, Қорамол\n\n"
+            f"⚠️ *Фақат кириллда ёзинг!*",
+            parse_mode="Markdown"
+        )
+        return
+
+    if region is None:
+        await message.answer(
+            f"⚠️ *Вилоят нотўғри:* `{parts[2]}`\n\n"
+            f"*Рўхатдан танланг:*\n"
+            f"Қашқадарё, Сурхондарё, Тошкент, Фарғона,\n"
+            f"Андижон, Наманган, Самарқанд, Бухоро,\n"
+            f"Навоий, Жиззах, Сирдарё, Хоразм,\n"
+            f"Қорақалпоғистон\n\n"
+            f"⚠️ *Фақат кириллда ёзинг!*",
+            parse_mode="Markdown"
+        )
+        return
 
     try:
         price = int(parts[3].replace(" ", ""))
@@ -54,11 +121,17 @@ async def admin_add_price(message: types.Message):
 
     await message.answer(
         f"✅ *Narx kiritildi!*\n\n"
-        f"🐾 {animal}\n📍 {region}\n💰 {price:,} so'm\n\n"
+        f"🐾 {animal}\n"
+        f"📍 {region}\n"
+        f"💰 {price:,} so'm\n\n"
         f"Ko'rish: /viewprices",
         parse_mode="Markdown"
     )
 
+
+# ═══════════════════════════════════════
+# 2. /addmulti — Ko'p narx qo'shish
+# ═══════════════════════════════════════
 
 @router.message(Command("addmulti"))
 async def admin_add_multi(message: types.Message):
@@ -71,8 +144,11 @@ async def admin_add_multi(message: types.Message):
     if len(lines) < 2:
         await message.answer(
             "📋 *Format:*\n\n"
-            "`/addmulti\nSigir Toshkent 15000000\n"
-            "Qoy Samarqand 3500000`",
+            "`/addmulti\n"
+            "Сигир Тошкент 15000000\n"
+            "Қўй Самарқанд 3500000\n"
+            "Эчки Фарғона 2800000`\n\n"
+            "⚠️ *Фақат кириллда ёзинг!*",
             parse_mode="Markdown"
         )
         return
@@ -89,8 +165,16 @@ async def admin_add_multi(message: types.Message):
             errors.append(f"❌ `{line.strip()}` — format xato")
             continue
 
-        animal = parts[0]
-        region = parts[1]
+        animal = validate_animal(parts[0])
+        region = validate_region(parts[1])
+
+        if animal is None:
+            errors.append(f"❌ `{parts[0]}` — ҳайвон нотўғри (кириллда ёзинг)")
+            continue
+
+        if region is None:
+            errors.append(f"❌ `{parts[1]}` — вилоят нотўғри (кириллда ёзинг)")
+            continue
 
         try:
             price = int(parts[2].replace(" ", ""))
@@ -119,6 +203,10 @@ async def admin_add_multi(message: types.Message):
     await message.answer(text, parse_mode="Markdown")
 
 
+# ═══════════════════════════════════════
+# 3. /viewprices — Narxlarni ko'rish (ID bilan)
+# ═══════════════════════════════════════
+
 @router.message(Command("viewprices"))
 async def admin_view_prices(message: types.Message):
     if message.from_user.id not in ADMINS:
@@ -128,7 +216,7 @@ async def admin_view_prices(message: types.Message):
     conn = sqlite3.connect("chorva.db")
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT animal_type, region, price, created_at
+        SELECT id, animal_type, region, price, created_at
         FROM market_prices ORDER BY created_at DESC LIMIT 100
     """)
     rows = cursor.fetchall()
@@ -140,40 +228,242 @@ async def admin_view_prices(message: types.Message):
         )
         return
 
-    grouped = {}
-    for animal, region, price, date in rows:
-        if animal not in grouped:
-            grouped[animal] = []
-        grouped[animal].append((region, price))
-
     text = f"📊 *Bazadagi narxlar ({len(rows)} ta):*\n\n"
+    text += f"_O'chirish uchun: /delprice ID raqami_\n\n"
 
-    for animal, items in grouped.items():
-        text += f"🐾 *{animal}:*\n"
-        seen = set()
-        for region, price in items:
-            if region not in seen:
-                seen.add(region)
-                text += f"   📍 {region}: {price:,} so'm\n"
-        text += "\n"
+    for row_id, animal, region, price, date in rows:
+        text += f"🆔 `{row_id}` — 🐾 *{animal}* | 📍 {region} | 💰 {price:,} so'm\n"
 
     if len(text) > 4000:
-        parts = text.split("\n\n")
+        parts = text.split("\n")
         current = ""
         for part in parts:
             if len(current) + len(part) > 3800:
                 await message.answer(current, parse_mode="Markdown")
-                current = part + "\n\n"
+                current = part + "\n"
             else:
-                current += part + "\n\n"
+                current += part + "\n"
         if current:
             await message.answer(current, parse_mode="Markdown")
     else:
         await message.answer(text, parse_mode="Markdown")
 
 
+# ═══════════════════════════════════════
+# 4. /delprice — Bitta narxni o'chirish
+# ═══════════════════════════════════════
+
+@router.message(Command("delprice"))
+async def admin_del_price(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Sizga ruxsat yo'q.")
+        return
+
+    parts = message.text.split()
+
+    if len(parts) < 2:
+        await message.answer(
+            "📋 *Format:*\n"
+            "`/delprice ID`\n\n"
+            "*Misol:* `/delprice 5`\n\n"
+            "ID ni bilish uchun: /viewprices",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        price_id = int(parts[1])
+    except ValueError:
+        await message.answer("⚠️ ID raqam bo'lishi kerak!")
+        return
+
+    conn = sqlite3.connect("chorva.db")
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT id, animal_type, region, price FROM market_prices WHERE id = ?",
+        (price_id,)
+    )
+    row = cursor.fetchone()
+
+    if not row:
+        await message.answer(f"❌ ID={price_id} topilmadi.")
+        conn.close()
+        return
+
+    _, animal, region, price = row
+
+    cursor.execute("DELETE FROM market_prices WHERE id = ?", (price_id,))
+    conn.commit()
+    conn.close()
+
+    await message.answer(
+        f"🗑 *O'chirildi!*\n\n"
+        f"🆔 ID: {price_id}\n"
+        f"🐾 {animal}\n"
+        f"📍 {region}\n"
+        f"💰 {price:,} so'm",
+        parse_mode="Markdown"
+    )
+
+
+# ═══════════════════════════════════════
+# 5. /delanimal — Hayvon turi bo'yicha o'chirish
+# ═══════════════════════════════════════
+
+@router.message(Command("delanimal"))
+async def admin_del_animal(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Sizga ruxsat yo'q.")
+        return
+
+    parts = message.text.split()
+
+    if len(parts) < 2:
+        await message.answer(
+            "📋 *Format:*\n"
+            "`/delanimal Ҳайвонтури`\n\n"
+            "*Misol:* `/delanimal Сигир`\n\n"
+            "⚠️ *Фақат кириллда ёзинг!*\n"
+            f"*Рўхат:* {', '.join(VALID_ANIMALS)}",
+            parse_mode="Markdown"
+        )
+        return
+
+    animal = validate_animal(parts[1])
+
+    if animal is None:
+        await message.answer(
+            f"⚠️ *Ҳайвон тури нотўғри:* `{parts[1]}`\n\n"
+            f"*Рўхатдан танланг:*\n"
+            f"{', '.join(VALID_ANIMALS)}\n\n"
+            f"⚠️ *Фақат кириллда ёзинг!*",
+            parse_mode="Markdown"
+        )
+        return
+
+    conn = sqlite3.connect("chorva.db")
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT COUNT(*) FROM market_prices WHERE animal_type = ?",
+        (animal,)
+    )
+    count = cursor.fetchone()[0]
+
+    if count == 0:
+        await message.answer(f"❌ *{animal}* учун нархлар топилмади.")
+        conn.close()
+        return
+
+    cursor.execute(
+        "DELETE FROM market_prices WHERE animal_type = ?",
+        (animal,)
+    )
+    conn.commit()
+    conn.close()
+
+    await message.answer(
+        f"🗑 *{animal}* — {count} ta narx o'chirildi.",
+        parse_mode="Markdown"
+    )
+
+
+# ═══════════════════════════════════════
+# 6. /delregion — Viloyat bo'yicha o'chirish
+# ═══════════════════════════════════════
+
+@router.message(Command("delregion"))
+async def admin_del_region(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Sizga ruxsat yo'q.")
+        return
+
+    parts = message.text.split()
+
+    if len(parts) < 2:
+        await message.answer(
+            "📋 *Format:*\n"
+            "`/delregion Вилоят`\n\n"
+            "*Misol:* `/delregion Тошкент`\n\n"
+            "⚠️ *Фақат кириллда ёзинг!*\n"
+            f"*Рўхат:* {', '.join(VALID_REGIONS)}",
+            parse_mode="Markdown"
+        )
+        return
+
+    region = validate_region(parts[1])
+
+    if region is None:
+        await message.answer(
+            f"⚠️ *Вилоят нотўғри:* `{parts[1]}`\n\n"
+            f"*Рўхатдан танланг:*\n"
+            f"{', '.join(VALID_REGIONS)}\n\n"
+            f"⚠️ *Фақат кириллда ёзинг!*",
+            parse_mode="Markdown"
+        )
+        return
+
+    conn = sqlite3.connect("chorva.db")
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT COUNT(*) FROM market_prices WHERE region = ?",
+        (region,)
+    )
+    count = cursor.fetchone()[0]
+
+    if count == 0:
+        await message.answer(f"❌ *{region}* учун нархлар топилмади.")
+        conn.close()
+        return
+
+    cursor.execute(
+        "DELETE FROM market_prices WHERE region = ?",
+        (region,)
+    )
+    conn.commit()
+    conn.close()
+
+    await message.answer(
+        f"🗑 *{region}* — {count} ta narx o'chirildi.",
+        parse_mode="Markdown"
+    )
+
+
+# ═══════════════════════════════════════
+# 7. /clearprices — HAMMA narxni o'chirish (tasdiqlash bilan)
+# ═══════════════════════════════════════
+
 @router.message(Command("clearprices"))
 async def admin_clear_prices(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Sizga ruxsat yo'q.")
+        return
+
+    conn = sqlite3.connect("chorva.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM market_prices")
+    count = cursor.fetchone()[0]
+    conn.close()
+
+    if count == 0:
+        await message.answer("❌ Bazada narxlar yo'q.")
+        return
+
+    await message.answer(
+        f"⚠️ *ДИҚҚАТ!*\n\n"
+        f"Базада *{count} ta* нарх маълумоти бор.\n"
+        f"Буларнинг *БАРЧАСИ* ўчирилади!\n\n"
+        f"Ишончингиз комил бўлса:\n"
+        f"`/clearprices_confirm`\n\n"
+        f"Бекор қилиш учун ҳеч нарса ёзманг.",
+        parse_mode="Markdown"
+    )
+
+
+@router.message(Command("clearprices_confirm"))
+async def admin_clear_prices_confirm(message: types.Message):
     if message.from_user.id not in ADMINS:
         await message.answer("⛔ Sizga ruxsat yo'q.")
         return
@@ -192,31 +482,12 @@ async def admin_clear_prices(message: types.Message):
     conn.commit()
     conn.close()
 
-    await message.answer(f"🗑 {count} ta narx o'chirildi.")
+    await message.answer(f"🗑 *{count} ta* narx o'chirildi.", parse_mode="Markdown")
 
 
-@router.message(Command("adminhelp"))
-async def admin_help(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Sizga ruxsat yo'q.")
-        return
-
-    await message.answer(
-        "🔐 *ADMIN BUYRUQLARI:*\n\n"
-        "📝 *Narx kiritish:*\n"
-        "`/addprice Sigir Toshkent 15000000`\n"
-        "`/addmulti` — ko'p narxni bir vaqtda\n\n"
-        "👀 *Ko'rish:*\n"
-        "`/viewprices` — bazadagi narxlar\n\n"
-        "🗑 *O'chirish:*\n"
-        "`/clearprices` — barcha narxlarni o'chirish\n\n"
-        "📢 *Xabar:*\n"
-        "`/broadcast_users matn` — foydalanuvchilarga\n\n"
-        "👥 *Statistika:*\n"
-        "`/adminhelp` — shu xabar",
-        parse_mode="Markdown"
-    )
-
+# ═══════════════════════════════════════
+# 8. /broadcast_users — Xabar tarqatish
+# ═══════════════════════════════════════
 
 @router.message(Command("broadcast_users"))
 async def broadcast_to_users(message: types.Message):
@@ -273,6 +544,10 @@ async def broadcast_to_users(message: types.Message):
     )
 
 
+# ═══════════════════════════════════════
+# 9. /stats — Bot statistikasi
+# ═══════════════════════════════════════
+
 @router.message(Command("stats"))
 async def admin_stats(message: types.Message):
     if message.from_user.id not in ADMINS:
@@ -325,3 +600,58 @@ async def admin_stats(message: types.Message):
             )
 
     await message.answer(text, parse_mode="Markdown")
+
+
+# ═══════════════════════════════════════
+# 10. /adminhelp — Yordam
+# ═══════════════════════════════════════
+
+@router.message(Command("adminhelp"))
+async def admin_help(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Sizga ruxsat yo'q.")
+        return
+
+    await message.answer(
+        "🔐 *ADMIN BUYRUQLARI:*\n\n"
+
+        "📝 *Нарх қўшиш:*\n"
+        "`/addprice Сигир Тошкент 15000000`\n"
+        "— битта нарх\n\n"
+        "`/addmulti`\n"
+        "Сигир Тошкент 15000000\n"
+        "Қўй Самарқанд 3500000\n"
+        "— кўп нархни бир вақтда\n\n"
+
+        "👀 *Кўриш:*\n"
+        "`/viewprices` — нархлар (ID билан)\n\n"
+
+        "🗑 *О'чириш:*\n"
+        "`/delprice 5` — ID бўйича битта\n"
+        "`/delanimal Сигир` — ҳайвон тури бўйича\n"
+        "`/delregion Тошкент` — вилоят бўйича\n"
+        "`/clearprices` — барчасини (тасдиқлаш билан)\n\n"
+
+        "📢 *Хабар:*\n"
+        "`/broadcast_users матн` — фойдаланувчиларга\n\n"
+
+        "👥 *Статистика:*\n"
+        "`/stats` — бот статистикаси\n\n"
+
+        "ℹ️ *Ёрдам:*\n"
+        "`/adminhelp` — шу хабар\n\n"
+
+        "⚠️ *Нарх киритишда ФАҚАТ КИРИЛЛ алифбосидан фойдаланинг!*\n\n"
+
+        "*Ҳайвонлар:*\n"
+        "Буқа, Сигир, Тана, Бузоқ, Қўй, Қўчқор,\n"
+        "Совлиқ, Қўзи, Эчки, Улоқ, От, Туя,\n"
+        "Парранда, Қорамол\n\n"
+
+        "*Вилоятлар:*\n"
+        "Қашқадарё, Сурхондарё, Тошкент, Фарғона,\n"
+        "Андижон, Наманган, Самарқанд, Бухоро,\n"
+        "Навоий, Жиззах, Сирдарё, Хоразм,\n"
+        "Қорақалпоғистон",
+        parse_mode="Markdown"
+    )
