@@ -3,7 +3,7 @@ import sqlite3
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 
-from database import parse_price_text, fmt_number, get_full_statistics
+from database import parse_price_text, fmt_number, get_full_statistics, MAX_PRICE
 from states import CalcStates, PriceInputStates
 from keyboards import (
     main_menu, price_index_keyboard, search_animal_keyboard,
@@ -74,13 +74,13 @@ async def price_index_show(message: types.Message, state: FSMContext):
 
     for a_type, region, price_text in ad_rows:
         price = parse_price_text(price_text)
-        if price > 0:
+        if 0 < price <= MAX_PRICE:
             if region not in region_data:
                 region_data[region] = []
             region_data[region].append(price)
 
     for a_type, region, price in mp_rows:
-        if price > 0:
+        if 0 < price <= MAX_PRICE:
             if region not in region_data:
                 region_data[region] = []
             region_data[region].append(price)
@@ -164,13 +164,13 @@ async def price_index_all(message: types.Message):
 
     for a_type, price_text in ad_rows:
         price = parse_price_text(price_text)
-        if price > 0:
+        if 0 < price <= MAX_PRICE:
             if a_type not in animal_data:
                 animal_data[a_type] = []
             animal_data[a_type].append(price)
 
     for a_type, price in mp_rows:
-        if price > 0:
+        if 0 < price <= MAX_PRICE:
             if a_type not in animal_data:
                 animal_data[a_type] = []
             animal_data[a_type].append(price)
