@@ -4,7 +4,7 @@ from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 import logging
 
-from database import search_all, fmt_number
+from database import search_all, fmt_number, fix_keyboard_text
 from states import SearchStates
 from keyboards import main_menu, search_animal_keyboard, regions_with_all_keyboard
 
@@ -27,7 +27,8 @@ async def search_animal(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         return
 
-    search_type = None if message.text == "Барчаси" else message.text
+    fixed = fix_keyboard_text(message.text)
+    search_type = None if fixed == "Барчаси" else fixed
     await state.update_data(search_animal=search_type)
     logging.info(f"Search animal_type: '{search_type}'")
     await state.set_state(SearchStates.region)
@@ -42,7 +43,8 @@ async def search_region(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         return
 
-    search_region_val = None if message.text == "Барчаси" else message.text
+    fixed = fix_keyboard_text(message.text)
+    search_region_val = None if fixed == "Барчаси" else fixed
     data = await state.get_data()
     search_animal = data.get("search_animal")
 
