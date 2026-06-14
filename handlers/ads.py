@@ -319,7 +319,7 @@ async def process_phone(message: types.Message, state: FSMContext):
             data['animal_type'], data['quantity'], data['price'],
             data['description'], data['region'], data['district'],
             data['mfy'], phone, db_username
-        ))
+        )
         conn.commit()
         conn.close()
 
