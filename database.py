@@ -1,4 +1,3 @@
-import sqlite3
 import re
 import os
 import logging
@@ -6,8 +5,11 @@ import logging
 
 # ═══════════════════════════════════════
 # BAZA ULANGANLIK
+# ═══════════════════════════════════════
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+
 def get_connection():
     """PostgreSQL yoki SQLite — qaysi biri bor bo'lsa"""
     if DATABASE_URL:
@@ -17,16 +19,18 @@ def get_connection():
         import sqlite3
         return sqlite3.connect("chorva.db")
 
+
 def get_placeholder():
     """SQL placeholder — PostgreSQL %s, SQLite ?"""
     return "%s" if DATABASE_URL else "?"
 
 
 # ═══════════════════════════════════════
-# ⚠️ Chegara: 50 mln dan oshiq narxlar xato deb hisoblanadi
+# ⚠️ Chegaralar
 
 MAX_PRICE = 50_000_000
-MIN_PRICE = 50_000
+MIN_PRICE = 500_000
+
 
 # ═══════════════════════════════════════
 # БАЗА ЯРАТИШ
@@ -111,23 +115,23 @@ def init_db():
 
     conn.commit()
     conn.close()
-    logging.info("Baza yaratildi (PostgreSQL)" if DATABASE_URL else "Baza yaratildi (SQLite)")
+    logging.info(
+        "Baza yaratildi (PostgreSQL)" if DATABASE_URL
+        else "Baza yaratildi (SQLite)"
+    )
 
 
 # ═══════════════════════════════════════
 # YORDAMCHI FUNKSIYALAR
-# Клавиатуралардан келган матн → Базадаги мос матн
+# ═══════════════════════════════════════
 
 KEYBOARD_FIX = {
-    # Ҳайвонлар
     "Күкөр": "Қўчқор",
     "Күчи": "Қўзи",
     "Кукkop": "Қўчқор",
     "Бузoк": "Бузоқ",
     "Сoвлик": "Совлиқ",
     "Улoк": "Улоқ",
-
-    # Вилоятлар
     "Кашкадаре": "Қашқадарё",
     "Кашкадарё": "Қашқадарё",
     "Сурхондаре": "Сурхондарё",
@@ -138,38 +142,28 @@ KEYBOARD_FIX = {
     "Коракалпоғистон": "Қорақалпоғистон",
 }
 
+
 def fix_keyboard_text(text):
     """Клавиатуралардан келган матнни базага мослаш"""
     if not text:
         return text
-
-    # 1. Тўғридан-тўғри мослаш
     if text in KEYBOARD_FIX:
         return KEYBOARD_FIX[text]
-
-    # 2. Топилмаса — ўзини қайтарамиз
     return text
 
 
 def parse_price_text(text):
-    """Матндаги нархни рақамга айлантириш
-    Qo'llab-quvvatlanadigan formatlar:
-    - 3000000
-    - 3 000 000
-    - 3000000 сўм
-    - 3 млн сўм
-    - 3 млн
-    - 3,5 млн
-    """
+    """Матндаги нархни рақамга айлантириш"""
     text = str(text).lower().strip()
 
-    # 1. "сўм", "so'm" kabi so'zlarni olib tashlash
     for word in ['сўм', "so'm", 'сум', 'sum', 'сом', 'som']:
         text = text.replace(word, '')
     text = text.strip()
 
-    # 2. МИЛЛИОН: млн, миллиoн, миллион
-    million_words = ['млн', 'миллиoн', 'миллион', 'милион', 'млион', 'милон', 'million', 'milion', 'mln']
+    million_words = [
+        'млн', 'миллиoн', 'миллион', 'милион',
+        'млион', 'милон', 'million', 'milion', 'mln'
+    ]
     for word in million_words:
         if word in text:
             num_part = text.replace(word, '').strip()
@@ -179,7 +173,6 @@ def parse_price_text(text):
             except ValueError:
                 continue
 
-    # 3. МИНГ: минг, миң
     thousand_words = ['минг', 'миг', 'мин', 'миң', 'ming']
     for word in thousand_words:
         if word in text:
@@ -190,31 +183,33 @@ def parse_price_text(text):
             except ValueError:
                 continue
 
-    # 4. ОДДИЙ РАҚАМ: faqat raqamlarni ajratib olish
     cleaned = ''.join(c for c in text if c.isdigit())
     return int(cleaned) if cleaned else 0
 
 
-
-
 def fmt_number(n):
-    """Рақамни оддий форматда кўрсатиш: 15 000 000"""
+    """Рақамни форматда кўрсатиш: 15 000 000"""
     return f"{n:,.0f}".replace(",", " ")
 
 
+# ═══════════════════════════════════════
+# НАРХ ИНДЕКСИ
+# ═══════════════════════════════════════
+
 def get_price_index(animal_type=None):
     """Эълонлар асосида нархлар индексини ҳисоблаш"""
-    conn = sqlite3.connect("chorva.db")
+    p = get_placeholder()
+    conn = get_connection()
     cursor = conn.cursor()
 
-    query = """
+    query = f"""
         SELECT animal_type, region, price
         FROM ads
-        WHERE status = 'active'
+        WHERE status = {p}
     """
-    params = []
+    params = ["active"]
     if animal_type:
-        query += " AND animal_type = ?"
+        query += f" AND animal_type = {p}"
         params.append(animal_type)
 
     cursor.execute(query, params)
@@ -253,20 +248,35 @@ def get_price_index(animal_type=None):
 
 def get_market_prices_index():
     """Фойдаланувчилар киритган бозор нархлари"""
-    conn = sqlite3.connect("chorva.db")
+    conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT animal_type, region,
-               AVG(price) as avg_price,
-               MIN(price) as min_price,
-               MAX(price) as max_price,
-               COUNT(*) as cnt
-        FROM market_prices
-        WHERE created_at > datetime('now', '-30 days')
-        GROUP BY animal_type, region
-        ORDER BY animal_type, avg_price
-    """)
+    if DATABASE_URL:
+        # ═══ PostgreSQL ═══
+        cursor.execute("""
+            SELECT animal_type, region,
+                   AVG(price) as avg_price,
+                   MIN(price) as min_price,
+                   MAX(price) as max_price,
+                   COUNT(*) as cnt
+            FROM market_prices
+            WHERE created_at > NOW() - INTERVAL '30 days'
+            GROUP BY animal_type, region
+            ORDER BY animal_type, avg_price
+        """)
+    else:
+        # ═══ SQLite ═══
+        cursor.execute("""
+            SELECT animal_type, region,
+                   AVG(price) as avg_price,
+                   MIN(price) as min_price,
+                   MAX(price) as max_price,
+                   COUNT(*) as cnt
+            FROM market_prices
+            WHERE created_at > datetime('now', '-30 days')
+            GROUP BY animal_type, region
+            ORDER BY animal_type, avg_price
+        """)
 
     rows = cursor.fetchall()
     conn.close()
@@ -290,25 +300,26 @@ def get_market_prices_index():
 
 def search_ads_db(animal_type=None, region=None, max_price=None, limit=10):
     """Эълонларни қидириш"""
-    conn = sqlite3.connect("chorva.db")
+    p = get_placeholder()
+    conn = get_connection()
     cursor = conn.cursor()
 
-    query = """
+    query = f"""
         SELECT id, animal_type, quantity, price,
                region, district, description
         FROM ads
-        WHERE status = 'active'
+        WHERE status = {p}
     """
-    params = []
+    params = ["active"]
 
     if animal_type:
-        query += " AND animal_type = ?"
+        query += f" AND animal_type = {p}"
         params.append(animal_type)
     if region:
-        query += " AND region = ?"
+        query += f" AND region = {p}"
         params.append(region)
 
-    query += " ORDER BY id DESC LIMIT ?"
+    query += f" ORDER BY id DESC LIMIT {p}"
     params.append(limit)
 
     cursor.execute(query, params)
@@ -326,8 +337,9 @@ def search_ads_db(animal_type=None, region=None, max_price=None, limit=10):
     return rows
 
 
-
-
+# ═══════════════════════════════════════
+# ҚИДИРИШ (3 МАНБА)
+# ═══════════════════════════════════════
 
 def search_all(animal_type=None, region=None):
     """3 манбадан қидириш"""
@@ -337,19 +349,14 @@ def search_all(animal_type=None, region=None):
 
     result = {"ads": [], "market_prices": [], "stats": {}}
 
-    # ═══ Эълонлар (id va user_id bilan) ═══
-    query_ads = """
+    # ═══ Эълонлар ═══
+    query_ads = f"""
         SELECT id, animal_type, region, price,
                district, description, quantity, user_id
         FROM ads
-        WHERE status = 'active'
-            AND id IN (
-                SELECT id FROM ads
-                WHERE status = 'active'
-                ORDER BY id DESC LIMIT 50
-            )
+        WHERE status = {p}
     """
-    params_ads = []
+    params_ads = ["active"]
     if animal_type:
         query_ads += f" AND animal_type = {p}"
         params_ads.append(animal_type)
@@ -367,10 +374,10 @@ def search_all(animal_type=None, region=None):
     """
     params_mp = []
     if animal_type:
-        query_mp += " AND animal_type = ?"
+        query_mp += f" AND animal_type = {p}"
         params_mp.append(animal_type)
     if region:
-        query_mp += " AND region = ?"
+        query_mp += f" AND region = {p}"       # ← ТЎҒИРИЛДИ!
         params_mp.append(region)
     query_mp += " ORDER BY created_at DESC LIMIT 100"
     cursor.execute(query_mp, params_mp)
@@ -381,7 +388,7 @@ def search_all(animal_type=None, region=None):
     # ═══ Статистика ═══
     all_prices = []
     for ad in result["ads"]:
-        price = parse_price_text(ad[3])  # ← ad[3] = price
+        price = parse_price_text(ad[3])
         if MIN_PRICE <= price <= MAX_PRICE:
             all_prices.append(price)
     for mp in result["market_prices"]:
@@ -399,6 +406,9 @@ def search_all(animal_type=None, region=None):
     return result
 
 
+# ═══════════════════════════════════════
+# СТАТИСТИКА
+# ═══════════════════════════════════════
 
 def get_full_statistics():
     """Тўлиқ статистика"""
@@ -439,7 +449,7 @@ def get_full_statistics():
     price_by_animal = {}
     for a_type, price_text in raw_prices:
         price = parse_price_text(price_text)
-        if 0 < price <= MAX_PRICE:
+        if MIN_PRICE <= price <= MAX_PRICE:
             if a_type not in price_by_animal:
                 price_by_animal[a_type] = []
             price_by_animal[a_type].append(price)
@@ -465,29 +475,19 @@ def get_full_statistics():
 # ═══════════════════════════════════════
 
 BAD_WORDS = [
-    # Сўкишлар (узунроқ сўзлар аввал)
     "кахба", "ҷалоб", "ғашт", "нарас",
     "шалоп", "ғашак", "юзлик",
-
-    # Қисқа сўзлар — АЛОҲИДА текширилади
     "ҳули", "сик", "пиз",
 ]
 
-
-# ═══════════════════════════════════════
-# МАТННИ ТОЗАЛАШ
-# ═══════════════════════════════════════
 
 def normalize_word(word):
     """Bitta so'zni tekshirishga tayyorlash"""
     if not word:
         return ""
     word = word.lower().strip()
-
-    # Ko'p takrorlangan harflarni bittaga tushirish
     word = re.sub(r'(.)\1{2,}', r'\1', word)
 
-    # Lotin → Kirill
     latin_to_cyrillic = {
         'a': 'а', 'b': 'б', 'c': 'с', 'd': 'д', 'e': 'е',
         'f': 'ф', 'g': 'г', 'h': 'х', 'i': 'и', 'j': 'ж',
@@ -498,8 +498,6 @@ def normalize_word(word):
     result = ""
     for char in word:
         result += latin_to_cyrillic.get(char, char)
-
-    # Faqat kirill harflarini qoldirish
     result = re.sub(r'[^а-яёғқўҳ]', '', result)
     return result
 
@@ -508,51 +506,30 @@ def extract_words(text):
     """Matndan alohida so'zlarni ajratib olish"""
     if not text:
         return []
-
-    # Belgilar va bo'shliqlar bo'yicha so'zlarga ajratish
     words = re.split(r'[\s,.\-!?;:\(\)\[\]\"\'\/\\]+', text)
     return [w for w in words if len(w) > 0]
 
 
 def contains_bad_word(text):
-    """Matnda yomon so'z bormi?
-
-    QOIDALAR:
-    1. Qisqa so'zlar (1-3 harf) — FAQAT alohida so'z sifatida tekshiriladi
-       Masalan: "ам" → "қалам" da topilmaydi ✅
-                "ам" → "ам жуда яхши" da topiladi ✅
-
-    2. Uzun so'zlar (4+ harf) — ichidan ham qidiriladi
-       Masalan: "кахба" → "кахбага" da topiladi ✅
-    """
+    """Matnda yomon so'z bormi?"""
     if not text:
         return False
 
     words = extract_words(text)
-
-    # Har bir so'zni normalizatsiya qilish
     normalized_words = [normalize_word(w) for w in words]
-
-    # BAD_WORDS ro'yxatini normalizatsiya qilish
     normalized_bad = [normalize_word(w) for w in BAD_WORDS]
 
     for bad_word in normalized_bad:
         if not bad_word:
             continue
-
-        # 1. QISQA SO'Z (1-3 harf) — faqat alohida so'z sifatida
         if len(bad_word) <= 3:
             for word in normalized_words:
                 if word == bad_word:
                     return True
-
-        # 2. UZUN SO'Z (4+ harf) — alohida so'z YOKI so'z ichidan
         else:
-            # Aloхida so'z sifatida
             for word in normalized_words:
                 if word == bad_word:
                     return True
-            # So'z ichidan ham (masalan: "кахбага")
             for word in normalized_words:
                 if bad_word in word:
                     return True
