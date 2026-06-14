@@ -889,8 +889,8 @@ async def admin_del_user_ads(message: types.Message):
                     chat_id=CHANNEL_ID, message_id=msg_id
                 )
                 deleted_count += 1
-            except Exception as e:
-            logging.error(f"Каналдан ўчириш хато: msg_id={msg_id}, error={e}")
+            except Exception:
+                    pass
 
     # Базадан ўчириш
     cursor.execute("DELETE FROM ads WHERE user_id = ?", (user_id,))
