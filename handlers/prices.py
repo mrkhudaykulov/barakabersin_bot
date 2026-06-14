@@ -3,7 +3,7 @@ import sqlite3
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 
-from database import get_connection, get_placeholder, parse_price_text, fmt_number, get_full_statistics, MAX_PRICE, MIN_PRICE, fix_keyboard_text 
+from database import get_connection, get_placeholder, parse_price_text, fmt_number, get_full_statistics, MAX_PRICE, MIN_PRICE, fix_keyboard_text, match_price_index 
 from states import CalcStates, PriceInputStates
 from keyboards import (
     main_menu, price_index_keyboard, search_animal_keyboard,
@@ -38,6 +38,9 @@ async def price_index_show(message: types.Message, state: FSMContext):
     if current is not None and current != CalcStates.menu.state:
         return
 
+    # ═══ БARCHA PLATFORMALAR УЧУН (Android, iOS, Desktop) ═══
+    matched_key = match_price_index(message.text)
+
     animal_map = {
         "🐄 Буқа/Сигир": ["Буқа", "Сигир", "Тана", "Бузоқ"],
         "🐑 Қўй": ["Қўчқор", "Совлиқ", "Қўзи"],
@@ -47,7 +50,16 @@ async def price_index_show(message: types.Message, state: FSMContext):
         "🐓 Парранда": ["Парранда"]
     }
 
-    animal_types = animal_map.get(message.text, [])
+    animal_types = animal_map.get(matched_key, [])
+
+    if not animal_types:
+        await message.answer(
+            "⚠️ Тугмани қайта босинг.",
+            reply_markup=price_index_keyboard()
+        )
+        return
+
+
     p = get_placeholder()
     placeholders = ','.join([p for _ in animal_types])
 
