@@ -50,7 +50,7 @@ async def price_index_show(message: types.Message, state: FSMContext):
     animal_types = animal_map.get(message.text, [])
     placeholders = ','.join(['?' for _ in animal_types])
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -143,7 +143,7 @@ async def price_index_show(message: types.Message, state: FSMContext):
 
 @router.message(F.text == "📊 Барчаси")
 async def price_index_all(message: types.Message):
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -303,7 +303,7 @@ async def market_price_save(message: types.Message, state: FSMContext):
     animal = data.get("mp_animal")
     region = data.get("mp_region")
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
