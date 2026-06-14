@@ -4,7 +4,7 @@ from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 
 from database import parse_price_text, fmt_number, get_full_statistics, MAX_PRICE, MIN_PRICE, fix_keyboard_text
-from states import CalcStates, PriceInputStates, PriceFromIndexStates
+from states import CalcStates, PriceInputStates
 from keyboards import (
     main_menu, price_index_keyboard, search_animal_keyboard,
     regions_keyboard, standard_step_keyboard
@@ -86,16 +86,15 @@ async def price_index_show(message: types.Message, state: FSMContext):
             region_data[region].append(price)
 
     if not region_data:
-        await state.update_data(pfi_animal_types=animal_types, pfi_label=message.text)
-        await state.set_state(PriceFromIndexStates.region)
         await message.answer(
             f"❌ {message.text} учун маълумот йўқ.\n\n"
-            f"💰 *Нарх киритишни хохлайсизми?*\n"
-            f"Қайси вилоятда нархни биласиз?",
+            f"💰 Нарх киритиш учун \"*💰 Нарх киритиш*\" "
+            f"тугмасини босинг.",
             parse_mode="Markdown",
-            reply_markup=regions_keyboard()
+            reply_markup=main_menu()    # ← Асосий менюга қайтади
         )
         return
+
 
     text = f"📊 *{message.text} — нархлар индекси*\n"
     text += f"{'─' * 30}\n\n"
@@ -321,3 +320,4 @@ async def market_price_save(message: types.Message, state: FSMContext):
         reply_markup=main_menu()
     )
     await state.clear()
+
