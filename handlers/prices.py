@@ -394,3 +394,11 @@ async def market_price_save(message: types.Message, state: FSMContext):
     )
     await state.clear()
 
+@router.message(CalcStates.menu)
+async def price_index_fallback(message: types.Message, state: FSMContext):
+    """Нархлар индекси бўлимида нотўғри матн ёзилганда"""
+    await message.answer(
+        "⚠️ Тугмалардан бирини танланг:",
+        reply_markup=price_index_keyboard()
+    )
+
