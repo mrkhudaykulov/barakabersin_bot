@@ -290,6 +290,11 @@ VALID_REGIONS = [
 @router.message(PriceInputStates.animal_type)
 async def market_price_animal(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(CalcStates.menu)
+        await message.answer(
+            "📊 Нархлар индексига қайтдингиз.",
+            reply_markup=price_index_keyboard()
+        )
         return
     fixed = fix_keyboard_text(message.text)
     
@@ -312,6 +317,12 @@ async def market_price_animal(message: types.Message, state: FSMContext):
 @router.message(PriceInputStates.region)
 async def market_price_region(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        # ═══ НАРХЛАР ИНДЕКСИГА ҚАЙТИШ ═══
+        await state.set_state(CalcStates.menu)
+        await message.answer(
+            "📊 Нархлар индексига қайтдингиз.",
+            reply_markup=price_index_keyboard()
+        )
         return
     fixed = fix_keyboard_text(message.text)
 
@@ -340,6 +351,12 @@ async def market_price_region(message: types.Message, state: FSMContext):
 @router.message(PriceInputStates.price)
 async def market_price_save(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        # ═══ НАРХЛАР ИНДЕКСИГА ҚАЙТИШ ═══
+        await state.set_state(CalcStates.menu)
+        await message.answer(
+            "📊 Нархлар индексига қайтдингиз.",
+            reply_markup=price_index_keyboard()
+        )
         return
 
     price_value = parse_price_text(message.text)
@@ -389,10 +406,16 @@ async def market_price_save(message: types.Message, state: FSMContext):
         f"📍 {region}\n"
         f"💰 {fmt_number(price_value)} сўм\n\n"
         f"Рахмат! Сизнинг маълумотингиз бошқаларга ёрдам беради",
-        parse_mode="Markdown",
-        reply_markup=main_menu()
+        parse_mode="Markdown"
     )
-    await state.clear()
+    
+    await state.set_state(CalcStates.menu)
+    await message.answer(
+        "📊 *Нархлар индексига қайтдингиз.*\n\n"
+        "Қайси ҳайвон турини кўрмоқчисиз?",
+        parse_mode="Markdown",
+        reply_markup=price_index_keyboard()
+    )
 
 @router.message(CalcStates.menu)
 async def price_index_fallback(message: types.Message, state: FSMContext):
