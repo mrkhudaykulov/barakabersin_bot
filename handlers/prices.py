@@ -387,7 +387,7 @@ async def market_price_save(message: types.Message, state: FSMContext):
         f"✅ *Нарх сақланди!*\n\n"
         f"🐾 {animal}\n"
         f"📍 {region}\n"
-        f"💰 {fmt_number(price)} сўм\n\n"
+        f"💰 {fmt_number(price_value)} сўм\n\n"
         f"Рахмат! Сизнинг маълумотингиз бошқаларга ёрдам беради",
         parse_mode="Markdown",
         reply_markup=main_menu()
