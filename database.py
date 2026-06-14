@@ -1,53 +1,123 @@
-# ⚠️ Chegara: 50 mln dan oshiq narxlar xato deb hisoblanadi
-MAX_PRICE = 50_000_000
-MIN_PRICE = 100_000
-
 import sqlite3
 import re
+import os
+import logging
+
+
+# ═══════════════════════════════════════
+# BAZA ULANGANLIK
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+def get_connection():
+    """PostgreSQL yoki SQLite — qaysi biri bor bo'lsa"""
+    if DATABASE_URL:
+        import psycopg2
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        import sqlite3
+        return sqlite3.connect("chorva.db")
+
+def get_placeholder():
+    """SQL placeholder — PostgreSQL %s, SQLite ?"""
+    return "%s" if DATABASE_URL else "?"
+
+
+# ═══════════════════════════════════════
+# ⚠️ Chegara: 50 mln dan oshiq narxlar xato deb hisoblanadi
+
+MAX_PRICE = 50_000_000
+MIN_PRICE = 50_000
+
+# ═══════════════════════════════════════
+# БАЗА ЯРАТИШ
+# ═══════════════════════════════════════
 
 def init_db():
-    conn = sqlite3.connect("chorva.db")
+    conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS ads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            msg_id TEXT,
-            animal_type TEXT,
-            quantity TEXT,
-            price TEXT,
-            description TEXT,
-            region TEXT,
-            district TEXT,
-            mfy TEXT,
-            phone TEXT,
-            username TEXT,
-            status TEXT DEFAULT 'active'
-        )
-    """)
+    if DATABASE_URL:
+        # ═══ POSTGRESQL ═══
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ads (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                msg_id TEXT,
+                animal_type TEXT,
+                quantity TEXT,
+                price TEXT,
+                description TEXT,
+                region TEXT,
+                district TEXT,
+                mfy TEXT,
+                phone TEXT,
+                username TEXT,
+                status TEXT DEFAULT 'active'
+            )
+        """)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY
-        )
-    """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY
+            )
+        """)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS market_prices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            animal_type TEXT NOT NULL,
-            region TEXT NOT NULL,
-            price INTEGER NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS market_prices (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                animal_type TEXT NOT NULL,
+                region TEXT NOT NULL,
+                price INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+    else:
+        # ═══ SQLITE (lokal test uchun) ═══
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                msg_id TEXT,
+                animal_type TEXT,
+                quantity TEXT,
+                price TEXT,
+                description TEXT,
+                region TEXT,
+                district TEXT,
+                mfy TEXT,
+                phone TEXT,
+                username TEXT,
+                status TEXT DEFAULT 'active'
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS market_prices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                animal_type TEXT NOT NULL,
+                region TEXT NOT NULL,
+                price INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
     conn.commit()
     conn.close()
+    logging.info("Baza yaratildi (PostgreSQL)" if DATABASE_URL else "Baza yaratildi (SQLite)")
 
+
+# ═══════════════════════════════════════
+# YORDAMCHI FUNKSIYALAR
 # Клавиатуралардан келган матн → Базадаги мос матн
+
 KEYBOARD_FIX = {
     # Ҳайвонлар
     "Күкөр": "Қўчқор",
@@ -261,7 +331,8 @@ def search_ads_db(animal_type=None, region=None, max_price=None, limit=10):
 
 def search_all(animal_type=None, region=None):
     """3 манбадан қидириш"""
-    conn = sqlite3.connect("chorva.db")
+    p = get_placeholder()
+    conn = get_connection()
     cursor = conn.cursor()
 
     result = {"ads": [], "market_prices": [], "stats": {}}
@@ -280,10 +351,10 @@ def search_all(animal_type=None, region=None):
     """
     params_ads = []
     if animal_type:
-        query_ads += " AND animal_type = ?"
+        query_ads += f" AND animal_type = {p}"
         params_ads.append(animal_type)
     if region:
-        query_ads += " AND region = ?"
+        query_ads += f" AND region = {p}"
         params_ads.append(region)
     query_ads += " ORDER BY id DESC LIMIT 50"
     cursor.execute(query_ads, params_ads)
@@ -331,7 +402,7 @@ def search_all(animal_type=None, region=None):
 
 def get_full_statistics():
     """Тўлиқ статистика"""
-    conn = sqlite3.connect("chorva.db")
+    conn = get_connection()
     cursor = conn.cursor()
 
     stats = {}
