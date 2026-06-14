@@ -342,11 +342,10 @@ async def my_ads(message: types.Message):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, animal_type, price, status "
-        "FROM ads WHERE user_id = {p} AND status = 'active'",
-        (message.from_user.id,)
-    )
+    cursor.execute(f"""
+    SELECT id, animal_type, price, status FROM ads WHERE user_id = {p} AND status = {p}
+""", (message.from_user.id, 'active'))
+    
     ads = cursor.fetchall()
     conn.close()
 
