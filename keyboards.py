@@ -186,12 +186,15 @@ def price_index_keyboard():
     builder = ReplyKeyboardBuilder()
     types_list = [
         "🐄 Буқа/Сигир", "🐑 Қўй", "🐐 Эчки",
-        "🐴 От", "🐫 Туя", "🐓 Парранда", "📊 Барчаси"
+        "🐴 От", "🐫 Туя", "🐓 Парранда"
     ]
     for t in types_list:
         builder.add(KeyboardButton(text=t))
     builder.adjust(2)
-    builder.row(KeyboardButton(text="🏠 Бош меню"))
+    builder.row(
+        KeyboardButton(text="📊 Барчаси"),
+        KeyboardButton(text="🏠 Бош меню")
+    )
     return builder.as_markup(resize_keyboard=True)
 
 
