@@ -210,7 +210,7 @@ async def admin_view_prices(message: types.Message):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT id, animal_type, region, price, created_at
         FROM market_prices ORDER BY created_at DESC LIMIT 100
     """)
@@ -288,7 +288,7 @@ async def admin_del_price(message: types.Message):
 
     _, animal, region, price = row
 
-    cursor.execute("DELETE FROM market_prices WHERE id = ?", (price_id,))
+    cursor.execute("DELETE FROM market_prices WHERE id = {p}", (price_id,))
     conn.commit()
     conn.close()
 
@@ -721,7 +721,7 @@ async def admin_view_ads(message: types.Message):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT id, animal_type, quantity, price,
                region, district, status, user_id
         FROM ads ORDER BY id DESC LIMIT 50
@@ -824,7 +824,7 @@ async def admin_del_ad(message: types.Message):
             logging.error(f"Каналдан ўчириш хато: msg_id={msg_id}, error={e}")
 
     # Базадан ўчириш
-    cursor.execute("DELETE FROM ads WHERE id = ?", (ad_id,))
+    cursor.execute("DELETE FROM ads WHERE id = {p}", (ad_id,))
     conn.commit()
     conn.close()
 
