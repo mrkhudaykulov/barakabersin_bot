@@ -12,25 +12,30 @@ from keyboards import (
     description_keyboard, search_animal_keyboard
 )
 from states import AdStates, CalcStates, SearchStates, PriceInputStates
+from database import get_connection
 
 router = Router()
 
 
 @router.message(Command("start"))
 async def start_cmd(message: types.Message):
-    (p = get_placeholder())
-    conn = get_connection()
-    cursor = conn.cursor()
     try:
-        cursor.execute(
-            "INSERT OR IGNORE INTO users (user_id) VALUES ({p})",
-            (message.from_user.id,)
-        )
+        conn = get_connection()
+        cursor = conn.cursor()
+        if "postgresql" in str(conn):
+            cursor.execute(
+                "INSERT INTO users (user_id) VALUES (%s) ON CONFLICT DO NOTHING",
+                (message.from_user.id,)
+            )
+        else:
+            cursor.execute(
+                "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
+                (message.from_user.id,)
+            )
         conn.commit()
+        conn.close()
     except Exception as e:
         logging.error(f"Базага ёзишда хатолик: {e}")
-    finally:
-        conn.close()
 
     await message.answer(
         "Ассалому алайкум! Чорва бозор ботига хуш келибсиз.",
