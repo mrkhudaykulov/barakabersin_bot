@@ -15,7 +15,7 @@ from keyboards import (
     animal_types_keyboard, regions_keyboard, districts_keyboard,
     standard_step_keyboard, description_keyboard, phone_keyboard
 )
-from database import contains_bad_word, parse_price_text, MIN_PRICE, MAX_PRICE, fmt_number, fix_keyboard_text ,get_connection, get_placeholder
+from database import contains_bad_word, parse_price_text, MIN_PRICE, MAX_PRICE, fmt_number, fix_keyboard_text, get_connection, get_placeholder
 
 router = Router()
 
