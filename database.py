@@ -29,7 +29,7 @@ def get_placeholder():
 # ⚠️ Chegaralar
 
 MAX_PRICE = 50_000_000
-MIN_PRICE = 500_000
+MIN_PRICE = 50_000
 
 
 # ═══════════════════════════════════════
