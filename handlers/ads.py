@@ -339,7 +339,7 @@ async def process_phone(message: types.Message, state: FSMContext):
 
 @router.message(F.text == "🗂 Менинг эълонларим")
 async def my_ads(message: types.Message):
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -375,7 +375,7 @@ async def my_ads(message: types.Message):
 async def handle_ad_action(callback: types.CallbackQuery):
     action, ad_id = callback.data.split("_")
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
