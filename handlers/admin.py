@@ -1,11 +1,12 @@
 import asyncio
 import html
 import sqlite3
+import logging
 
 from aiogram import Router, types
 from aiogram.filters import Command
 
-from config import bot, ADMINS
+from config import bot, ADMINS, CHANNEL_ID
 from database import get_full_statistics, fmt_number
 
 router = Router()
@@ -808,8 +809,8 @@ async def admin_del_ad(message: types.Message):
                 chat_id=CHANNEL_ID, message_id=msg_id
             )
             deleted_count += 1
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error(f"Каналдан ўчириш хато: msg_id={msg_id}, error={e}")
 
     # Базадан ўчириш
     cursor.execute("DELETE FROM ads WHERE id = ?", (ad_id,))
@@ -888,8 +889,8 @@ async def admin_del_user_ads(message: types.Message):
                     chat_id=CHANNEL_ID, message_id=msg_id
                 )
                 deleted_count += 1
-            except Exception:
-                pass
+            except Exception as e:
+            logging.error(f"Каналдан ўчириш хато: msg_id={msg_id}, error={e}")
 
     # Базадан ўчириш
     cursor.execute("DELETE FROM ads WHERE user_id = ?", (user_id,))
