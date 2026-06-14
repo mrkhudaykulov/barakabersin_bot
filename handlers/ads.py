@@ -15,7 +15,7 @@ from keyboards import (
     animal_types_keyboard, regions_keyboard, districts_keyboard,
     standard_step_keyboard, description_keyboard, phone_keyboard
 )
-from database import contains_bad_word, parse_price_text, MIN_PRICE, MAX_PRICE, fmt_number
+from database import contains_bad_word, parse_price_text, MIN_PRICE, MAX_PRICE, fmt_number, fix_keyboard_text
 
 router = Router()
 
@@ -85,7 +85,8 @@ async def process_photo_invalid(message: types.Message, state: FSMContext):
 async def process_type(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         return
-    await state.update_data(animal_type=message.text)
+    fixed = fix_keyboard_text(message.text)
+    await state.update_data(animal_type=fixed)
     await state.set_state(AdStates.region)
     await message.answer("Вилоятни танланг:", reply_markup=regions_keyboard())
 
@@ -94,7 +95,8 @@ async def process_type(message: types.Message, state: FSMContext):
 async def process_region(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         return
-    await state.update_data(region=message.text)
+    fixed = fix_keyboard_text(message.text)
+    await state.update_data(region=fixed)
     await state.set_state(AdStates.district)
     await message.answer(
         "Туманни танланг:",
@@ -106,7 +108,8 @@ async def process_region(message: types.Message, state: FSMContext):
 async def process_district(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         return
-    await state.update_data(district=message.text)
+    fixed = fix_keyboard_text(message.text)
+    await state.update_data(district=fixed)
     await state.set_state(AdStates.mfy)
     await message.answer(
         "МФЙ номини ёзинг (матн кўринишида):",
