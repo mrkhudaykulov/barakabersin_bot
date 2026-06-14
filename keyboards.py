@@ -193,8 +193,9 @@ def price_index_keyboard():
     builder.adjust(2)
     builder.row(
         KeyboardButton(text="📊 Барчаси"),
-        KeyboardButton(text="🏠 Бош меню")
+        KeyboardButton(text="💰 Нарх киритиш")        
     )
+    builder.row(KeyboardButton(text="🏠 Бош меню"))       
     return builder.as_markup(resize_keyboard=True)
 
 
