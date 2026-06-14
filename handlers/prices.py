@@ -23,7 +23,7 @@ async def price_index_start(message: types.Message, state: FSMContext):
     await message.answer(
         "📊 *Нархлар индекси*\n\n"
         "Эълонлар асосида ўртача нархларни кўрсатади.\n"
-        "Қайси ҳайвон турини кўрмоқчисиз?",
+        "Қайси ҳайвон турини кўрмоқчисиз",
         parse_mode="Markdown",
         reply_markup=price_index_keyboard()
     )
@@ -148,7 +148,7 @@ async def price_index_all(message: types.Message):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT animal_type, price
         FROM ads WHERE status = 'active'
     """)
@@ -235,7 +235,7 @@ async def market_price_start(message: types.Message, state: FSMContext):
         "💰 *Бозор нархи киритиш*\n\n"
         "Бу бўлимда сиз бозорда кўрган нархингизни\n"
         "киритишингиз мумкин. Эълон эмас — фақат нарх маълумоти.\n\n"
-        "Қайси ҳайвон тури?",
+        "Қайси ҳайвон тури",
         parse_mode="Markdown",
         reply_markup=animal_types_keyboard_for_price()
     )
@@ -270,7 +270,7 @@ async def market_price_animal(message: types.Message, state: FSMContext):
     await state.update_data(mp_animal=fixed)
     await state.set_state(PriceInputStates.region)
     await message.answer(
-        "📍 Қайси вилоятда кўрдингиз?",
+        "📍 Қайси вилоятда кўрдингиз",
         reply_markup=regions_keyboard()
     )
 
