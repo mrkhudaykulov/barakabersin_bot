@@ -357,7 +357,7 @@ def search_all(animal_type=None, region=None):
     # ═══ Эълонлар ═══
     query_ads = f"""
         SELECT id, animal_type, region, price,
-               district, description, quantity, user_id
+               district, description, quantity, user_id, msg_id
         FROM ads
         WHERE status = {p}
     """
