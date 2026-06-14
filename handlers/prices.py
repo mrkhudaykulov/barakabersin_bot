@@ -3,7 +3,7 @@ import sqlite3
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 
-from database import parse_price_text, fmt_number, get_full_statistics, MAX_PRICE
+from database import parse_price_text, fmt_number, get_full_statistics, MAX_PRICE, fix_keyboard_text
 from states import CalcStates, PriceInputStates
 from keyboards import (
     main_menu, price_index_keyboard, search_animal_keyboard,
@@ -260,7 +260,8 @@ def animal_types_keyboard_for_price():
 async def market_price_animal(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         return
-    await state.update_data(mp_animal=message.text)
+    fixed = fix_keyboard_text(message.text)
+    await state.update_data(mp_animal=fixed)
     await state.set_state(PriceInputStates.region)
     await message.answer(
         "📍 Қайси вилоятда кўрдингиз?",
@@ -272,7 +273,8 @@ async def market_price_animal(message: types.Message, state: FSMContext):
 async def market_price_region(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         return
-    await state.update_data(mp_region=message.text)
+    fixed = fix_keyboard_text(message.text)
+    await state.update_data(mp_region=fixed)
     await state.set_state(PriceInputStates.price)
     await message.answer(
         "💰 Нархни киритинг (сўмда):\n_(масалан: 15000000)_",
