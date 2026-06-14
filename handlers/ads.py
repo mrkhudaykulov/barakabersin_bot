@@ -15,7 +15,7 @@ from keyboards import (
     animal_types_keyboard, regions_keyboard, districts_keyboard,
     standard_step_keyboard, description_keyboard, phone_keyboard
 )
-from database import contains_bad_word, parse_price_text, MIN_PRICE, MAX_PRICE, fmt_number, fix_keyboard_text
+from database import contains_bad_word, parse_price_text, MIN_PRICE, MAX_PRICE, fmt_number, fix_keyboard_text ,get_connection, get_placeholder
 
 router = Router()
 
@@ -306,13 +306,14 @@ async def process_phone(message: types.Message, state: FSMContext):
             else f"ID: {message.from_user.id}"
         )
 
-        conn = sqlite3.connect("chorva.db")
+        p = get_placeholder()
+        conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(f"""
             INSERT INTO ads
             (user_id, msg_id, animal_type, quantity, price,
              description, region, district, mfy, phone, username)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
         """, (
             message.from_user.id, msg_ids_str,
             data['animal_type'], data['quantity'], data['price'],
