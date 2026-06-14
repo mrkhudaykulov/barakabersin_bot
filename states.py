@@ -35,3 +35,8 @@ class PriceInputStates(StatesGroup):
     animal_type = State()
     region = State()
     price = State()
+
+class PriceFromIndexStates(StatesGroup):
+    """Нархлар индексидан нарх киритиш"""
+    region = State()
+    price = State()
