@@ -309,7 +309,7 @@ async def process_phone(message: types.Message, state: FSMContext):
         p = get_placeholder()
         conn = get_connection()
         cursor = conn.cursor()
-        f"""
+        cursor.execute(f"""
             INSERT INTO ads
             (user_id, msg_id, animal_type, quantity, price,
              description, region, district, mfy, phone, username)
@@ -319,7 +319,7 @@ async def process_phone(message: types.Message, state: FSMContext):
             data['animal_type'], data['quantity'], data['price'],
             data['description'], data['region'], data['district'],
             data['mfy'], phone, db_username
-        )
+        ))
         conn.commit()
         conn.close()
 
