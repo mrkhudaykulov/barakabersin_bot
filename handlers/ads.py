@@ -339,11 +339,12 @@ async def process_phone(message: types.Message, state: FSMContext):
 
 @router.message(F.text == "🗂 Менинг эълонларим")
 async def my_ads(message: types.Message):
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, animal_type, price, status "
-        "FROM ads WHERE user_id = ? AND status = 'active'",
+        "FROM ads WHERE user_id = {p} AND status = 'active'",
         (message.from_user.id,)
     )
     ads = cursor.fetchall()
@@ -374,12 +375,13 @@ async def my_ads(message: types.Message):
 async def handle_ad_action(callback: types.CallbackQuery):
     action, ad_id = callback.data.split("_")
 
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT msg_id, animal_type, quantity, price, "
         "region, district, mfy, phone, username "
-        "FROM ads WHERE id = ?",
+        "FROM ads WHERE id = {p}",
         (int(ad_id),)
     )
     ad = cursor.fetchone()
@@ -394,7 +396,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
 
     if action == "sold":
         cursor.execute(
-            "UPDATE ads SET status = 'sold' WHERE id = ?",
+            "UPDATE ads SET status = 'sold' WHERE id = {p}",
             (ad_id,)
         )
         conn.commit()
@@ -422,7 +424,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
 
     elif action == "del":
         cursor.execute(
-            "UPDATE ads SET status = 'deleted' WHERE id = ?",
+            "UPDATE ads SET status = 'deleted' WHERE id = {p}",
             (ad_id,)
         )
         conn.commit()
