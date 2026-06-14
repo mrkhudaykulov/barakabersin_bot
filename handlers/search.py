@@ -147,6 +147,7 @@ async def search_region(message: types.Message, state: FSMContext):
                 desc = str(ad[5]) if ad[5] else ""
                 qty = str(ad[6]) if ad[6] else ""
                 user_id = ad[7] if len(ad) > 7 else None
+                msg_id_str = str(ad[8]) if len(ad) > 8 and ad[8] else ""
 
                 # HTML хавфли белгилардан тозалаш
                 safe_type = html_module.escape(a_type)
@@ -162,17 +163,19 @@ async def search_region(message: types.Message, state: FSMContext):
                     f"   📍 {safe_region}, {safe_dist}"
                 )
 
-                # Эгаси ҳаволаси
-                if user_id and int(user_id) > 0:
-                    text += (
-                        f'   <a href="tg://user?id={user_id}">'
-                        f"👤 Эгаси</a>"
-                    )
-                
                 if safe_desc and safe_desc != "Киритилмаган":
-                    text += f"   📝 {safe_desc}"
+                    text += f"\n   📝 {safe_desc}"
 
-               
+                # ═══ КАНАЛДАГИ ЭЪЛОНГА ҲАВОЛА ═══
+                if msg_id_str:
+                    # Биринчи msg_id ни оламиз (album бўлиши мумкин)
+                    first_msg_id = msg_id_str.split(",")[0].strip()
+                    channel_username = "internetmolbozor"
+                    ad_link = f"https://t.me/{channel_username}/{first_msg_id}"
+                    text += (
+                        f'   <a href="{ad_link}">'
+                        f"👁кўриш</a>"
+                    )
 
                 await message.answer(
                     text,
