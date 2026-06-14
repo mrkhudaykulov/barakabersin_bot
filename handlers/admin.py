@@ -106,7 +106,7 @@ async def admin_add_price(message: types.Message):
         await message.answer("⚠️ Нарх жуда кичик!")
         return
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -148,7 +148,7 @@ async def admin_add_multi(message: types.Message):
         )
         return
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -207,7 +207,7 @@ async def admin_view_prices(message: types.Message):
         await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -271,7 +271,7 @@ async def admin_del_price(message: types.Message):
         await message.answer("⚠️ ID рақам бўлиши керак!")
         return
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -336,7 +336,7 @@ async def admin_del_animal(message: types.Message):
         )
         return
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -398,7 +398,7 @@ async def admin_del_region(message: types.Message):
         )
         return
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -435,7 +435,7 @@ async def admin_clear_prices(message: types.Message):
         await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM market_prices")
@@ -463,7 +463,7 @@ async def admin_clear_prices_confirm(message: types.Message):
         await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM market_prices")
@@ -501,7 +501,7 @@ async def broadcast_to_users(message: types.Message):
         )
         return
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT user_id FROM users")
@@ -718,7 +718,7 @@ async def admin_view_ads(message: types.Message):
         await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -793,7 +793,7 @@ async def admin_del_ad(message: types.Message):
         await message.answer("⚠️ ID рақам бўлиши керак!")
         return
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -868,7 +868,7 @@ async def admin_del_user_ads(message: types.Message):
         await message.answer("⚠️ USER_ID рақам бўлиши керак!")
         return
 
-    (p = get_placeholder())
+    p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
 
