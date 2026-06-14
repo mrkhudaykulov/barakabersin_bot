@@ -262,11 +262,33 @@ def animal_types_keyboard_for_price():
     return builder.as_markup(resize_keyboard=True)
 
 
+VALID_ANIMALS = [
+    "Буқа", "Сигир", "Тана", "Бузоқ", "Қўчқор",
+    "Совлиқ", "Қўзи", "Эчки", "Улоқ", "От",
+    "Туя", "Парранда"
+]
+
+VALID_REGIONS = [
+    "Қашқадарё", "Сурхондарё", "Тошкент", "Фарғона",
+    "Андижон", "Наманган", "Самарқанд", "Бухоро",
+    "Навоий", "Жиззах", "Сирдарё", "Хоразм",
+    "Қорақалпоғистон"
+]
+
 @router.message(PriceInputStates.animal_type)
 async def market_price_animal(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         return
     fixed = fix_keyboard_text(message.text)
+    
+    if fixed not in VALID_ANIMALS:
+        await message.answer(
+            f"⚠️ `{fixed}` рўхатда йўқ. Тугмалардан танланг:",
+            parse_mode="Markdown",
+            reply_markup=animal_types_keyboard_for_price()
+        )
+        return
+        
     await state.update_data(mp_animal=fixed)
     await state.set_state(PriceInputStates.region)
     await message.answer(
@@ -280,10 +302,24 @@ async def market_price_region(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         return
     fixed = fix_keyboard_text(message.text)
+
+    if fixed not in VALID_REGIONS:
+        await message.answer(
+            f"⚠️ `{fixed}` вилоятлар рўхатда йўқ. Тугмалардан танланг:",
+            parse_mode="Markdown",
+            reply_markup=regions_keyboard()
+        )
+        return
+        
     await state.update_data(mp_region=fixed)
     await state.set_state(PriceInputStates.price)
+
+    data = await state.get_data()
+    animal = data.get("mp_animal", "")
+    
     await message.answer(
-        "💰 Нархни киритинг (сўмда):\n_(масалан: 15000000)_",
+        f"🐾 {animal} | 📍 {fixed}\n\n"
+        f"💰 Нархни киритинг (сўмда):\n_(масалан: 15000000 ёки 15 млн)_",
         parse_mode="Markdown",
         reply_markup=standard_step_keyboard()
     )
@@ -294,15 +330,36 @@ async def market_price_save(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         return
 
-    val = message.text.replace(" ", "")
-    if not val.isdigit() or int(val) < 1000:
-        await message.answer("⚠️ Тўғри нарх киритинг (рақамда):")
+    price_value = parse_price_text(message.text)
+    if price_value == 0:
+        await message.answer(
+            "⚠️ Нарх топилмади. Рақамда ёзинг:\n"
+            "_(масалан: 15000000 ёки 15 млн)_",
+            parse_mode="Markdown"
+        )
         return
 
-    price = int(val)
+    if price_value < MIN_PRICE:
+        await message.answer(
+            f"⚠️ Нарх жуда кичик! Камида {fmt_number(MIN_PRICE)} сўм:"
+        )
+        return
+
+    if price_value > MAX_PRICE:
+        await message.answer(
+            f"⚠️ Нарх жуда катта! Энг кўпи {fmt_number(MAX_PRICE)} сўм:"
+        )
+        return
+
+        
     data = await state.get_data()
     animal = data.get("mp_animal")
     region = data.get("mp_region")
+
+    if not animal or not region:
+        await message.answer("⚠️ Хатолик. Қайтадан бошланг.", reply_markup=main_menu())
+        await state.clear()
+        return
 
     p = get_placeholder()
     conn = get_connection()
