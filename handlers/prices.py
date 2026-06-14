@@ -3,8 +3,8 @@ import sqlite3
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 
-from database import parse_price_text, fmt_number, get_full_statistics, MAX_PRICE, fix_keyboard_text
-from states import CalcStates, PriceInputStates
+from database import parse_price_text, fmt_number, get_full_statistics, MAX_PRICE, MIN_PRICE, fix_keyboard_text
+from states import CalcStates, PriceInputStates, PriceFromIndexStates
 from keyboards import (
     main_menu, price_index_keyboard, search_animal_keyboard,
     regions_keyboard, standard_step_keyboard
@@ -52,7 +52,7 @@ async def price_index_show(message: types.Message, state: FSMContext):
 
     conn = sqlite3.connect("chorva.db")
     cursor = conn.cursor()
-
+    
     cursor.execute(f"""
         SELECT animal_type, region, price
         FROM ads
@@ -74,22 +74,26 @@ async def price_index_show(message: types.Message, state: FSMContext):
 
     for a_type, region, price_text in ad_rows:
         price = parse_price_text(price_text)
-        if 0 < price <= MAX_PRICE:
+        if MIN_PRICE <= price <= MAX_PRICE:
             if region not in region_data:
                 region_data[region] = []
             region_data[region].append(price)
 
     for a_type, region, price in mp_rows:
-        if 0 < price <= MAX_PRICE:
+        if MIN_PRICE <= price <= MAX_PRICE:
             if region not in region_data:
                 region_data[region] = []
             region_data[region].append(price)
 
     if not region_data:
+        await state.update_data(pfi_animal_types=animal_types, pfi_label=message.text)
+        await state.set_state(PriceFromIndexStates.region)
         await message.answer(
             f"❌ {message.text} учун маълумот йўқ.\n\n"
-            f"Биринчи бўлиб эълон беринг ёки нарх киритинг!",
-            reply_markup=price_index_keyboard()
+            f"💰 *Нарх киритишни хохлайсизми?*\n"
+            f"Қайси вилоятда нархни биласиз?",
+            parse_mode="Markdown",
+            reply_markup=regions_keyboard()
         )
         return
 
