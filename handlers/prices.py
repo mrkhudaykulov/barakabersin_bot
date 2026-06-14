@@ -377,7 +377,7 @@ async def market_price_save(message: types.Message, state: FSMContext):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(f"""
-        INSERT INTO market_prices (user_id, animal_type, region, price)
+        INSERT INTO market_prices (user_id, animal_type, region, price_value)
         VALUES ({p}, {p}, {p}, {p})
     """, (message.from_user.id, animal, region, price))
     conn.commit()
