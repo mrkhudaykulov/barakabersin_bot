@@ -377,7 +377,7 @@ def search_all(animal_type=None, region=None):
         query_mp += f" AND animal_type = {p}"
         params_mp.append(animal_type)
     if region:
-        query_mp += f" AND region = {p}"       # ← ТЎҒИРИЛДИ!
+        query_mp += f" AND region = {p}"
         params_mp.append(region)
     query_mp += " ORDER BY created_at DESC LIMIT 100"
     cursor.execute(query_mp, params_mp)
