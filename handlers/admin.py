@@ -109,7 +109,7 @@ async def admin_add_price(message: types.Message):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(f"""
         INSERT INTO market_prices (user_id, animal_type, region, price)
         VALUES ({p}, {p}, {p}, {p})
     """, (message.from_user.id, animal, region, price))
@@ -182,7 +182,7 @@ async def admin_add_multi(message: types.Message):
             errors.append(f"❌ `{line.strip()}` — нарх кичик")
             continue
 
-        cursor.execute("""
+        cursor.execute(f"""
             INSERT INTO market_prices (user_id, animal_type, region, price)
             VALUES ({p}, {p}, {p}, {p})
         """, (message.from_user.id, animal, region, price))
