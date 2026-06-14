@@ -18,11 +18,12 @@ router = Router()
 
 @router.message(Command("start"))
 async def start_cmd(message: types.Message):
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
+            "INSERT OR IGNORE INTO users (user_id) VALUES ({p})",
             (message.from_user.id,)
         )
         conn.commit()
