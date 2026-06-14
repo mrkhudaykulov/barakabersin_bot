@@ -7,7 +7,7 @@ from aiogram import Router, types
 from aiogram.filters import Command
 
 from config import bot, ADMINS, CHANNEL_ID
-from database import get_full_statistics, fmt_number
+from database import get_full_statistics, fmt_number, get_connection, get_placeholder
 
 router = Router()
 
@@ -106,11 +106,12 @@ async def admin_add_price(message: types.Message):
         await message.answer("⚠️ Нарх жуда кичик!")
         return
 
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO market_prices (user_id, animal_type, region, price)
-        VALUES (?, ?, ?, ?)
+        VALUES ({p}, {p}, {p}, {p})
     """, (message.from_user.id, animal, region, price))
     conn.commit()
     conn.close()
@@ -147,7 +148,8 @@ async def admin_add_multi(message: types.Message):
         )
         return
 
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
 
     success = 0
@@ -182,7 +184,7 @@ async def admin_add_multi(message: types.Message):
 
         cursor.execute("""
             INSERT INTO market_prices (user_id, animal_type, region, price)
-            VALUES (?, ?, ?, ?)
+            VALUES ({p}, {p}, {p}, {p})
         """, (message.from_user.id, animal, region, price))
         success += 1
 
@@ -205,7 +207,8 @@ async def admin_view_prices(message: types.Message):
         await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT id, animal_type, region, price, created_at
@@ -268,11 +271,12 @@ async def admin_del_price(message: types.Message):
         await message.answer("⚠️ ID рақам бўлиши керак!")
         return
 
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT id, animal_type, region, price FROM market_prices WHERE id = ?",
+        "SELECT id, animal_type, region, price FROM market_prices WHERE id = {p}",
         (price_id,)
     )
     row = cursor.fetchone()
@@ -332,11 +336,12 @@ async def admin_del_animal(message: types.Message):
         )
         return
 
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT COUNT(*) FROM market_prices WHERE animal_type = ?",
+        "SELECT COUNT(*) FROM market_prices WHERE animal_type = {p}",
         (animal,)
     )
     count = cursor.fetchone()[0]
@@ -347,7 +352,7 @@ async def admin_del_animal(message: types.Message):
         return
 
     cursor.execute(
-        "DELETE FROM market_prices WHERE animal_type = ?",
+        "DELETE FROM market_prices WHERE animal_type = {p}",
         (animal,)
     )
     conn.commit()
@@ -393,11 +398,12 @@ async def admin_del_region(message: types.Message):
         )
         return
 
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT COUNT(*) FROM market_prices WHERE region = ?",
+        "SELECT COUNT(*) FROM market_prices WHERE region = {p}",
         (region,)
     )
     count = cursor.fetchone()[0]
@@ -408,7 +414,7 @@ async def admin_del_region(message: types.Message):
         return
 
     cursor.execute(
-        "DELETE FROM market_prices WHERE region = ?",
+        "DELETE FROM market_prices WHERE region = {p}",
         (region,)
     )
     conn.commit()
@@ -429,7 +435,8 @@ async def admin_clear_prices(message: types.Message):
         await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM market_prices")
     count = cursor.fetchone()[0]
@@ -456,7 +463,8 @@ async def admin_clear_prices_confirm(message: types.Message):
         await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM market_prices")
     count = cursor.fetchone()[0]
@@ -493,7 +501,8 @@ async def broadcast_to_users(message: types.Message):
         )
         return
 
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT user_id FROM users")
     users = cursor.fetchall()
@@ -709,7 +718,8 @@ async def admin_view_ads(message: types.Message):
         await message.answer("⛔ Сизга рухсат йўқ.")
         return
 
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT id, animal_type, quantity, price,
@@ -783,12 +793,13 @@ async def admin_del_ad(message: types.Message):
         await message.answer("⚠️ ID рақам бўлиши керак!")
         return
 
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
         "SELECT id, animal_type, quantity, price, region, "
-        "district, msg_id FROM ads WHERE id = ?",
+        "district, msg_id FROM ads WHERE id = {p}",
         (ad_id,)
     )
     row = cursor.fetchone()
@@ -857,11 +868,12 @@ async def admin_del_user_ads(message: types.Message):
         await message.answer("⚠️ USER_ID рақам бўлиши керак!")
         return
 
-    conn = sqlite3.connect("chorva.db")
+    (p = get_placeholder())
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT COUNT(*) FROM ads WHERE user_id = ?",
+        "SELECT COUNT(*) FROM ads WHERE user_id = {p}",
         (user_id,)
     )
     count = cursor.fetchone()[0]
@@ -875,7 +887,7 @@ async def admin_del_user_ads(message: types.Message):
 
     # Каналдан ўчириш
     cursor.execute(
-        "SELECT msg_id FROM ads WHERE user_id = ?",
+        "SELECT msg_id FROM ads WHERE user_id = {p}",
         (user_id,)
     )
     all_msg_ids = cursor.fetchall()
@@ -893,7 +905,7 @@ async def admin_del_user_ads(message: types.Message):
                     pass
 
     # Базадан ўчириш
-    cursor.execute("DELETE FROM ads WHERE user_id = ?", (user_id,))
+    cursor.execute("DELETE FROM ads WHERE user_id = {p}", (user_id,))
     conn.commit()
     conn.close()
 
