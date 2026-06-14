@@ -29,7 +29,7 @@ async def start_cmd(message: types.Message):
             )
         else:
             cursor.execute(
-                "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
+                "INSERT OR IGNORE INTO users (user_id) VALUES ({p})",
                 (message.from_user.id,)
             )
         conn.commit()
