@@ -309,7 +309,7 @@ async def process_phone(message: types.Message, state: FSMContext):
         p = get_placeholder()
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute(f"""
+        f"""
             INSERT INTO ads
             (user_id, msg_id, animal_type, quantity, price,
              description, region, district, mfy, phone, username)
@@ -342,7 +342,7 @@ async def my_ads(message: types.Message):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(f"""
+    f"""
     SELECT id, animal_type, price, status FROM ads WHERE user_id = {p} AND status = {p}
 """, (message.from_user.id, 'active'))
     
@@ -377,12 +377,11 @@ async def handle_ad_action(callback: types.CallbackQuery):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT msg_id, animal_type, quantity, price, "
-        "region, district, mfy, phone, username "
-        "FROM ads WHERE id = {p}",
-        (int(ad_id),)
-    )
+    cursor.execute(f"""
+        SELECT msg_id, animal_type, quantity, price, region, district, mfy, phone, username
+        FROM ads WHERE id = {p}
+    """, (int(ad_id),))
+    
     ad = cursor.fetchone()
 
     if not ad:
@@ -395,7 +394,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
 
     if action == "sold":
         cursor.execute(
-            "UPDATE ads SET status = 'sold' WHERE id = {p}",
+            f"UPDATE ads SET status = 'sold' WHERE id = {p}",
             (ad_id,)
         )
         conn.commit()
@@ -423,7 +422,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
 
     elif action == "del":
         cursor.execute(
-            "UPDATE ads SET status = 'deleted' WHERE id = {p}",
+            f"UPDATE ads SET status = 'deleted' WHERE id = {p}",
             (ad_id,)
         )
         conn.commit()
