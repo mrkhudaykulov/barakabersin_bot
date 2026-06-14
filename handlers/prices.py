@@ -3,7 +3,7 @@ import sqlite3
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 
-from database import parse_price_text, fmt_number, get_full_statistics, MAX_PRICE, MIN_PRICE, fix_keyboard_text, get_connection, get_placeholder
+from database import get_connection, get_placeholder, parse_price_text, fmt_number, get_full_statistics, MAX_PRICE, MIN_PRICE, fix_keyboard_text 
 from states import CalcStates, PriceInputStates
 from keyboards import (
     main_menu, price_index_keyboard, search_animal_keyboard,
@@ -48,7 +48,8 @@ async def price_index_show(message: types.Message, state: FSMContext):
     }
 
     animal_types = animal_map.get(message.text, [])
-    placeholders = ','.join(['?' for _ in animal_types])
+    p = get_placeholder()
+    placeholders = ','.join([p for _ in animal_types])
 
     p = get_placeholder()
     conn = get_connection()
