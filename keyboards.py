@@ -5,10 +5,9 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 def main_menu():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
-        [KeyboardButton(text="📊 Нархлар индекси"), KeyboardButton(text="💰 Нарх киритиш")],
-        [KeyboardButton(text="🧮 Ферма калькулятори"), KeyboardButton(text="🗂 Менинг эълонларим")],
-        [KeyboardButton(text="🏠 Бош меню")]
-        
+        [KeyboardButton(text="📊 Нархлар индекси"), KeyboardButton(text="🗂 Менинг эълонларим")],
+        [KeyboardButton(text="🧮 Ферма калькулятори"), KeyboardButton(text="🏠 Бош меню")]
+              
     ], resize_keyboard=True)
 
 
@@ -185,12 +184,12 @@ def phone_keyboard():
 def price_index_keyboard():
     builder = ReplyKeyboardBuilder()
     types_list = [
-        "🐄 Буқа/Сигир", "🐑 Қўй", "🐐 Эчки",
-        "🐴 От", "🐫 Туя", "🐓 Парранда"
+        "🐄 Буқа/Сигир", "🐑 Қўй", "🐴 От",
+        "🐐 Эчки", "🐫 Туя", "🐓 Парранда"
     ]
     for t in types_list:
         builder.add(KeyboardButton(text=t))
-    builder.adjust(2)
+    builder.adjust(3)
     builder.row(
         KeyboardButton(text="📊 Барчаси"),
         KeyboardButton(text="💰 Нарх киритиш")        
