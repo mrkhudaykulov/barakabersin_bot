@@ -140,6 +140,11 @@ KEYBOARD_FIX = {
     "Сирдарё": "Сирдарё",
     "Тошқент": "Тошкент",
     "Коракалпоғистон": "Қорақалпоғистон",
+    "Кўп": "Қўй",
+    "Кўq": "Қўй",
+    "Кўп": "Қўй",
+    "Кyка/Сигир": "Буқа/Сигир",
+    "Бapчаси": "Барчаси",
 }
 
 
@@ -535,3 +540,56 @@ def contains_bad_word(text):
                     return True
 
     return False
+
+
+# ═══════════════════════════════════════
+# НАРХ ИНДЕКСИ — БARCHA PLATFORMALAR УЧУН
+# ═══════════════════════════════════════
+
+PRICE_INDEX_MAP = {
+    "буқа": "🐄 Буқа/Сигир",
+    "сигир": "🐄 Буқа/Сигир",
+    "тана": "🐄 Буқа/Сигир",
+    "бузоқ": "🐄 Буқа/Сигир",
+    "қўй": "🐑 Қўй",
+    "қўчқор": "🐑 Қўй",
+    "совлиқ": "🐑 Қўй",
+    "қўзи": "🐑 Қўй",
+    "эчки": "🐐 Эчки",
+    "улоқ": "🐐 Эчки",
+    "от": "🐴 От",
+    "туя": "🐫 Туя",
+    "парранда": "🐓 Парранда",
+    "барчаси": "📊 Барчаси",
+}
+
+
+def match_price_index(text):
+    """Tugma matnini narx indeksi guruhiga moslash.
+    Emoji va Unicode farqlarini hisobga olmaydi.
+    Faqat asosiy so'z bo'yicha topadi.
+    """
+    if not text:
+        return text
+
+    # Emoji ni olib tashlash
+    import re
+    clean = re.sub(
+        r'[\U0001F300-\U0001F9FF\u2600-\u26FF\u2700-\u27BF\u200d\uFE0F]',
+        '', text
+    ).strip()
+
+    clean_lower = clean.lower()
+
+    # So'z asosida qidirish
+    for key_word, group_name in PRICE_INDEX_MAP.items():
+        if key_word in clean_lower:
+            return group_name
+
+    # fix_keyboard_text bilan urinish
+    fixed = fix_keyboard_text(clean)
+    for key_word, group_name in PRICE_INDEX_MAP.items():
+        if key_word in fixed.lower():
+            return group_name
+
+    return text
