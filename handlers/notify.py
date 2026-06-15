@@ -97,6 +97,8 @@ async def notify_max_price(message: types.Message, state: FSMContext):
         )
         return
 
+    data = await state.get_data()
+
     if max_price < data["min_price"]:
         await message.answer(
             "Максимал нарх минимал нархдан катта бўлиши керак."
