@@ -1,4 +1,3 @@
-import sqlite3
 import logging
 
 from aiogram import Router, types, F
@@ -15,14 +14,30 @@ from keyboards import (
     animal_types_keyboard, regions_keyboard, districts_keyboard,
     standard_step_keyboard, description_keyboard, phone_keyboard
 )
-from database import contains_bad_word, parse_price_text, MIN_PRICE, MAX_PRICE, fmt_number, fix_keyboard_text, get_connection, get_placeholder
+from database import (
+    contains_bad_word, parse_price_text, MIN_PRICE, MAX_PRICE,
+    fmt_number, fix_keyboard_text, get_connection, get_placeholder,
+    save_user, get_user_phone, extend_ad, archive_ad, AD_EXPIRE_DAYS
+)
 
 router = Router()
 
 
+# ═══════════════════════════════════════
+# ➕ ЭЪЛОН БЕРИШ
+# ═══════════════════════════════════════
+
 @router.message(F.text == "➕ Эълон бериш")
 async def start_ad(message: types.Message, state: FSMContext):
     await state.clear()
+
+    # Фойдаланувчини базага сақлаш (тез рўйхатга олиш)
+    save_user(
+        user_id=message.from_user.id,
+        full_name=message.from_user.full_name,
+        username=message.from_user.username
+    )
+
     await state.set_state(AdStates.photo)
     await state.update_data(media_list=[])
     await message.answer(
@@ -158,10 +173,8 @@ async def process_price(message: types.Message, state: FSMContext):
         )
         return
 
-    # ═══ НАРХНИ ТЕКШИРИШ ═══
     price_value = parse_price_text(message.text)
 
-    # Raqam umuman topilmadi
     if price_value == 0:
         await message.answer(
             "⚠️ Нарх топилмади. Илтимос, рақамда ёзинг:\n"
@@ -171,7 +184,6 @@ async def process_price(message: types.Message, state: FSMContext):
         )
         return
 
-    # Juda kichik
     if price_value < MIN_PRICE:
         await message.answer(
             f"⚠️ Нарх жуда кичик!\n\n"
@@ -182,7 +194,6 @@ async def process_price(message: types.Message, state: FSMContext):
         )
         return
 
-    # Juda katta
     if price_value > MAX_PRICE:
         await message.answer(
             f"⚠️ Нарх жуда катта!\n\n"
@@ -194,8 +205,7 @@ async def process_price(message: types.Message, state: FSMContext):
             reply_markup=standard_step_keyboard()
         )
         return
-        
-    # ═══ БАРЧА ТЕКШИРИШДАН ЎТДИ ═══
+
     await state.update_data(price=message.text)
     await state.set_state(AdStates.description)
     await message.answer(
@@ -212,11 +222,56 @@ async def process_description(message: types.Message, state: FSMContext):
         await state.update_data(description="Киритилмаган")
     else:
         await state.update_data(description=message.text)
+
+    # ═══ ТЕЗ РЎЙХАТГА ОЛИШ: базада телефон борми? ═══
+    saved_phone = get_user_phone(message.from_user.id)
+    if saved_phone:
+        await state.update_data(saved_phone=saved_phone)
+        # Сақланган телефонни кўрсатиб, тасдиқ сўраймиз
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text=f"✅ Ҳа, {saved_phone}",
+                callback_data="use_saved_phone"
+            ),
+            InlineKeyboardButton(
+                text="📱 Янги рақам",
+                callback_data="new_phone"
+            )
+        ]])
+        await message.answer(
+            f"📞 Аввалги рақамингиз: <b>{saved_phone}</b>\n\n"
+            f"Шу рақамдан фойдаланасизми?",
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+    else:
+        await state.set_state(AdStates.phone)
+        await message.answer(
+            "Алоқа учун телефон рақамингизни юборинг:",
+            reply_markup=phone_keyboard()
+        )
+
+
+@router.callback_query(F.data == "use_saved_phone")
+async def use_saved_phone(callback: types.CallbackQuery, state: FSMContext):
+    """Сақланган телефонни ишлатиш"""
+    data = await state.get_data()
+    phone = data.get("saved_phone")
+    await callback.message.delete()
+    await _finalize_ad(callback.message, state, phone, callback.from_user)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "new_phone")
+async def request_new_phone(callback: types.CallbackQuery, state: FSMContext):
+    """Янги телефон рақами сўраш"""
+    await callback.message.delete()
     await state.set_state(AdStates.phone)
-    await message.answer(
-        "Алоқа учун телефон рақамингизни юборинг:",
+    await callback.message.answer(
+        "📱 Янги телефон рақамингизни юборинг:",
         reply_markup=phone_keyboard()
     )
+    await callback.answer()
 
 
 @router.message(AdStates.phone, F.contact | F.text)
@@ -229,6 +284,21 @@ async def process_phone(message: types.Message, state: FSMContext):
         return
 
     phone = message.contact.phone_number if message.contact else message.text
+
+    # Телефонни базага сақлаш (кейинги эълонда тез рўйхатга олиш учун)
+    save_user(
+        user_id=message.from_user.id,
+        phone=phone
+    )
+
+    await _finalize_ad(message, state, phone, message.from_user)
+
+
+async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, user):
+    """
+    Эълонни каналга жойлаш ва базага сақлаш.
+    process_phone ва use_saved_phone иккаласидан чақирилади.
+    """
     data = await state.get_data()
 
     # ═══ ЁМОН СЎЗЛАРНИ ТЕКШИРИШ ═══
@@ -252,15 +322,13 @@ async def process_phone(message: types.Message, state: FSMContext):
             )
             await state.clear()
             return
-    
-    
-    
-    if message.from_user.username:
-        username_text = f"@{message.from_user.username}"
+
+    if user.username:
+        username_text = f"@{user.username}"
     else:
         username_text = (
-            f"<a href='tg://user?id={message.from_user.id}'>"
-            f"{message.from_user.full_name}</a> (Ник йўқ)"
+            f"<a href='tg://user?id={user.id}'>"
+            f"{user.full_name}</a> (Ник йўқ)"
         )
 
     bot_info = await bot.get_me()
@@ -273,7 +341,7 @@ async def process_phone(message: types.Message, state: FSMContext):
         f"{data['district']} т, {data['mfy']} МФЙ\n\n"
         f"📞 <b>Алоқа:</b> {phone}\n"
         f"💬 <b>Телеграм:</b> {username_text}\n\n"
-        f"Админсиз эълон жойлаш: @{bot_info.username}\n"
+        f"Эълон жойланг: @{bot_info.username}\n"
         f"Канал: @internetmolbozor"
     )
 
@@ -301,40 +369,63 @@ async def process_phone(message: types.Message, state: FSMContext):
         msg_ids_str = ",".join([str(msg.message_id) for msg in sent_messages])
 
         db_username = (
-            f"@{message.from_user.username}"
-            if message.from_user.username
-            else f"ID: {message.from_user.id}"
+            f"@{user.username}"
+            if user.username
+            else f"ID: {user.id}"
         )
 
         p = get_placeholder()
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute(f"""
-            INSERT INTO ads
-            (user_id, msg_id, animal_type, quantity, price,
-             description, region, district, mfy, phone, username)
-            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
-        """, (
-            message.from_user.id, msg_ids_str,
-            data['animal_type'], data['quantity'], data['price'],
-            data['description'], data['region'], data['district'],
-            data['mfy'], phone, db_username
-        ))
+
+        if DATABASE_URL := __import__('os').getenv("DATABASE_URL"):
+            cursor.execute(f"""
+                INSERT INTO ads
+                (user_id, msg_id, animal_type, quantity, price,
+                 description, region, district, mfy, phone, username,
+                 expires_at)
+                VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
+                        NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
+            """, (
+                user.id, msg_ids_str,
+                data['animal_type'], data['quantity'], data['price'],
+                data['description'], data['region'], data['district'],
+                data['mfy'], phone, db_username
+            ))
+        else:
+            cursor.execute(f"""
+                INSERT INTO ads
+                (user_id, msg_id, animal_type, quantity, price,
+                 description, region, district, mfy, phone, username,
+                 expires_at)
+                VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
+                        datetime('now', '+{AD_EXPIRE_DAYS} days'))
+            """, (
+                user.id, msg_ids_str,
+                data['animal_type'], data['quantity'], data['price'],
+                data['description'], data['region'], data['district'],
+                data['mfy'], phone, db_username
+            ))
+
         conn.commit()
         conn.close()
 
         await message.answer(
-            "🎉 Эълонингиз @internetmolbozor каналига муваффақиятли жойланди!",
+            f"🎉 Эълонингиз @internetmolbozor каналига муваффақиятли жойланди!\n\n"
+            f"📅 Эълон <b>{AD_EXPIRE_DAYS} кун</b> актив бўлади.\n"
+            f"Муддат тугашидан 7 ва 2 кун олдин эслатма оласиз.",
+            parse_mode="HTML",
             reply_markup=main_menu()
         )
     except Exception as e:
+        logging.error(f"Эълон жойлашда хато: {e}")
         await message.answer(f"Хатолик юз берди: {e}", reply_markup=main_menu())
 
     await state.clear()
 
 
 # ═══════════════════════════════════════
-# МЕНИНГ ЭЪЛОНЛАРИМ
+# 🗂 МЕНИНГ ЭЪЛОНЛАРИМ
 # ═══════════════════════════════════════
 
 @router.message(F.text == "🗂 Менинг эълонларим")
@@ -342,10 +433,26 @@ async def my_ads(message: types.Message):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(f"""
-    SELECT id, animal_type, price, status FROM ads WHERE user_id = {p} AND status = {p}
-""", (message.from_user.id, 'active'))
-    
+
+    if __import__('os').getenv("DATABASE_URL"):
+        cursor.execute(f"""
+            SELECT id, animal_type, price, status,
+                   expires_at,
+                   EXTRACT(DAY FROM expires_at - NOW())::int AS days_left
+            FROM ads
+            WHERE user_id = {p} AND status = {p}
+            ORDER BY id DESC
+        """, (message.from_user.id, 'active'))
+    else:
+        cursor.execute(f"""
+            SELECT id, animal_type, price, status,
+                   expires_at,
+                   CAST(julianday(expires_at) - julianday('now') AS INTEGER) AS days_left
+            FROM ads
+            WHERE user_id = {p} AND status = {p}
+            ORDER BY id DESC
+        """, (message.from_user.id, 'active'))
+
     ads = cursor.fetchall()
     conn.close()
 
@@ -353,26 +460,49 @@ async def my_ads(message: types.Message):
         await message.answer("Сизда ҳозирча актив эълонлар йўқ.")
         return
 
-    await message.answer("Сизнинг актив эълонларингиз:")
+    await message.answer(
+        f"📋 <b>Сизнинг актив эълонларингиз ({len(ads)} та):</b>",
+        parse_mode="HTML"
+    )
+
     for ad in ads:
-        ad_id, a_type, price, status = ad
-        inline_kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🤝 Сотилди", callback_data=f"sold_{ad_id}"),
-            InlineKeyboardButton(text="❌ Ўчириш", callback_data=f"del_{ad_id}")
-        ]])
+        ad_id, a_type, price, status, expires_at, days_left = ad
+
+        # Муддат индикатори
+        if days_left is not None and days_left <= 2:
+            time_badge = f"🔴 {days_left} кун қолди"
+        elif days_left is not None and days_left <= 7:
+            time_badge = f"🟡 {days_left} кун қолди"
+        else:
+            time_badge = f"🟢 {days_left} кун қолди" if days_left else "🟢 Актив"
+
+        inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🤝 Сотилди", callback_data=f"sold_{ad_id}"),
+                InlineKeyboardButton(text="❌ Ўчириш", callback_data=f"del_{ad_id}")
+            ],
+            [
+                InlineKeyboardButton(text="🔄 10 кунга узайтириш", callback_data=f"extend_{ad_id}")
+            ]
+        ])
+
         await message.answer(
-            f"📦 #{a_type} - {price}",
+            f"📦 <b>#{a_type}</b> — {price}\n"
+            f"📅 {time_badge}",
+            parse_mode="HTML",
             reply_markup=inline_kb
         )
 
 
 # ═══════════════════════════════════════
-# ИНЛАЙН CALLBACK
+# ИНЛАЙН CALLBACK — СОТИЛДИ / ЎЧИРИШ / УЗАЙТИРИШ
 # ═══════════════════════════════════════
 
-@router.callback_query(F.data.startswith("sold_") | F.data.startswith("del_"))
+@router.callback_query(F.data.startswith("sold_") | F.data.startswith("del_") | F.data.startswith("extend_"))
 async def handle_ad_action(callback: types.CallbackQuery):
-    action, ad_id = callback.data.split("_")
+    parts = callback.data.split("_")
+    action = parts[0]
+    ad_id = parts[1]
 
     p = get_placeholder()
     conn = get_connection()
@@ -381,7 +511,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
         SELECT msg_id, animal_type, quantity, price, region, district, mfy, phone, username
         FROM ads WHERE id = {p}
     """, (int(ad_id),))
-    
+
     ad = cursor.fetchone()
 
     if not ad:
@@ -438,4 +568,16 @@ async def handle_ad_action(callback: types.CallbackQuery):
             "❌ Эълон каналдан бутунлай ўчирилди."
         )
 
+    elif action == "extend":
+        conn.close()
+        extend_ad(int(ad_id), days=10)
+        await callback.message.edit_text(
+            f"✅ <b>{a_type}</b> эълони яна <b>10 кунга</b> узайтирилди!\n\n"
+            f"Эълон яна актив бўлди.",
+            parse_mode="HTML"
+        )
+        await callback.answer("Муддат узайтирилди!")
+        return
+
     conn.close()
+    await callback.answer()
