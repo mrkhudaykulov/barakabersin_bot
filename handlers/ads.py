@@ -345,8 +345,8 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         f"{html.escape(data['mfy'])} МФЙ\n\n"
         f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
         f"💬 <b>Телеграм:</b> {username_text}\n\n"
-        f"Канал: @internetmolbozor"
-        f"Эълон жойланг: @{bot_info.username}\n"
+        f"Канал: @internetmolbozor\n"
+        f"Эълон жойланг: @{bot_info.username}"
         
     )
 
@@ -441,14 +441,12 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
                 try:
                     await bot.send_message(
                         target_user_id,
-                        f"""
-        🔔 Сиз кузатаётган эълон топилди!        
-        🐾 {data['animal_type']}
-        📍 {data['region']}
-        💰 {data['price']}        
-        📲 Кўриш:
-        {post_link}
-        """
+                        f"🔔 *Сиз кузатаётган эълон топилди!*\n\n"
+                        f"🐾 {html.escape(data['animal_type'])}\n"
+                        f"📍 {html.escape(data['region'])}\n"
+                        f"💰 {html.escape(data['price'])}\n\n"
+                        f"📲 Кўриш:\n{post_link}",
+                        parse_mode="Markdown"
                     )
                 except Exception:
                     pass
@@ -645,7 +643,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
         conn.close()
         extend_ad(int(ad_id), days=10)
         await callback.message.edit_text(
-            f"✅ <b>{a_type}</b> эълони яна <b>10 кунга</b> узайтирилди!\n\n"
+            f"✅ <b>{html.escape(a_type)}</b> эълони яна <b>10 кунга</b> узайтирилди!\n\n"
             f"Эълон яна актив бўлди.",
             parse_mode="HTML"
         )
