@@ -223,7 +223,16 @@ async def process_description(message: types.Message, state: FSMContext):
     if message.text == "⏭ Ёзмасдан ўтказиб юбориш":
         await state.update_data(description="Киритилмаган")
     else:
-        await state.update_data(description=message.text)
+        # ═══ УЗУНЛИК ТЕКШИРИШ ═══
+        desc = message.text[:300]  # 300 белгига чеклаш
+        if len(message.text) > 300:
+            await message.answer(
+                f"⚠️ Изоҳ жуда узун ({len(message.text)} белги). "
+                f"Узр 300 та белгидан ошиш мумкин эмас.\n\n"                
+            )
+        await state.update_data(description=desc)
+    # ... qolgan kod o'zgarmaydi
+        
 
     # ═══ ТЕЗ РЎЙХАТГА ОЛИШ: базада телефон борми? ═══
     saved_phone = get_user_phone(message.from_user.id)
