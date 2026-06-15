@@ -5,7 +5,8 @@ from states import NotifyStates
 from keyboards import (
     search_animal_keyboard,
     regions_keyboard,
-    main_menu
+    main_menu,
+    notify_menu_keyboard
 )
 
 from database import (
@@ -19,14 +20,26 @@ router = Router()
 
 
 @router.message(F.text == "🔔 Хабардор қил")
-async def notify_start(message: types.Message, state: FSMContext):
+async def notify_start(message: types.Message):
+
+    await message.answer(
+        "🔔 Хабарнома маркази\n",
+        "Бу марказ орқали Сиз эълонлар ҳақида ЭСЛАТМАлар олиб туришингиз ва кузатишингиз мумкин\n",
+        reply_markup=notify_menu_keyboard()
+    )
+
+@router.message(F.text == "➕ Янги кузатув")
+async def create_notification(
+    message: types.Message,
+    state: FSMContext
+):
 
     await state.set_state(
         NotifyStates.animal_type
     )
 
     await message.answer(
-        "Қайси чорва ҳақида хабар қилиш керак?",
+        "Қайси чорва ҳақида хабардор қилиш керак?",
         reply_markup=search_animal_keyboard()
     )
 
