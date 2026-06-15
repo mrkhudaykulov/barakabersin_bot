@@ -231,3 +231,14 @@ def regions_with_all_keyboard():
         KeyboardButton(text="❌ Бекор қилиш")
     )
     return builder.as_markup(resize_keyboard=True)
+
+
+def notify_menu_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="➕ Янги кузатув")],
+            [KeyboardButton(text="📌 Менинг кузатувларим")],
+            [KeyboardButton(text="🏠 Бош меню")]
+        ],
+        resize_keyboard=True
+    )
