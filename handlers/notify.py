@@ -11,7 +11,7 @@ from keyboards import (
 from database import (
     get_connection,
     get_placeholder,
-    parse_price_text
+    parse_price_text,
     fix_keyboard_text
 )
 
