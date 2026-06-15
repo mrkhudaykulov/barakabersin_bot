@@ -190,7 +190,7 @@ def migrate_db():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()",
-            "ALTER TABLE notifications ADD CONSTRAINT unique_notification UNIQUE (user_id, animal_type, region, min_price, max_price)
+            "ALTER TABLE notifications ADD CONSTRAINT unique_notification UNIQUE (user_id, animal_type, region, min_price, max_price)"
         ]
         for sql in migrations:
             try:
