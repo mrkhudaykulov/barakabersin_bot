@@ -8,6 +8,7 @@ from keyboards import (
     regions_keyboard,
     main_menu,
     notify_menu_keyboard
+    standard_step_keyboard
 )
 
 from database import (
@@ -77,9 +78,10 @@ async def notify_region(message: types.Message, state: FSMContext):
     )
 
     await message.answer(
-        "Минимал (энг паст) нархи қанча бўлсин?\n\nМасалан:\n3000000"
+        "Минимал (энг паст) нархи қанча бўлсин?\n\nМасалан:\n3000000",
+        reply_markup=standard_step_keyboard()
     )
-
+    
 @router.message(NotifyStates.min_price)
 async def notify_min_price(message: types.Message, state: FSMContext):
 
@@ -87,7 +89,8 @@ async def notify_min_price(message: types.Message, state: FSMContext):
 
     if price <= 0:
         await message.answer(
-            "Нархни тўғри киритинг."
+            "Нархни тўғри киритинг.",
+            reply_markup=standard_step_keyboard()
         )
         return
 
@@ -100,7 +103,8 @@ async def notify_min_price(message: types.Message, state: FSMContext):
     )
 
     await message.answer(
-        "Максимал (энг баланд) нархи қанча бўлсин?"
+        "Максимал (энг баланд) нархи қанча бўлсин?",
+        reply_markup=standard_step_keyboard()
     )
 
 @router.message(NotifyStates.max_price)
@@ -118,7 +122,8 @@ async def notify_max_price(message: types.Message, state: FSMContext):
 
     if max_price < data["min_price"]:
         await message.answer(
-            "Максимал нарх минимал нархдан катта бўлиши керак."
+            "Максимал нарх минимал нархдан катта бўлиши керак.",
+            reply_markup=standard_step_keyboard()
         )
         return
 
