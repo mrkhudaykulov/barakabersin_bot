@@ -12,6 +12,7 @@ from database import (
     get_connection,
     get_placeholder,
     parse_price_text
+    fix_keyboard_text
 )
 
 router = Router()
@@ -33,7 +34,7 @@ async def notify_start(message: types.Message, state: FSMContext):
 async def notify_animal(message: types.Message, state: FSMContext):
 
     await state.update_data(
-        animal_type=message.text
+        animal_type=fix_keyboard_text(message.text)
     )
 
     await state.set_state(
@@ -51,7 +52,7 @@ async def notify_animal(message: types.Message, state: FSMContext):
 async def notify_region(message: types.Message, state: FSMContext):
 
     await state.update_data(
-        region=message.text
+        region=fix_keyboard_text(message.text)
     )
 
     await state.set_state(
@@ -90,6 +91,18 @@ async def notify_max_price(message: types.Message, state: FSMContext):
 
     max_price = parse_price_text(message.text)
 
+    if max_price <= 0:
+        await message.answer(
+            "Нархни тўғри киритинг."
+        )
+        return
+
+    if max_price < data["min_price"]:
+        await message.answer(
+            "Максимал нарх минимал нархдан катта бўлиши керак."
+        )
+        return
+
     data = await state.get_data()
 
     conn = get_connection()
@@ -97,6 +110,38 @@ async def notify_max_price(message: types.Message, state: FSMContext):
 
     p = get_placeholder()
 
+    
+    cur.execute(
+        f"""
+        SELECT id
+        FROM notifications
+        WHERE user_id = {p}
+        AND animal_type = {p}
+        AND region = {p}
+        AND min_price = {p}
+        AND max_price = {p}
+        """,
+        (
+            message.from_user.id,
+            data["animal_type"],
+            data["region"],
+            data["min_price"],
+            max_price
+        )
+    )
+    
+    exists = cur.fetchone()
+    
+    if exists:
+        conn.close()
+    
+        await message.answer(
+            "⚠️ Бу эслатма аввал яратилган."
+        )
+        return
+    
+    
+    
     cur.execute(
         f"""
         INSERT INTO notifications
