@@ -1,3 +1,4 @@
+import html
 import logging
 
 from aiogram import Router, types, F
@@ -334,16 +335,18 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
 
     bot_info = await bot.get_me()
     caption = (
-        f"#️⃣ #{data['animal_type']}\n"
-        f"🔢 <b>Сони:</b> {data['quantity']}\n"
-        f"💰 <b>Нархи:</b> {data['price']}\n"
-        f"📝 <b>Изоҳ:</b> {data['description']}\n"
-        f"📍 <b>Манзил:</b> {data['region']} в, "
-        f"{data['district']} т, {data['mfy']} МФЙ\n\n"
-        f"📞 <b>Алоқа:</b> {phone}\n"
+        f"#️⃣ #{html.escape(data['animal_type'])}\n"
+        f"🔢 <b>Сони:</b> {html.escape(data['quantity'])}\n"
+        f"💰 <b>Нархи:</b> {html.escape(data['price'])}\n"
+        f"📝 <b>Изоҳ:</b> {html.escape(data['description'])}\n"
+        f"📍 <b>Манзил:</b> {html.escape(data['region'])} в, "
+        f"{html.escape(data['district'])} т, "
+        f"{html.escape(data['mfy'])} МФЙ\n\n"
+        f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
         f"💬 <b>Телеграм:</b> {username_text}\n\n"
-        f"Эълон жойланг: @{bot_info.username}\n"
         f"Канал: @internetmolbozor"
+        f"Эълон жойланг: @{bot_info.username}\n"
+        
     )
 
     media_list = data.get("media_list", [])
@@ -542,9 +545,9 @@ async def my_ads(message: types.Message):
             channel_link = f"\n📢 <a href='https://t.me/internetmolbozor/{first_msg_id}'>Каналда кўриш</a>"
 
         await message.answer(
-            f"📦 <b>#{a_type}</b> — {price}\n"
-            f"📅 {time_badge}",
-            f"{channel_link}"
+            f"📦 <b>#{html.escape(a_type)}</b> — {html.escape(price)}\n"
+            f"📅 {time_badge}"
+            f"{channel_link}",
             parse_mode="HTML",
             reply_markup=inline_kb
         )
@@ -591,10 +594,11 @@ async def handle_ad_action(callback: types.CallbackQuery):
 
         new_caption = (
             f"🔴 <b>СОТИЛДИ!</b> 🔴\n\n"
-            f"#️⃣ #{a_type}\n"
-            f"🔢 <b>Сони:</b> {qty}\n"
-            f"💰 <b>Нархи:</b> {price}\n"
-            f"📍 <b>Манзил:</b> {region} в, {dist} т\n"
+            f"#️⃣ #{html.escape(a_type)}\n"
+            f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
+            f"💰 <b>Нархи:</b> {html.escape(price)}\n"
+            f"📍 <b>Манзил:</b> {html.escape(region)} в, "
+            f"{html.escape(dist)} т\n"
             f"🤝 Харидорга барака берсин!"
         )
         try:
