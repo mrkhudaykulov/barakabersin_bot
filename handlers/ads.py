@@ -229,6 +229,7 @@ async def process_description(message: types.Message, state: FSMContext):
     saved_phone = get_user_phone(message.from_user.id)
     if saved_phone:
         await state.update_data(saved_phone=saved_phone)
+        
         # Сақланган телефонни кўрсатиб, тасдиқ сўраймиз
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(
@@ -571,7 +572,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(f"""
-        SELECT msg_id, animal_type, quantity, price, region, district, mfy, phone, username
+        SELECT user_id, msg_id, animal_type, quantity, price, region, district, mfy, phone, username
         FROM ads WHERE id = {p}
     """, (int(ad_id),))
 
@@ -583,7 +584,14 @@ async def handle_ad_action(callback: types.CallbackQuery):
         return
         
 
-    msg_ids_str, a_type, qty, price, region, dist, mfy, phone, username = ad
+    # ═══ ЭГА ТЕКШИРИШ ═══
+    ad_owner_id = ad[0]
+    if callback.from_user.id != ad_owner_id:
+        await callback.answer("⛔ Сиз бу эълон эгаси эмассиз!")
+        conn.close()
+        return
+
+    msg_ids_str, a_type, qty, price, region, dist, mfy, phone, username = ad[1:]    
     msg_ids = [int(mid) for mid in str(msg_ids_str).split(",")]
 
     if action == "sold":
