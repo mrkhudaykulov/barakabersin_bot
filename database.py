@@ -844,29 +844,48 @@ def get_notification_users(
         price
 ):
     conn = get_connection()
-    cur = conn.cursor()
+    cursor = conn.cursor()
 
     p = get_placeholder()
 
-    cur.execute(
-        f"""
-        SELECT user_id
-        FROM notifications
-        WHERE animal_type = {p}
-        AND region = {p}
-        AND min_price <= {p}
-        AND max_price >= {p}
-        AND is_active = TRUE
-        """,
-        (
-            animal_type,
-            region,
-            price,
-            price
+    if DATABASE_URL:
+        cursor.execute(
+            f"""
+            SELECT user_id
+            FROM notifications
+            WHERE animal_type = {p}
+            AND region = {p}
+            AND min_price <= {p}
+            AND max_price >= {p}
+            AND is_active = TRUE
+            """,
+            (
+                animal_type,
+                region,
+                price,
+                price
+            )
         )
-    )
+    else:
+        cursor.execute(
+            f"""
+            SELECT user_id
+            FROM notifications
+            WHERE animal_type = {p}
+            AND region = {p}
+            AND min_price <= {p}
+            AND max_price >= {p}
+            AND is_active = 1
+            """,
+            (
+                animal_type,
+                region,
+                price,
+                price
+            )
+        )
 
-    rows = cur.fetchall()
+    rows = cursor.fetchall()
 
     conn.close()
 
