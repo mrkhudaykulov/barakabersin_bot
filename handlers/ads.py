@@ -485,7 +485,8 @@ async def my_ads(message: types.Message):
         cursor.execute(f"""
             SELECT id, animal_type, price, status,
                    expires_at,
-                   EXTRACT(DAY FROM expires_at - NOW())::int AS days_left
+                   EXTRACT(DAY FROM expires_at - NOW())::int AS days_left,
+                   msg_id
             FROM ads
             WHERE user_id = {p} AND status = {p}
             ORDER BY id DESC
@@ -494,7 +495,8 @@ async def my_ads(message: types.Message):
         cursor.execute(f"""
             SELECT id, animal_type, price, status,
                    expires_at,
-                   CAST(julianday(expires_at) - julianday('now') AS INTEGER) AS days_left
+                   CAST(julianday(expires_at) - julianday('now') AS INTEGER) AS days_left,
+                   msg_id
             FROM ads
             WHERE user_id = {p} AND status = {p}
             ORDER BY id DESC
@@ -513,7 +515,7 @@ async def my_ads(message: types.Message):
     )
 
     for ad in ads:
-        ad_id, a_type, price, status, expires_at, days_left = ad
+        ad_id, a_type, price, status, expires_at, days_left, msg_id_str = ad
 
         # Муддат индикатори
         if days_left is not None and days_left <= 2:
@@ -533,9 +535,16 @@ async def my_ads(message: types.Message):
             ]
         ])
 
+        # Канал ҳаволаси
+        channel_link = ""
+        if msg_id_str:
+            first_msg_id = str(msg_id_str).split(",")[0].strip()
+            channel_link = f"\n📢 <a href='https://t.me/internetmolbozor/{first_msg_id}'>Каналда кўриш</a>"
+
         await message.answer(
             f"📦 <b>#{a_type}</b> — {price}\n"
             f"📅 {time_badge}",
+            f"{channel_link}",
             parse_mode="HTML",
             reply_markup=inline_kb
         )
