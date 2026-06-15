@@ -891,3 +891,50 @@ def get_notification_users(
     conn.close()
 
     return rows
+
+
+def get_user_notifications(user_id):
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    p = get_placeholder()
+
+    cur.execute(
+        f"""
+        SELECT
+            id,
+            animal_type,
+            region,
+            min_price,
+            max_price
+        FROM notifications
+        WHERE user_id = {p}
+        ORDER BY id DESC
+        """,
+        (user_id,)
+    )
+
+    rows = cur.fetchall()
+
+    conn.close()
+
+    return rows
+
+def delete_notification(notification_id):
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    p = get_placeholder()
+
+    cur.execute(
+        f"""
+        DELETE FROM notifications
+        WHERE id = {p}
+        """,
+        (notification_id,)
+    )
+
+    conn.commit()
+    conn.close()
