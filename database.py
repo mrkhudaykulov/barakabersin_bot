@@ -836,3 +836,38 @@ def match_price_index(text):
             return group_name
 
     return text
+
+
+def get_notification_users(
+        animal_type,
+        region,
+        price
+):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    p = get_placeholder()
+
+    cur.execute(
+        f"""
+        SELECT user_id
+        FROM notifications
+        WHERE animal_type = {p}
+        AND region = {p}
+        AND min_price <= {p}
+        AND max_price >= {p}
+        AND is_active = TRUE
+        """,
+        (
+            animal_type,
+            region,
+            price,
+            price
+        )
+    )
+
+    rows = cur.fetchall()
+
+    conn.close()
+
+    return rows
