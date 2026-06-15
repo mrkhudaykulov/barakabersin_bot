@@ -248,7 +248,7 @@ async def my_notifications(message: types.Message):
         parse_mode="Markdown"
     )
 
-    for n in notif:
+    for n in notifications:
         notif_id, animal, region, min_p, max_p = n[0], n[1], n[2], n[3], n[4]
 
         inline_kb = InlineKeyboardMarkup(inline_keyboard=[
