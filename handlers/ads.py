@@ -581,6 +581,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
         await callback.answer("Эълон топилмади.")
         conn.close()
         return
+        
 
     msg_ids_str, a_type, qty, price, region, dist, mfy, phone, username = ad
     msg_ids = [int(mid) for mid in str(msg_ids_str).split(",")]
