@@ -258,11 +258,26 @@ async def my_notifications(message: types.Message):
 async def delete_notification_callback(callback: types.CallbackQuery):
     notif_id = int(callback.data.replace("del_notif_", ""))
 
-    delete_notification(notif_id)
-
-    await callback.message.edit_text(
-        "🗑 Кузатув ўчирилди.",
+    # ═══ ТЕКШИРИШ — ФАҚАТ ЭГАСИ ЎЧИРА ОЛАДИ ═══
+    p = get_placeholder()
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        f"SELECT user_id FROM notifications WHERE id = {p}",
+        (notif_id,)
     )
+    row = cur.fetchone()
+
+    if not row or row[0] != callback.from_user.id:
+        await callback.answer("⛔ Сиз бу кузатув эгаси эмассиз!")
+        conn.close()
+        return
+
+    cur.execute(f"DELETE FROM notifications WHERE id = {p}", (notif_id,))
+    conn.commit()
+    conn.close()
+
+    await callback.message.edit_text("🗑 Кузатув ўчирилди.")
     await callback.answer("Ўчирилди ✅")
 
 
@@ -274,14 +289,30 @@ async def delete_notification_callback(callback: types.CallbackQuery):
 async def edit_notification_start(callback: types.CallbackQuery, state: FSMContext):
     notif_id = int(callback.data.replace("edit_notif_", ""))
 
+    # ═══ ТЕКШИРИШ — ФАҚАТ ЭГАСИ ТАҲРИРЛАЙ ОЛАДИ ═══
+    p = get_placeholder()
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        f"SELECT user_id FROM notifications WHERE id = {p}",
+        (notif_id,)
+    )
+    row = cur.fetchone()
+
+    if not row or row[0] != callback.from_user.id:
+        await callback.answer("⛔ Сиз бу кузатув эгаси эмассиз!")
+        conn.close()
+        return
+    conn.close()
+
     await state.set_state(NotifyStates.edit_min_price)
     await state.update_data(edit_notif_id=notif_id)
-
     await callback.message.answer(
         "✏️ Янги *минимал нархни* киритинг:\n_(масалан: 3000000)_",
         parse_mode="Markdown"
     )
     await callback.answer()
+    
 
 
 @router.message(NotifyStates.edit_min_price)
