@@ -17,7 +17,8 @@ from keyboards import (
 from database import (
     contains_bad_word, parse_price_text, MIN_PRICE, MAX_PRICE,
     fmt_number, fix_keyboard_text, get_connection, get_placeholder,
-    save_user, get_user_phone, extend_ad, archive_ad, AD_EXPIRE_DAYS
+    save_user, get_user_phone, extend_ad, archive_ad, AD_EXPIRE_DAYS,
+    get_notification_users
 )
 
 router = Router()
@@ -408,6 +409,52 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             ))
 
         conn.commit()
+
+        # ===== ХАБАРДОР ҚИЛ ТИЗИМИ =====
+
+        try:
+            ad_price = parse_price_text(data["price"])
+        
+            users = get_notification_users(
+                animal_type=data["animal_type"],
+                region=data["region"],
+                price=ad_price
+            )
+        
+            post_link = (
+                f"https://t.me/internetmolbozor/"
+                f"{sent_messages[0].message_id}"
+            )
+        
+            for row in users:
+        
+                target_user_id = row[0]
+        
+                # ўзининг эълони учун хабар юбормаймиз
+                if target_user_id == user.id:
+                    continue
+        
+                try:
+                    await bot.send_message(
+                        target_user_id,
+                        f"""
+        🔔 Сиз кузатаётган эълон топилди!        
+        🐾 {data['animal_type']}
+        📍 {data['region']}
+        💰 {data['price']}        
+        📲 Кўриш:
+        {post_link}
+        """
+                    )
+                except Exception:
+                    pass
+        
+        except Exception as e:
+            logging.error(
+                f"Notification error: {e}"
+            )
+
+        
         conn.close()
 
         await message.answer(
