@@ -7,7 +7,7 @@ from keyboards import (
     search_animal_keyboard,
     regions_keyboard,
     main_menu,
-    notify_menu_keyboard
+    notify_menu_keyboard,
     standard_step_keyboard
 )
 
