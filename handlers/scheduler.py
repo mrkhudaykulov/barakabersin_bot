@@ -16,7 +16,7 @@ from datetime import datetime
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from database import get_expiring_ads, get_expired_ads, archive_ad
+from database import get_expiring_ads, get_expired_ads, archive_ad, contains_bad_word
 from config import CHANNEL_ID
 
 logger = logging.getLogger(__name__)
