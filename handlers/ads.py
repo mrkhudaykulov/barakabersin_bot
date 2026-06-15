@@ -544,7 +544,7 @@ async def my_ads(message: types.Message):
         await message.answer(
             f"📦 <b>#{a_type}</b> — {price}\n"
             f"📅 {time_badge}",
-            f"{channel_link}",
+            f"{channel_link}"
             parse_mode="HTML",
             reply_markup=inline_kb
         )
