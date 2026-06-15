@@ -300,18 +300,3 @@ async def global_back_handler(message: types.Message, state: FSMContext):
         )
         return
 
-
-# bunaqa handlaerlar doim oxirida bulishi kerak
-@router.message(F.text)
-async def main_menu_fallback(message: types.Message, state: FSMContext):
-    """Asosiy menyuda noto'g'ri matn yozilganida"""
-    current = await state.get_state()
-
-    # Faqat state YO'Q bo'lganda (asosiy menyu)
-    if current is not None:
-        return
-
-    await message.answer(
-        "⚠️ Меню тугмаларидан бирини танланг:",
-        reply_markup=main_menu()
-    )
