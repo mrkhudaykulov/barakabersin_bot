@@ -31,6 +31,8 @@ def get_placeholder():
 MAX_PRICE = 50_000_000
 MIN_PRICE = 50_000
 
+# Эълон стандарт муддати (кун)
+AD_EXPIRE_DAYS = 10
 
 # ═══════════════════════════════════════
 # БАЗА ЯРАТИШ
@@ -56,13 +58,19 @@ def init_db():
                 mfy TEXT,
                 phone TEXT,
                 username TEXT,
-                status TEXT DEFAULT 'active'
+                status TEXT DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT NOW(),
+                expires_at TIMESTAMP DEFAULT (NOW() + INTERVAL '10 days')
             )
         """)
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY
+                user_id BIGINT PRIMARY KEY,
+                phone TEXT,
+                full_name TEXT,
+                username TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
             )
         """)
 
@@ -76,6 +84,7 @@ def init_db():
                 created_at TIMESTAMP DEFAULT NOW()
             )
         """)
+
     else:
         # ═══ SQLITE (lokal test uchun) ═══
         cursor.execute("""
@@ -92,13 +101,19 @@ def init_db():
                 mfy TEXT,
                 phone TEXT,
                 username TEXT,
-                status TEXT DEFAULT 'active'
+                status TEXT DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP DEFAULT (datetime('now', '+10 days'))
             )
         """)
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY
+                user_id INTEGER PRIMARY KEY,
+                phone TEXT,
+                full_name TEXT,
+                username TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
@@ -115,10 +130,218 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+    # Мавжуд базани янги устунлар билан янгилаш
+    migrate_db()
+
     logging.info(
         "Baza yaratildi (PostgreSQL)" if DATABASE_URL
         else "Baza yaratildi (SQLite)"
     )
+
+
+def migrate_db():
+    """
+    Мавжуд базага янги устунларни хавфсиз қўшиш.
+    Бот аллақачон ишлаётган бўлса ҳам хатосиз ишлайди.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    migrations = []
+
+    if DATABASE_URL:
+        # ═══ PostgreSQL migrations ═══
+        migrations = [
+            # ads жадвали
+            "ALTER TABLE ads ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()",
+            "ALTER TABLE ads ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP DEFAULT (NOW() + INTERVAL '10 days')",
+            # users жадвали
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()",
+        ]
+        for sql in migrations:
+            try:
+                cursor.execute(sql)
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                logging.debug(f"Migration (skipped): {e}")
+
+    else:
+        # ═══ SQLite migrations — try/except bilan ═══
+        sqlite_migrations = [
+            "ALTER TABLE ads ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE ads ADD COLUMN expires_at TIMESTAMP DEFAULT (datetime('now', '+10 days'))",
+            "ALTER TABLE users ADD COLUMN phone TEXT",
+            "ALTER TABLE users ADD COLUMN full_name TEXT",
+            "ALTER TABLE users ADD COLUMN username TEXT",
+            "ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        ]
+        for sql in sqlite_migrations:
+            try:
+                cursor.execute(sql)
+                conn.commit()
+            except Exception:
+                # Устун аллақачон мавжуд — хавфсиз ўтказиб юборамиз
+                pass
+
+    conn.close()
+    logging.info("Миграция тугади.")
+
+
+# ═══════════════════════════════════════
+# ФОЙДАЛАНУВЧИ — ТЕЛЕФОН САҚЛАШ
+# ═══════════════════════════════════════
+
+def save_user(user_id: int, full_name: str = None, username: str = None, phone: str = None):
+    """Фойдаланувчини базага сақлаш ёки янгилаш"""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if DATABASE_URL:
+        cursor.execute(f"""
+            INSERT INTO users (user_id, full_name, username, phone)
+            VALUES ({p}, {p}, {p}, {p})
+            ON CONFLICT (user_id) DO UPDATE SET
+                full_name = COALESCE(EXCLUDED.full_name, users.full_name),
+                username  = COALESCE(EXCLUDED.username, users.username),
+                phone     = COALESCE(EXCLUDED.phone, users.phone)
+        """, (user_id, full_name, username, phone))
+    else:
+        cursor.execute(f"""
+            INSERT OR IGNORE INTO users (user_id, full_name, username, phone)
+            VALUES ({p}, {p}, {p}, {p})
+        """, (user_id, full_name, username, phone))
+
+        # Мавжуд фойдаланувчини янгилаш
+        if full_name:
+            cursor.execute(f"UPDATE users SET full_name = {p} WHERE user_id = {p}", (full_name, user_id))
+        if username:
+            cursor.execute(f"UPDATE users SET username = {p} WHERE user_id = {p}", (username, user_id))
+        if phone:
+            cursor.execute(f"UPDATE users SET phone = {p} WHERE user_id = {p}", (phone, user_id))
+
+    conn.commit()
+    conn.close()
+
+
+def get_user_phone(user_id: int) -> str | None:
+    """Базадан фойдаланувчи телефонини олиш"""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"SELECT phone FROM users WHERE user_id = {p}", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row and row[0] else None
+
+
+# ═══════════════════════════════════════
+# ЭЪЛОН МУДДАТИ — SCHEDULER УЧУН
+# ═══════════════════════════════════════
+
+def get_expiring_ads(days_left: int):
+    """
+    Муддати days_left кун қолган АКТИВ эълонларни қайтаради.
+    Scheduler эслатма юборади.
+    """
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if DATABASE_URL:
+        cursor.execute(f"""
+            SELECT id, user_id, animal_type, quantity, price, msg_id
+            FROM ads
+            WHERE status = {p}
+              AND expires_at IS NOT NULL
+              AND expires_at::date = (NOW() + INTERVAL '{days_left} days')::date
+        """, ("active",))
+    else:
+        cursor.execute(f"""
+            SELECT id, user_id, animal_type, quantity, price, msg_id
+            FROM ads
+            WHERE status = {p}
+              AND expires_at IS NOT NULL
+              AND date(expires_at) = date('now', '+{days_left} days')
+        """, ("active",))
+
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def get_expired_ads():
+    """
+    Муддати ўтган (expires_at < now) АКТИВ эълонларни қайтаради.
+    Scheduler архивлаши учун.
+    """
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if DATABASE_URL:
+        cursor.execute(f"""
+            SELECT id, user_id, animal_type, msg_id
+            FROM ads
+            WHERE status = {p}
+              AND expires_at IS NOT NULL
+              AND expires_at < NOW()
+        """, ("active",))
+    else:
+        cursor.execute(f"""
+            SELECT id, user_id, animal_type, msg_id
+            FROM ads
+            WHERE status = {p}
+              AND expires_at IS NOT NULL
+              AND expires_at < datetime('now')
+        """, ("active",))
+
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def archive_ad(ad_id: int):
+    """Эълонни arxiv статусига ўтказиш"""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"UPDATE ads SET status = 'expired' WHERE id = {p}",
+        (ad_id,)
+    )
+    conn.commit()
+    conn.close()
+
+
+def extend_ad(ad_id: int, days: int = 10):
+    """Эълон муддатини uzaytirish"""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if DATABASE_URL:
+        cursor.execute(f"""
+            UPDATE ads
+            SET expires_at = NOW() + INTERVAL '{days} days',
+                status = 'active'
+            WHERE id = {p}
+        """, (ad_id,))
+    else:
+        cursor.execute(f"""
+            UPDATE ads
+            SET expires_at = datetime('now', '+{days} days'),
+                status = 'active'
+            WHERE id = {p}
+        """, (ad_id,))
+
+    conn.commit()
+    conn.close()
 
 
 # ═══════════════════════════════════════
@@ -142,7 +365,6 @@ KEYBOARD_FIX = {
     "Коракалпоғистон": "Қорақалпоғистон",
     "Кўп": "Қўй",
     "Кўq": "Қўй",
-    "Кўп": "Қўй",
     "Кyка/Сигир": "Буқа/Сигир",
     "Бapчаси": "Барчаси",
 }
@@ -257,7 +479,6 @@ def get_market_prices_index():
     cursor = conn.cursor()
 
     if DATABASE_URL:
-        # ═══ PostgreSQL ═══
         cursor.execute("""
             SELECT animal_type, region,
                    AVG(price) as avg_price,
@@ -265,12 +486,11 @@ def get_market_prices_index():
                    MAX(price) as max_price,
                    COUNT(*) as cnt
             FROM market_prices
-            WHERE created_at > NOW() - INTERVAL '30 days'
+            WHERE created_at > NOW() - INTERVAL '10 days'
             GROUP BY animal_type, region
             ORDER BY animal_type, avg_price
         """)
     else:
-        # ═══ SQLite ═══
         cursor.execute("""
             SELECT animal_type, region,
                    AVG(price) as avg_price,
@@ -278,7 +498,7 @@ def get_market_prices_index():
                    MAX(price) as max_price,
                    COUNT(*) as cnt
             FROM market_prices
-            WHERE created_at > datetime('now', '-30 days')
+            WHERE created_at > datetime('now', '-10 days')
             GROUP BY animal_type, region
             ORDER BY animal_type, avg_price
         """)
@@ -543,7 +763,7 @@ def contains_bad_word(text):
 
 
 # ═══════════════════════════════════════
-# НАРХ ИНДЕКСИ — БARCHA PLATFORMALAR УЧУН
+# НАРХ ИНДЕКСИ — BARCHA PLATFORMALAR УЧУН
 # ═══════════════════════════════════════
 
 PRICE_INDEX_MAP = {
@@ -565,14 +785,10 @@ PRICE_INDEX_MAP = {
 
 
 def match_price_index(text):
-    """Tugma matnini narx indeksi guruhiga moslash.
-    Emoji va Unicode farqlarini hisobga olmaydi.
-    Faqat asosiy so'z bo'yicha topadi.
-    """
+    """Tugma matnini narx indeksi guruhiga moslash."""
     if not text:
         return text
 
-    # Emoji ni olib tashlash
     import re
     clean = re.sub(
         r'[\U0001F300-\U0001F9FF\u2600-\u26FF\u2700-\u27BF\u200d\uFE0F]',
@@ -581,12 +797,10 @@ def match_price_index(text):
 
     clean_lower = clean.lower()
 
-    # So'z asosida qidirish
     for key_word, group_name in PRICE_INDEX_MAP.items():
         if key_word in clean_lower:
             return group_name
 
-    # fix_keyboard_text bilan urinish
     fixed = fix_keyboard_text(clean)
     for key_word, group_name in PRICE_INDEX_MAP.items():
         if key_word in fixed.lower():
