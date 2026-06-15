@@ -13,7 +13,8 @@ from database import (
     get_connection,
     get_placeholder,
     parse_price_text,
-    fix_keyboard_text
+    fix_keyboard_text,
+    get_user_notifications
 )
 
 router = Router()
@@ -191,3 +192,29 @@ async def notify_max_price(message: types.Message, state: FSMContext):
         "Мос эълон чиқса автомат хабар қиламиз!",
         reply_markup=main_menu()
     )
+
+
+@router.message(F.text == "📌 Менинг кузатувларим")
+async def my_notifications(message: types.Message):
+
+    notifications = get_user_notifications(
+        message.from_user.id
+    )
+
+    if not notifications:
+        await message.answer(
+            "Сизда ҳозирча кузатувлар мавжуд эмас."
+        )
+        return
+
+    text = "📌 Сизнинг кузатувларингиз:\n\n"
+
+    for n in notifications:
+        text += (
+            f"🐾 {n[1]}\n"
+            f"📍 {n[2]}\n"
+            f"💰 {n[3]:,} - {n[4]:,}\n\n"
+        )
+
+    await message.answer(text)
+
