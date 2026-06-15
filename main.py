@@ -7,6 +7,7 @@ import os
 from config import bot, dp
 from database import init_db
 from handlers import register_all_handlers
+from scheduler import start_scheduler
 
 logging.basicConfig(level=logging.INFO)
 
@@ -16,7 +17,7 @@ async def handle_render_health_check(request):
 
 
 async def main_loop():
-    # Маълумотлар базасини ишга тушириш
+    # Маълумотлар базасини ишга тушириш (миграция ҳам шу ерда)
     init_db()
 
     # Барча handlerларни рўйхатдан ўтказиш
@@ -32,6 +33,10 @@ async def main_loop():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
     print(f"[*] Веб-сервер {port}-портда ишга тушди.")
+
+    # ═══ SCHEDULER — фонда эслатма ва архивлаш ═══
+    asyncio.create_task(start_scheduler(bot))
+    print("[*] Scheduler ишга тушди.")
 
     # Бот polling
     while True:
