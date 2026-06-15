@@ -1,5 +1,6 @@
 from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from states import NotifyStates
 from keyboards import (
@@ -14,7 +15,8 @@ from database import (
     get_placeholder,
     parse_price_text,
     fix_keyboard_text,
-    get_user_notifications
+    get_user_notifications,
+    fmt_number
 )
 
 router = Router()
