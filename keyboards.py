@@ -52,7 +52,7 @@ def animal_types_keyboard():
     ]
     for t in types_list:
         builder.add(KeyboardButton(text=t))
-    builder.adjust(2)
+    builder.adjust(3)
     builder.row(
         KeyboardButton(text="🔙 Орқага"),
         KeyboardButton(text="❌ Бекор қилиш")
@@ -152,7 +152,7 @@ def districts_keyboard(region):
 
     for d in list_d:
         builder.add(KeyboardButton(text=d))
-    builder.adjust(2)
+    builder.adjust(3)
     builder.row(
         KeyboardButton(text="🔙 Орқага"),
         KeyboardButton(text="❌ Бекор қилиш")
@@ -207,7 +207,7 @@ def search_animal_keyboard():
     ]
     for t in types_list:
         builder.add(KeyboardButton(text=t))
-    builder.adjust(2)
+    builder.adjust(3)
     builder.row(
         KeyboardButton(text="🔙 Орқага"),
         KeyboardButton(text="❌ Бекор қилиш")
