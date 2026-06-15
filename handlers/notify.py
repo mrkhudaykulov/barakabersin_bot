@@ -219,3 +219,180 @@ async def my_notifications(message: types.Message):
 
     await message.answer(text)
 
+# ═══════════════════════════════════════
+# 📌 МЕНИНГ КУЗАТУВЛАРИМ — РЎЙХАТ
+# ═══════════════════════════════════════
+
+@router.message(F.text == "📌 Менинг кузатувларим")
+async def my_notifications(message: types.Message):
+    notifications = get_user_notifications(message.from_user.id)
+
+    if not notifications:
+        await message.answer(
+            "📭 Сизда ҳозирча кузатувлар мавжуд эмас.\n\n"
+            "➕ Янги кузатув яратиш учун тугмани босинг.",
+            reply_markup=notify_menu_keyboard()
+        )
+        return
+
+    await message.answer(
+        f"📌 *Сизнинг кузатувларингиз ({len(notifications)} та):*\n\n"
+        f"_Ўчириш учун тугмани босинг:_",
+        parse_mode="Markdown"
+    )
+
+    for n in notif:
+        notif_id, animal, region, min_p, max_p = n[0], n[1], n[2], n[3], n[4]
+
+        inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✏️ Таҳрирлаш",
+                    callback_data=f"edit_notif_{notif_id}"
+                ),
+                InlineKeyboardButton(
+                    text="❌ Ўчириш",
+                    callback_data=f"del_notif_{notif_id}"
+                )
+            ]
+        ])
+
+        await message.answer(
+            f"🐾 *{animal}*\n"
+            f"📍 {region}\n"
+            f"💰 {fmt_number(min_p)} — {fmt_number(max_p)} сўм",
+            parse_mode="Markdown",
+            reply_markup=inline_kb
+        )
+
+
+# ═══════════════════════════════════════
+# ❌ КУЗАТУВНИ ЎЧИРИШ (CALLBACK)
+# ═══════════════════════════════════════
+
+@router.callback_query(F.data.startswith("del_notif_"))
+async def delete_notification_callback(callback: types.CallbackQuery):
+    notif_id = int(callback.data.replace("del_notif_", ""))
+
+    delete_notification(notif_id)
+
+    await callback.message.edit_text(
+        "🗑 Кузатув ўчирилди.",
+    )
+    await callback.answer("Ўчирилди ✅")
+
+
+# ═══════════════════════════════════════
+# ✏️ КУЗАТУВНИ ТАҲРИРЛАШ (CALLBACK)
+# ═══════════════════════════════════════
+
+@router.callback_query(F.data.startswith("edit_notif_"))
+async def edit_notification_start(callback: types.CallbackQuery, state: FSMContext):
+    notif_id = int(callback.data.replace("edit_notif_", ""))
+
+    await state.set_state(NotifyStates.edit_min_price)
+    await state.update_data(edit_notif_id=notif_id)
+
+    await callback.message.answer(
+        "✏️ Янги *минимал нархни* киритинг:\n_(масалан: 3000000)_",
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.message(NotifyStates.edit_min_price)
+async def edit_min_price(message: types.Message, state: FSMContext):
+    price = parse_price_text(message.text)
+
+    if price <= 0:
+        await message.answer("⚠️ Нархни тўғри рақамда киритинг:")
+        return
+
+    await state.update_data(edit_min_price=price)
+    await state.set_state(NotifyStates.edit_max_price)
+
+    await message.answer(
+        "✏️ Янги *максимал нархни* киритинг:\n_(масалан: 10000000)_",
+        parse_mode="Markdown"
+    )
+
+
+@router.message(NotifyStates.edit_max_price)
+async def edit_max_price(message: types.Message, state: FSMContext):
+    max_price = parse_price_text(message.text)
+
+    if max_price <= 0:
+        await message.answer("⚠️ Нархни тўғри рақамда киритинг:")
+        return
+
+    data = await state.get_data()
+    min_price = data.get("edit_min_price")
+
+    if max_price < min_price:
+        await message.answer(
+            "⚠️ Максимал нарх минимал нархдан катта бўлиши керак:"
+        )
+        return
+
+    notif_id = data.get("edit_notif_id")
+
+    # Базани янгилаш
+    p = get_placeholder()
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        f"""
+        UPDATE notifications
+        SET min_price = {p}, max_price = {p}
+        WHERE id = {p}
+        """,
+        (min_price, max_price, notif_id)
+    )
+    conn.commit()
+    conn.close()
+
+    await state.clear()
+
+    await message.answer(
+        f"✅ *Кузатув янгиланди!*\n\n"
+        f"💰 {fmt_number(min_price)} — {fmt_number(max_price)} сўм",
+        parse_mode="Markdown",
+        reply_markup=notify_menu_keyboard()
+    )
+
+
+
+
+@router.message(NotifyStates.animal_type)
+async def notify_animal_fallback(message: types.Message, state: FSMContext):
+    """Kuzatuv — hayvon turida noto'g'ri matn"""
+    await message.answer(
+        "⚠️ Тугмалардан бирини танланг:",
+        reply_markup=search_animal_keyboard()
+    )
+
+
+@router.message(NotifyStates.region)
+async def notify_region_fallback(message: types.Message, state: FSMContext):
+    """Kuzatuv — viloyatda noto'g'ri matn"""
+    await message.answer(
+        "⚠️ Тугмалардан бирини танланг:",
+        reply_markup=regions_keyboard()
+    )
+
+
+@router.message(NotifyStates.min_price)
+async def notify_min_fallback(message: types.Message, state: FSMContext):
+    """Kuzatuv — min narxda noto'g'ri matn"""
+    await message.answer(
+        "⚠️ Минимал нархни рақамда киритинг:\nМасалан: 3000000"
+    )
+
+
+@router.message(NotifyStates.max_price)
+async def notify_max_fallback(message: types.Message, state: FSMContext):
+    """Kuzatuv — max narxda noto'g'ri matn"""
+    await message.answer(
+        "⚠️ Максимал нархни рақамда киритинг:\nМасалан: 10000000"
+    )
+
