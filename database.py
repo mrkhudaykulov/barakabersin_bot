@@ -84,6 +84,22 @@ def init_db():
                 created_at TIMESTAMP DEFAULT NOW()
             )
         """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                animal_type TEXT NOT NULL,
+                region TEXT NOT NULL,
+                min_price BIGINT,
+                max_price BIGINT,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+
+
+    
 
     else:
         # ═══ SQLITE (lokal test uchun) ═══
@@ -124,6 +140,19 @@ def init_db():
                 animal_type TEXT NOT NULL,
                 region TEXT NOT NULL,
                 price INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                animal_type TEXT,
+                region TEXT,
+                min_price INTEGER,
+                max_price INTEGER,
+                is_active INTEGER DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
