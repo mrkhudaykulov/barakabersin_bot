@@ -42,3 +42,5 @@ class NotifyStates(StatesGroup):
     region = State()
     min_price = State()
     max_price = State()
+    edit_min_price = State()
+    edit_max_price = State()
