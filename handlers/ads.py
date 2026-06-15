@@ -545,7 +545,11 @@ async def my_ads(message: types.Message):
 # ИНЛАЙН CALLBACK — СОТИЛДИ / ЎЧИРИШ / УЗАЙТИРИШ
 # ═══════════════════════════════════════
 
-@router.callback_query(F.data.startswith("sold_") | F.data.startswith("del_") | F.data.startswith("extend_"))
+@router.callback_query(
+    (F.data.startswith("sold_") | F.data.startswith("del_") | F.data.startswith("extend_"))
+    & ~F.data.startswith("del_notif_")
+    & ~F.data.startswith("edit_notif_")
+)
 async def handle_ad_action(callback: types.CallbackQuery):
     parts = callback.data.split("_")
     action = parts[0]
