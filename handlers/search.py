@@ -197,3 +197,21 @@ async def search_region(message: types.Message, state: FSMContext):
                     pass
 
     await state.clear()
+
+
+@router.message(SearchStates.animal_type)
+async def search_animal_fallback(message: types.Message, state: FSMContext):
+    """Qidiruv — hayvon turida noto'g'ri matn"""
+    await message.answer(
+        "⚠️ Тугмалардан бирини танланг:",
+        reply_markup=search_animal_keyboard()
+    )
+
+
+@router.message(SearchStates.region)
+async def search_region_fallback(message: types.Message, state: FSMContext):
+    """Qidiruv — viloyatda noto'g'ri matn"""
+    await message.answer(
+        "⚠️ Тугмалардан бирини танланг:",
+        reply_markup=regions_with_all_keyboard()
+    )
