@@ -58,7 +58,8 @@ def init_db():
                 mfy TEXT,
                 phone TEXT,
                 username TEXT,
-                status TEXT DEFAULT 'active',
+                status TEXT DEFAULT 'pending',
+                reviewed_by BIGINT,
                 created_at TIMESTAMP DEFAULT NOW(),
                 expires_at TIMESTAMP DEFAULT (NOW() + INTERVAL '10 days')
             )
@@ -70,6 +71,9 @@ def init_db():
                 phone TEXT,
                 full_name TEXT,
                 username TEXT,
+                rejection_count INTEGER DEFAULT 0,
+                is_blocked BOOLEAN DEFAULT FALSE,
+                blocked_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT NOW()
             )
         """)
@@ -117,7 +121,8 @@ def init_db():
                 mfy TEXT,
                 phone TEXT,
                 username TEXT,
-                status TEXT DEFAULT 'active',
+                status TEXT DEFAULT 'pending',
+                reviewed_by INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 expires_at TIMESTAMP DEFAULT (datetime('now', '+10 days'))
             )
@@ -129,6 +134,9 @@ def init_db():
                 phone TEXT,
                 full_name TEXT,
                 username TEXT,
+                rejection_count INTEGER DEFAULT 0,
+                is_blocked INTEGER DEFAULT 0,
+                blocked_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -190,7 +198,11 @@ def migrate_db():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()",
-            "ALTER TABLE notifications ADD CONSTRAINT unique_notification UNIQUE (user_id, animal_type, region, min_price, max_price)"
+            "ALTER TABLE notifications ADD CONSTRAINT unique_notification UNIQUE (user_id, animal_type, region, min_price, max_price)",
+            "ALTER TABLE ads ADD COLUMN IF NOT EXISTS reviewed_by BIGINT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS rejection_count INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP"
         ]
         for sql in migrations:
             try:
@@ -209,6 +221,10 @@ def migrate_db():
             "ALTER TABLE users ADD COLUMN full_name TEXT",
             "ALTER TABLE users ADD COLUMN username TEXT",
             "ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE ads ADD COLUMN reviewed_by INTEGER",
+            "ALTER TABLE users ADD COLUMN rejection_count INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN blocked_at TIMESTAMP"
         ]
         for sql in sqlite_migrations:
             try:
@@ -988,3 +1004,134 @@ def reject_ad(ad_id, admin_id, reason=""):
     conn.commit()
     conn.close()
     return affected > 0
+
+
+# ═══════════════════════════════════════
+# БЛОКЛАШ ТИЗИМИ
+# ═══════════════════════════════════════
+
+MAX_REJECTIONS = 4  # Шунча марта рад қилинса блокланади
+
+
+def is_user_blocked(user_id):
+    """Фойдаланувчи блокланганми?"""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"SELECT is_blocked FROM users WHERE user_id = {p}",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        if DATABASE_URL:
+            return row[0] == True
+        else:
+            return row[0] == 1
+    return False
+
+
+def increment_rejection(user_id):
+    """Рад қилиш сонини ошириш. 4 марта бўлса блоклаш."""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Рад сонини ошириш
+    cursor.execute(f"""
+        UPDATE users
+        SET rejection_count = rejection_count + 1
+        WHERE user_id = {p}
+    """, (user_id,))
+
+    # Янги қийматни олиш
+    cursor.execute(
+        f"SELECT rejection_count FROM users WHERE user_id = {p}",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    count = row[0] if row else 0
+
+    # Блоклаш текшириш
+    blocked = False
+    if count >= MAX_REJECTIONS:
+        if DATABASE_URL:
+            cursor.execute(f"""
+                UPDATE users
+                SET is_blocked = TRUE, blocked_at = NOW()
+                WHERE user_id = {p}
+            """, (user_id,))
+        else:
+            cursor.execute(f"""
+                UPDATE users
+                SET is_blocked = 1, blocked_at = datetime('now')
+                WHERE user_id = {p}
+            """, (user_id,))
+        blocked = True
+
+    conn.commit()
+    conn.close()
+    return count, blocked
+
+
+def unblock_user(user_id):
+    """Фойдаланувчини блокдан чиқариш"""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute(f"""
+            UPDATE users
+            SET is_blocked = FALSE, rejection_count = 0,
+                blocked_at = NULL
+            WHERE user_id = {p}
+        """, (user_id,))
+    else:
+        cursor.execute(f"""
+            UPDATE users
+            SET is_blocked = 0, rejection_count = 0,
+                blocked_at = NULL
+            WHERE user_id = {p}
+        """, (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_rejection_count(user_id):
+    """Рад қилишлар сонини олиш"""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"SELECT rejection_count FROM users WHERE user_id = {p}",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+
+def get_blocked_users():
+    """Блокланган фойдаланувчилар рўйхати"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute("""
+            SELECT user_id, full_name, username,
+                   rejection_count, blocked_at
+            FROM users
+            WHERE is_blocked = TRUE
+            ORDER BY blocked_at DESC
+        """)
+    else:
+        cursor.execute("""
+            SELECT user_id, full_name, username,
+                   rejection_count, blocked_at
+            FROM users
+            WHERE is_blocked = 1
+            ORDER BY blocked_at DESC
+        """)
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
