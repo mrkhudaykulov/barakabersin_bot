@@ -734,7 +734,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
                 f"📍 {region}\n"
                 f"💰 {price}\n\n"
                 f"Каналда кўринг: @internetmolbozor\n\n"
-                f"📅 Эълон <b>{AD_EXPIRE_DAYS} кун</b> актив бўлади.",
+                f"📅 Эълон <b>{AD_EXPIRE_DAYS} кун</b> актив бўлади."
             ),
             parse_mode="HTML"
         )
