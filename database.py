@@ -938,3 +938,53 @@ def delete_notification(notification_id):
 
     conn.commit()
     conn.close()
+
+# ═══════════════════════════════════════
+# ЭЪЛОН ТАСДИҚЛАШ ТИЗИМИ
+# ═══════════════════════════════════════
+
+def get_pending_ad(ad_id):
+    """Тасдиқ кутаётган эълонни олиш"""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        SELECT id, user_id, animal_type, quantity, price,
+               description, region, district, mfy, phone, username,
+               msg_id, reviewed_by
+        FROM ads WHERE id = {p} AND status = {p}
+    """, (ad_id, 'pending'))
+    row = cursor.fetchone()
+    conn.close()
+    return row
+
+def approve_ad(ad_id, admin_id):
+    """Эълонни тасдиқлаш — status='active', reviewed_by=admin_id"""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        UPDATE ads
+        SET status = {p}, reviewed_by = {p}
+        WHERE id = {p} AND status = {p}
+    """, ('active', admin_id, ad_id, 'pending'))
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected > 0  # True = тасдиқланди, False = бошқа админ аввал тасдиқлаган
+
+
+def reject_ad(ad_id, admin_id, reason=""):
+    """Эълонни рад қилиш"""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        UPDATE ads
+        SET status = {p}, reviewed_by = {p}
+        WHERE id = {p} AND status = {p}
+    """, ('rejected', admin_id, ad_id, 'pending'))
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected > 0
