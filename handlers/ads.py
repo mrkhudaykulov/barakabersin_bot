@@ -641,7 +641,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         logging.error(f"Notification error: {e}")
 
     # ═══ АДМИНГА ХАБАР ═══
-    await callback.message.edit_text(
+    await callback.message.edit_caption(
         f"✅ *Эълон #{ad_id} тасдиқланди!*\n\n"
         f"🐾 {a_type}\n"
         f"📍 {region}\n"
