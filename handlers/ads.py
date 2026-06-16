@@ -19,7 +19,8 @@ from database import (
     contains_bad_word, parse_price_text, MIN_PRICE, MAX_PRICE,
     fmt_number, fix_keyboard_text, get_connection, get_placeholder,
     save_user, get_user_phone, extend_ad, archive_ad, AD_EXPIRE_DAYS,
-    get_notification_users, is_user_blocked, approve_ad
+    get_notification_users, is_user_blocked, approve_ad, reject_ad,
+    get_pending_ad, increment_rejection
 )
 
 router = Router()
