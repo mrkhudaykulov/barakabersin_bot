@@ -306,9 +306,11 @@ async def process_phone(message: types.Message, state: FSMContext):
     await _finalize_ad(message, state, phone, message.from_user)
 
 
+# Якуний эълон бериш жараёни
+
 async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, user):
     """
-    Эълонни каналга жойлаш ва базага сақлаш.
+    Эълонни базага сақлаш (pending) ва админларга юбориш.
     process_phone ва use_saved_phone иккаласидан чақирилади.
     """
     data = await state.get_data()
@@ -327,7 +329,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         if contains_bad_word(field):
             await message.answer(
                 "🚫 *Эълонингизда ножўя матн аниқланди!*\n\n"
-                "Илтимос, қайтадан тоза матн билан ёзинг.\n"
+                "Илтимос, тоза матн билан ёзинг.\n"
                 "Ҳайвон сотиш бўлимида илтимос одобли бўлинг.",
                 parse_mode="Markdown",
                 reply_markup=main_menu()
@@ -356,130 +358,425 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         f"💬 <b>Телеграм:</b> {username_text}\n\n"
         f"Канал: @internetmolbozor\n"
         f"Эълон жойланг: @{bot_info.username}"
-        
     )
 
     media_list = data.get("media_list", [])
 
     try:
-        telegram_media = []
-        for i, media in enumerate(media_list):
-            if media["type"] == "photo":
-                telegram_media.append(InputMediaPhoto(
-                    media=media["file_id"],
-                    caption=caption if i == 0 else "",
-                    parse_mode="HTML"
-                ))
-            elif media["type"] == "video":
-                telegram_media.append(InputMediaVideo(
-                    media=media["file_id"],
-                    caption=caption if i == 0 else "",
-                    parse_mode="HTML"
-                ))
-
-        sent_messages = await bot.send_media_group(
-            chat_id=CHANNEL_ID, media=telegram_media
-        )
-        msg_ids_str = ",".join([str(msg.message_id) for msg in sent_messages])
-
         db_username = (
             f"@{user.username}"
             if user.username
             else f"ID: {user.id}"
         )
 
+        # ═══ БАЗАГА САҚЛАШ — status = 'pending' ═══
         p = get_placeholder()
         conn = get_connection()
         cursor = conn.cursor()
 
-        if DATABASE_URL := __import__('os').getenv("DATABASE_URL"):
+        if __import__('os').getenv("DATABASE_URL"):
             cursor.execute(f"""
                 INSERT INTO ads
                 (user_id, msg_id, animal_type, quantity, price,
                  description, region, district, mfy, phone, username,
-                 expires_at)
+                 status, expires_at)
                 VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
-                        NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
+                        {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
+                RETURNING id
             """, (
-                user.id, msg_ids_str,
+                user.id, '',
                 data['animal_type'], data['quantity'], data['price'],
                 data['description'], data['region'], data['district'],
-                data['mfy'], phone, db_username
+                data['mfy'], phone, db_username, 'pending'
             ))
         else:
             cursor.execute(f"""
                 INSERT INTO ads
                 (user_id, msg_id, animal_type, quantity, price,
                  description, region, district, mfy, phone, username,
-                 expires_at)
+                 status, expires_at)
                 VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
-                        datetime('now', '+{AD_EXPIRE_DAYS} days'))
+                        {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
+                RETURNING id
             """, (
-                user.id, msg_ids_str,
+                user.id, '',
                 data['animal_type'], data['quantity'], data['price'],
                 data['description'], data['region'], data['district'],
-                data['mfy'], phone, db_username
+                data['mfy'], phone, db_username, 'pending'
             ))
 
+        ad_id = cursor.fetchone()[0]
         conn.commit()
+        conn.close()
 
-        # ===== ХАБАРДОР ҚИЛ ТИЗИМИ =====
+        # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══
+        await message.answer(
+            f"📩 *Эълонингиз қабул қилинди!*\n\n"
+            f"Эълонингиз қисқача кўриб чиқилади.\n"
+            f"Тасдиқлангандан кейин автомат каналга жойланади.\n\n"
+            f"⏳ Одатда бир неча дақиқа ичида жавоб оласиз.",
+            parse_mode="Markdown",
+            reply_markup=main_menu()
+        )
 
+        # ═══ АДМИНЛАРГА ЮБОРИШ ═══
+        await _send_to_reviewers(
+            ad_id=ad_id,
+            data=data,
+            caption=caption,
+            media_list=media_list,
+            user=user,
+            phone=phone
+        )
+
+    except Exception as e:
+        logging.error(f"Эълон жойлашда хато: {e}")
+        await message.answer(
+            f"Хатолик юз берди: {e}",
+            reply_markup=main_menu()
+        )
+
+    await state.clear()
+
+
+# ═══════════════════════════════════════
+# АДМИНЛАРГА ЮБОРИШ
+# ═══════════════════════════════════════
+
+async def _send_to_reviewers(
+    ad_id, data, caption, media_list, user, phone
+):
+    """Эълонни барча админларга тасдиқлаш учун юбориш"""
+    from config import REVIEW_ADMINS
+
+    review_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="✅ Тасдиқлаш",
+                callback_data=f"approve_{ad_id}"
+            ),
+            InlineKeyboardButton(
+                text="❌ Рад қилиш",
+                callback_data=f"reject_{ad_id}"
+            )
+        ]
+    ])
+
+    review_text = (
+        f"🔔 *ЯНГИ ЭЪЛОН — ТАСДИҚЛАШ КУТИЛМОQДА*\n\n"
+        f"#️⃣ {html.escape(data['animal_type'])}\n"
+        f"🔢 {html.escape(data['quantity'])}\n"
+        f"💰 {html.escape(data['price'])}\n"
+        f"📝 {html.escape(data['description'])}\n"
+        f"📍 {html.escape(data['region'])} в, "
+        f"{html.escape(data['district'])} т, "
+        f"{html.escape(data['mfy'])} МФЙ\n\n"
+        f"📞 {html.escape(phone)}\n"
+        f"👤 {user.full_name} (ID: {user.id})\n\n"
+        f"🆔 Эълон ID: {ad_id}"
+    )
+
+    for admin_id in REVIEW_ADMINS:
         try:
-            ad_price = parse_price_text(data["price"])
-        
-            users = get_notification_users(
-                animal_type=data["animal_type"],
-                region=data["region"],
-                price=ad_price
-            )
-        
-            post_link = (
-                f"https://t.me/internetmolbozor/"
-                f"{sent_messages[0].message_id}"
-            )
-        
+            if media_list:
+                first_media = media_list[0]
+                if first_media["type"] == "photo":
+                    await bot.send_photo(
+                        chat_id=admin_id,
+                        photo=first_media["file_id"],
+                        caption=review_text,
+                        parse_mode="Markdown",
+                        reply_markup=review_kb
+                    )
+                elif first_media["type"] == "video":
+                    await bot.send_video(
+                        chat_id=admin_id,
+                        video=first_media["file_id"],
+                        caption=review_text,
+                        parse_mode="Markdown",
+                        reply_markup=review_kb
+                    )
+            else:
+                await bot.send_message(
+                    chat_id=admin_id,
+                    text=review_text,
+                    parse_mode="Markdown",
+                    reply_markup=review_kb
+                )
+        except Exception as e:
+            logging.error(f"Админ {admin_id} га юборишда хато: {e}")
+
+
+# ═══════════════════════════════════════
+# ТАСДИҚЛАШ КАЛЛБЕК
+# ═══════════════════════════════════════
+
+@router.callback_query(F.data.startswith("approve_"))
+async def approve_ad_callback(callback: types.CallbackQuery):
+    from config import REVIEW_ADMINS
+
+    if callback.from_user.id not in REVIEW_ADMINS:
+        await callback.answer("⛔ Сиз админ эмассиз!")
+        return
+
+    ad_id = int(callback.data.replace("approve_", ""))
+
+    success = approve_ad(ad_id, callback.from_user.id)
+
+    if not success:
+        await callback.answer("⚠️ Бу эълон бошқа админ томонидан тасдиқланган!")
+        return
+
+    # ═══ ЭЪЛОН МАЪЛУМОТЛАРИНИ ОЛИШ ═══
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        SELECT user_id, animal_type, quantity, price,
+               description, region, district, mfy, phone, username
+        FROM ads WHERE id = {p}
+    """, (ad_id,))
+    ad = cursor.fetchone()
+    conn.close()
+
+    if not ad:
+        await callback.answer("❌ Эълон топилмади.")
+        return
+
+    user_id, a_type, qty, price, desc, region, dist, mfy, phone, username = ad
+
+    bot_info = await bot.get_me()
+    caption = (
+        f"#️⃣ #{html.escape(a_type)}\n"
+        f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
+        f"💰 <b>Нархи:</b> {html.escape(price)}\n"
+        f"📝 <b>Изоҳ:</b> {html.escape(desc)}\n"
+        f"📍 <b>Манзил:</b> {html.escape(region)} в, "
+        f"{html.escape(dist)} т, "
+        f"{html.escape(mfy)} МФЙ\n\n"
+        f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
+        f"💬 <b>Телеграм:</b> {username}\n\n"
+        f"Канал: @internetmolbozor\n"
+        f"Эълон жойланг: @{bot_info.username}"
+    )
+
+    # ═══ КАНАЛГА ЮБОРИШ (МАТНЛИ ЭЪЛОН) ═══
+    try:
+        sent = await bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=caption,
+            parse_mode="HTML"
+        )
+
+        # msg_id ни базага сақлаш
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE ads SET msg_id = {p} WHERE id = {p}",
+            (str(sent.message_id), ad_id)
+        )
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logging.error(f"Каналга юборишда хато: {e}")
+
+    # ═══ ХАБАРДОРЛИК ТИЗИМИ (КАНАЛГА ЮБОРИЛГАНДАН KEYIN) ═══
+    try:
+        ad_price = parse_price_text(price)
+
+        users = get_notification_users(
+            animal_type=a_type,
+            region=region,
+            price=ad_price
+        )
+
+        post_link = (
+            f"https://t.me/internetmolbozor/"
+            f"{sent.message_id}"
+        )
+
+        # Ёмон сўз текшириш
+        notify_text = (
+            f"{a_type} {region} {price} "
+            f"{desc} {qty} {dist} {mfy}"
+        )
+
+        if not contains_bad_word(notify_text):
             for row in users:
-        
                 target_user_id = row[0]
-        
-                # ўзининг эълони учун хабар юбормаймиз
-                if target_user_id == user.id:
+                if target_user_id == user_id:
                     continue
-        
                 try:
                     await bot.send_message(
                         target_user_id,
                         f"🔔 *Сиз кузатаётган эълон топилди!*\n\n"
-                        f"🐾 {html.escape(data['animal_type'])}\n"
-                        f"📍 {html.escape(data['region'])}\n"
-                        f"💰 {html.escape(data['price'])}\n\n"
+                        f"🐾 {html.escape(a_type)}\n"
+                        f"📍 {html.escape(region)}\n"
+                        f"💰 {html.escape(price)}\n\n"
                         f"📲 Кўриш:\n{post_link}",
                         parse_mode="Markdown"
                     )
                 except Exception:
                     pass
-        
-        except Exception as e:
-            logging.error(
-                f"Notification error: {e}"
+        else:
+            logging.warning(
+                f"Ножўя эълон хабардан тўсилди: ad_id={ad_id}"
             )
 
-        
-        conn.close()
-
-        await message.answer(
-            f"🎉 Эълонингиз @internetmolbozor каналига муваффақиятли жойланди!\n\n"
-            f"📅 Эълон <b>{AD_EXPIRE_DAYS} кун</b> актив бўлади.\n"
-            f"Муддат тугашидан 7 ва 2 кун олдин эслатма оласиз.",
-            parse_mode="HTML",
-            reply_markup=main_menu()
-        )
     except Exception as e:
-        logging.error(f"Эълон жойлашда хато: {e}")
-        await message.answer(f"Хатолик юз берди: {e}", reply_markup=main_menu())
+        logging.error(f"Notification error: {e}")
 
-    await state.clear()
+    # ═══ АДМИНГА ХАБАР ═══
+    await callback.message.edit_text(
+        f"✅ *Эълон #{ad_id} тасдиқланди!*\n\n"
+        f"🐾 {a_type}\n"
+        f"📍 {region}\n"
+        f"💰 {price}\n\n"
+        f"Каналга жойланди.",
+        parse_mode="Markdown"
+    )
+
+    # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            text=(
+                f"✅ *Эълонингиз тасдиқланди!*\n\n"
+                f"🐾 {a_type}\n"
+                f"📍 {region}\n"
+                f"💰 {price}\n\n"
+                f"Каналда кўринг: @internetmolbozor\n\n"
+                f"📅 Эълон <b>{AD_EXPIRE_DAYS} кун</b> актив бўлади.",
+            ),
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
+
+    # ═══ БОШҚА АДМИНЛАРНИНГ ХАБАРИНИ ЯНГИЛАШ ═══
+    await _update_other_admins(
+        ad_id, callback.from_user.id,
+        f"✅ Админ @{callback.from_user.username or callback.from_user.id} "
+        f"томонидан тасдиқланди."
+    )
+
+    await callback.answer("✅ Тасдиқланди!")
+
+
+# ═══════════════════════════════════════
+# РАД ҚИЛИШ КАЛЛБЕК
+# ═══════════════════════════════════════
+
+@router.callback_query(F.data.startswith("reject_"))
+async def reject_ad_callback(callback: types.CallbackQuery):
+    from config import REVIEW_ADMINS
+
+    if callback.from_user.id not in REVIEW_ADMINS:
+        await callback.answer("⛔ Сиз админ эмассиз!")
+        return
+
+    ad_id = int(callback.data.replace("reject_", ""))
+
+    success = reject_ad(ad_id, callback.from_user.id)
+
+    if not success:
+        await callback.answer("⚠️ Бу эълон бошқа админ томонидан кўрилган!")
+        return
+
+    # ═══ ФОЙДАЛАНУВЧИНИ ОЛИШ ═══
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"SELECT user_id, animal_type, region, price FROM ads WHERE id = {p}",
+        (ad_id,)
+    )
+    ad = cursor.fetchone()
+
+    # ═══ БАЗАДАН ЎЧИРИШ ═══
+    cursor.execute(f"DELETE FROM ads WHERE id = {p}", (ad_id,))
+    conn.commit()
+    conn.close()
+
+    # ═══ АДМИНГА ХАБАР ═══
+    await callback.message.edit_text(
+        f"❌ *Эълон #{ad_id} рад этилди.*",
+        parse_mode="Markdown"
+    )
+
+    # ═══ РАД СОНИНИ ОШИРИШ ВА БЛОК ТЕКШИРИШ ═══
+    if ad:
+        user_id, a_type, region, price = ad
+
+        count, blocked = increment_rejection(user_id)
+
+        if blocked:
+            try:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=(
+                        f"🚫 *Сиз блокландингиз!*\n\n"
+                        f"Эълонларингиз {count} марта "
+                        f"админ томонидан рад этилган.\n\n"
+                        f"Эълон бериш ҳуқуқингиз чекланди.\n"                        
+                    ),
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+        else:
+            remaining = MAX_REJECTIONS - count
+            try:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=(
+                        f"❌ *Эълонингиз рад этилди.*\n\n"
+                        f"🐾 {a_type}\n"
+                        f"📍 {region}\n"
+                        f"💰 {price}\n\n"
+                        f"Сабаб: Эълон талабларга жавоб бермайди.\n"
+                        f"Қайтадан ёзиб кўринг: /start\n\n"
+                        f"⚠️ Диққат: {remaining} та уриниш қолди."
+                    ),
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+
+    # ═══ БОШҚА АДМИНЛАРНИНГ ХАБАРИНИ ЯНГИЛАШ ═══
+    await _update_other_admins(
+        ad_id, callback.from_user.id,
+        f"❌ Админ @{callback.from_user.username or callback.from_user.id} "
+        f"томонидан рад этилди."
+    )
+
+    await callback.answer("❌ Рад этилди!")
+
+
+# ═══════════════════════════════════════
+# БОШҚА АДМИНЛАРНИНГ ХАБАРИНИ ЯНГИЛАШ
+# ═══════════════════════════════════════
+
+async def _update_other_admins(ad_id, acted_admin_id, status_text):
+    from config import REVIEW_ADMINS
+
+    for admin_id in REVIEW_ADMINS:
+        if admin_id == acted_admin_id:
+            continue
+        try:
+            await bot.send_message(
+                chat_id=admin_id,
+                text=(
+                    f"ℹ️ Эълон #{ad_id} кўрилди.\n\n"
+                    f"{status_text}"
+                )
+            )
+        except Exception:
+            pass
+
+
 
 
 # ═══════════════════════════════════════
