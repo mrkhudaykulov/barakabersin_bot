@@ -738,8 +738,15 @@ async def approve_ad_callback(callback: types.CallbackQuery):
             ),
             parse_mode="HTML"
         )
-    except Exception:
-        pass
+        logging.info(
+            f"Фойдаланувчига хабар юборилди: "
+            f"user_id={user_id}, ad_id={ad_id}"
+        )
+    except Exception as e:
+        logging.error(
+            f"Фойдаланувчига хабар юборилмади: "
+            f"user_id={user_id}, ad_id={ad_id}, хато={e}"
+        )
 
     # ═══ БОШҚА АДМИНЛАРНИНГ ХАБАРИНИ ЯНГИЛАШ ═══
     await _update_other_admins(
