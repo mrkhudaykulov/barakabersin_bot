@@ -101,7 +101,16 @@ def init_db():
                 created_at TIMESTAMP DEFAULT NOW()
             )
         """)
-
+        # 🔥 PostgreSQL учун янги медиа жадвали
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ad_media (
+                id SERIAL PRIMARY KEY,
+                ad_id INTEGER,
+                media_type TEXT, -- 'photo' ёки 'video'
+                file_id TEXT,
+                FOREIGN KEY (ad_id) REFERENCES ads (id) ON DELETE CASCADE
+            )
+        """)
 
     
 
@@ -162,6 +171,17 @@ def init_db():
                 max_price INTEGER,
                 is_active INTEGER DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # 🔥 SQLite учун янги медиа жадвали
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ad_media (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ad_id INTEGER,
+                media_type TEXT,
+                file_id TEXT,
+                FOREIGN KEY (ad_id) REFERENCES ads (id) ON DELETE CASCADE
             )
         """)
 
@@ -230,12 +250,61 @@ def migrate_db():
             try:
                 cursor.execute(sql)
                 conn.commit()
-            except Exception:
-                # Устун аллақачон мавжуд — хавфсиз ўтказиб юборамиз
+            except Exception:                
                 pass
 
     conn.close()
     logging.info("Миграция тугади.")
+
+# ═══════════════════════════════════════
+# 🔥 ЭЪЛОН ВА МЕДИАЛАРНИ БАЗАГА САҚЛАШФУНКЦИЯСИ
+# ═══════════════════════════════════════
+
+def save_ad_with_media(user_id: int, data: dict, media_list: list) -> int | None:
+    """
+    Эълон малумотларини 'ads' жадвалига қўшади ва унга тегишли
+    барча расм/видеоларни 'ad_media' жадвалига боғлаб сақлайди.
+    """
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 1. Эълон матнини ва малумотларини сақлаш
+        cursor.execute(f"""
+            INSERT INTO ads (user_id, animal_type, quantity, price, description, region, district, mfy, phone, username, status)
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'pending')
+        """, (
+            user_id, data.get('animal_type'), data.get('quantity'), data.get('price'),
+            data.get('description'), data.get('region'), data.get('district'), data.get('mfy'),
+            data.get('phone'), data.get('username')
+        ))
+        
+        # Янги яратилган эълоннинг ID сини оламиз
+        ad_id = cursor.lastrowid
+        
+        # Агар SQLite бўлса ва lastrowid ўхшамаса, муқобил вариант:
+        if not ad_id and not DATABASE_URL:
+            cursor.execute("SELECT last_insert_rowid()")
+            ad_id = cursor.fetchone()[0]
+
+        # 2. Агар media_list ичида файллар бўлса, уларни айлантириб базага ёзиш
+        if media_list and ad_id:
+            for media in media_list:
+                cursor.execute(f"""
+                    INSERT INTO ad_media (ad_id, media_type, file_id)
+                    VALUES ({p}, {p}, {p})
+                """, (ad_id, media.get('type'), media.get('file_id')))
+                
+        conn.commit()
+        return ad_id  # Муваффақиятли бўлса ID қайтади
+        
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"Базага эълон ва медиани сақлашда хатолик: {e}")
+        return None
+    finally:
+        conn.close()
 
 
 # ═══════════════════════════════════════
@@ -749,6 +818,10 @@ BAD_WORDS = [
     "кахба", "ҷалоб", "ғашт", "нарас",
     "шалоп", "ғашак", "юзлик",
     "ҳули", "сик", "пиз",
+    "қўтоқ", "қўтақ", "сикаман",
+    "секс", "пиздес", "пиздец", "далбан",
+    "далбаёп", "хуйет", "хует", "ташақ",
+    "аминга", "нахуй", "наххуй",
 ]
 
 
