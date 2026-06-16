@@ -20,7 +20,7 @@ from database import (
     fmt_number, fix_keyboard_text, get_connection, get_placeholder,
     save_user, get_user_phone, extend_ad, archive_ad, AD_EXPIRE_DAYS,
     get_notification_users, is_user_blocked, approve_ad, reject_ad,
-    get_pending_ad, increment_rejection
+    get_pending_ad, increment_rejection, MAX_REJECTIONS
 )
 
 router = Router()
@@ -242,15 +242,12 @@ async def process_description(message: types.Message, state: FSMContext):
                 f"⚠️ Изоҳ жуда узун ({len(message.text)} белги). "
                 f"Узр 300 та белгидан ошиш мумкин эмас.\n\n"                
             )
-        await state.update_data(description=desc)
-    # ... qolgan kod o'zgarmaydi
-        
+        await state.update_data(description=desc)            
 
     # ═══ ТЕЗ РЎЙХАТГА ОЛИШ: базада телефон борми? ═══
     saved_phone = get_user_phone(message.from_user.id)
     if saved_phone:
         await state.update_data(saved_phone=saved_phone)
-        
         # Сақланган телефонни кўрсатиб, тасдиқ сўраймиз
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(
@@ -790,18 +787,20 @@ async def reject_ad_callback(callback: types.CallbackQuery):
     conn.close()
 
     # ═══ АДМИНГА ХАБАР ═══
-    await callback.message.edit_text(
-        f"❌ *Эълон #{ad_id} рад этилди.*",
-        parse_mode="Markdown"
-    )
+    try:
+        await callback.message.edit_text(
+            f"❌ *Эълон #{ad_id} рад этилди.*",
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass
 
     # ═══ РАД СОНИНИ ОШИРИШ ВА БЛОК ТЕКШИРИШ ═══
     if ad:
         user_id, a_type, region, price = ad
-
         count, blocked = increment_rejection(user_id)
 
-        # ═══ БЛОК ХАБАРИ ═══
+        # ═══ 1-ХОЛАТ: ФОЙДАЛАНУВЧИ БЛОККА ТУШДИ ═══
         if blocked:
             try:
                 await bot.send_message(
@@ -817,22 +816,20 @@ async def reject_ad_callback(callback: types.CallbackQuery):
             except Exception:
                 pass
 
-            # Админларга блок хабари
+            # Админларга фойдаланувчи блоклангани ҳақида хабар бериш
             for admin_id in REVIEW_ADMINS:
                 if admin_id == callback.from_user.id:
                     continue
                 try:
                     await bot.send_message(
                         chat_id=admin_id,
-                        text=(
-                            f"🚫 Фойдаланувчи ID:{user_id} "
-                            f"блокланди ({count} марта рад)"
-                        )
+                        text=f"🚫 Фойдаланувчи ID:{user_id} блокланди ({count} марта рад)"
                     )
                 except Exception:
                     pass
+
+        # ═══ 2-ХОЛАТ: ОДДИЙ РАД ЭТИШ (Блок эмас, уринишлар бор) ═══
         else:
-            # ═══ РАД ХАБАРИ (блок эмас) ═══
             try:
                 remaining = MAX_REJECTIONS - count
                 await bot.send_message(
@@ -860,7 +857,6 @@ async def reject_ad_callback(callback: types.CallbackQuery):
     )
 
     await callback.answer("❌ Рад этилди!")
-
 
 # ═══════════════════════════════════════
 # БОШҚА АДМИНЛАРНИНГ ХАБАРИНИ ЯНГИЛАШ
