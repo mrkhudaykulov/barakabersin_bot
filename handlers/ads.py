@@ -571,28 +571,79 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         f"Канал: @internetmolbozor\n"
         f"Эълон жойланг: @{bot_info.username}"
     )
+    
+    # ═══ АДМИН ХАБАРИДАН МЕДИАНИ АНИҚЛАШ ═══
+    media_list = []
+    if callback.message.photo:
+        media_list.append({"type": "photo", "file_id": callback.message.photo[-1].file_id})
+    elif callback.message.video:
+        media_list.append({"type": "video", "file_id": callback.message.video.file_id})
 
-    # ═══ КАНАЛГА ЮБОРИШ (МАТНЛИ ЭЪЛОН) ═══
+    # ═══ КАНАЛГА ЮБОРИШ (АЛЬБОМ ЁКИ ОДДИЙ) ═══
+    sent_msg_ids = []
     try:
-        sent = await bot.send_message(
-            chat_id=CHANNEL_ID,
-            text=caption,
-            parse_mode="HTML"
-        )
+        if len(media_list) > 1:
+            # Агар бир нечта медиа бўлса (Альбом/Media Group)
+            media_group = []
+            for i, media in enumerate(media_list):
+                if media["type"] == "photo":
+                    media_group.append(InputMediaPhoto(
+                        media=media["file_id"],
+                        caption=caption if i == 0 else None,  # Матн фақат 1-медиага қўйилади
+                        parse_mode="HTML"
+                    ))
+                elif media["type"] == "video":
+                    media_group.append(InputMediaVideo(
+                        media=media["file_id"],
+                        caption=caption if i == 0 else None,
+                        parse_mode="HTML"
+                    ))
+            
+            sent_messages = await bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
+            # Матн бириктирилган биринчи хабар ID сини оламиз
+            sent_msg_ids.append(str(sent_messages[0].message_id))
+            # Хабардорлик тизими (Notification) линки тўғри ишлаши учун 'sent' ўзгарувчисини эълон қиламиз
+            sent = sent_messages[0]
 
-        # msg_id ни базага сақлаш
+        elif len(media_list) == 1:
+            # Агар фақат 1 та расм ёки видео бўлса
+            first_media = media_list[0]
+            if first_media["type"] == "photo":
+                sent = await bot.send_photo(
+                    chat_id=CHANNEL_ID, photo=first_media["file_id"],
+                    caption=caption, parse_mode="HTML"
+                )
+                sent_msg_ids.append(str(sent.message_id))
+            elif first_media["type"] == "video":
+                sent = await bot.send_video(
+                    chat_id=CHANNEL_ID, video=first_media["file_id"],
+                    caption=caption, parse_mode="HTML"
+                )
+                sent_msg_ids.append(str(sent.message_id))
+        else:
+            # Агар умуман медиа файл бўлмаса, фақат матн ўзи кетади
+            sent = await bot.send_message(
+                chat_id=CHANNEL_ID, text=caption, parse_mode="HTML"
+            )
+            sent_msg_ids.append(str(sent.message_id))
+
+        # msg_id ни базага сақлаш (Сотилди тугмаси каналдаги постни таҳрирлаши учун)
+        msg_ids_str = ",".join(sent_msg_ids)
         p = get_placeholder()
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
             f"UPDATE ads SET msg_id = {p} WHERE id = {p}",
-            (str(sent.message_id), ad_id)
+            (msg_ids_str, ad_id)
         )
         conn.commit()
         conn.close()
 
     except Exception as e:
         logging.error(f"Каналга юборишда хато: {e}")
+        await callback.answer("⚠️ Каналга юборишда хатолик бўлди.")
+        return
+        
 
     # ═══ ХАБАРДОРЛИК ТИЗИМИ (КАНАЛГА ЮБОРИЛГАНДАН KEYIN) ═══
     try:
@@ -640,7 +691,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
     except Exception as e:
         logging.error(f"Notification error: {e}")
 
-    # ═══ АДМИНГА ХАБАР ═══
+    # ═══ АДМИН ЧАТИДАГИ ТУГМАЛАРНИ ЎЧИРИШ ВА МАТННИ ЯНГИЛАШ ═══
     text_content = (
         f"✅ *Эълон #{ad_id} тасдиқланди!*\n\n"
         f"🐾 {a_type}\n"
@@ -659,14 +710,22 @@ async def approve_ad_callback(callback: types.CallbackQuery):
             reply_markup=None
         )
     except Exception:
-        # Агар оддий матнли эълон бўлса (text ўзгартирамиз)
-        await callback.bot.edit_message_text(
-            chat_id=callback.message.chat.id,
-            message_id=callback.message.message_id,
-            text=text_content,
-            parse_mode="Markdown",
-            reply_markup=None
-        )
+        try:
+            # Агар оддий матнли эълон бўлса (text ўзгартирамиз)
+            await callback.bot.edit_message_text(
+                chat_id=callback.message.chat.id,
+                message_id=callback.message.message_id,
+                text=text_content,
+                parse_mode="Markdown",
+                reply_markup=None
+            )
+        except Exception:
+            # Агар иккаласи ҳам ўхшамаса, тугмаларни мажбурий ўчирамиз
+            await callback.bot.edit_message_reply_markup(
+                chat_id=callback.message.chat.id,
+                message_id=callback.message.message_id,
+                reply_markup=None
+            )
 
     # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══
     try:
