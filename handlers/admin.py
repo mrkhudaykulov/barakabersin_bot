@@ -7,7 +7,8 @@ from aiogram import Router, types
 from aiogram.filters import Command
 
 from config import bot, ADMINS, CHANNEL_ID
-from database import get_full_statistics, fmt_number, get_connection, get_placeholder
+from database import get_full_statistics, fmt_number, get_connection, get_placeholder, unblock_user, get_blocked_users, get_rejection_count
+
 
 router = Router()
 
@@ -641,6 +642,10 @@ async def admin_help(message: types.Message):
         "🚫 *Ёмон сўзлар:*\n"
         "`/addbadword ўшасўз`\n"
         "`/badwords` - Рўхат\n\n"
+
+        "🚫 *Блок бошқариш:*\n"
+        "`/blocked` — блокланганлар рўйхати\n"
+        "`/unblock USER_ID` — блокдан чиқариш\n\n"
         
          "👥 *Статистика:*\n"
         "`/stats` — бот статистикаси\n\n"
@@ -915,3 +920,80 @@ async def admin_del_user_ads(message: types.Message):
         parse_mode="Markdown"
     )
 
+# ═══════════════════════════════════════
+# /blocked — Блокланганлар рўйхати
+# ═══════════════════════════════════════
+
+@router.message(Command("blocked"))
+async def show_blocked_users(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Сизга рухсат йўқ.")
+        return
+
+    blocked = get_blocked_users()
+
+    if not blocked:
+        await message.answer("✅ Ҳозирча блокланган фойдаланувчилар йўқ.")
+        return
+
+    text = f"🚫 *Блокланган фойдаланувчилар ({len(blocked)} та):*\n\n"
+
+    for user_id, full_name, username, count, blocked_at in blocked:
+        uname = f"@{username}" if username else "—"
+        text += (
+            f"👤 {full_name or '—'} ({uname})\n"
+            f"   ID: `{user_id}`\n"
+            f"   Рад: {count} марта\n"
+            f"   Унблок: /unblock {user_id}\n\n"
+        )
+
+    await message.answer(text, parse_mode="Markdown")
+
+
+# ═══════════════════════════════════════
+# 14. /unblock — Блокдан чиқариш
+# ═══════════════════════════════════════
+
+@router.message(Command("unblock"))
+async def unblock_user_cmd(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Сизга рухсат йўқ.")
+        return
+
+    parts = message.text.split()
+    if len(parts) < 2:
+        await message.answer(
+            "📋 *Формат:*\n"
+            "`/unblock USER_ID`\n\n"
+            "Блокланганлар рўйхати: /blocked",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        await message.answer("⚠️ USER_ID рақам бўлиши керак!")
+        return
+
+    unblock_user(user_id)
+
+    await message.answer(
+        f"✅ Фойдаланувчи `{user_id}` блокдан чиқарилди.\n"
+        f"Энди эълон бера олади.",
+        parse_mode="Markdown"
+    )
+
+    # Фойдаланувчига хабар
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            text=(
+                "✅ *Блок олинди!*\n\n"
+                "Энди қайтадан эълон бера оласиз.\n"
+                "Илтимос, талабларга мос эълон беринг."
+            ),
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass
