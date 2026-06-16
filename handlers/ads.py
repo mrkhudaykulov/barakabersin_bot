@@ -19,7 +19,7 @@ from database import (
     contains_bad_word, parse_price_text, MIN_PRICE, MAX_PRICE,
     fmt_number, fix_keyboard_text, get_connection, get_placeholder,
     save_user, get_user_phone, extend_ad, archive_ad, AD_EXPIRE_DAYS,
-    get_notification_users
+    get_notification_users, is_user_blocked
 )
 
 router = Router()
@@ -31,6 +31,17 @@ router = Router()
 
 @router.message(F.text == "➕ Эълон бериш")
 async def start_ad(message: types.Message, state: FSMContext):
+    # ═══ БЛОК ТЕКШИРИШ ═══
+    if is_user_blocked(message.from_user.id):
+        await message.answer(
+            "🚫 *Сиз блоклангансиз!*\n\n"
+            "Эълон бериш ҳуқуқингиз чекланган.\n"
+            "Сабаб: Эълонларингиз бир неча марта "
+            "админ томонидан рад этилган.\n\n",            
+            parse_mode="Markdown"
+        )
+        return
+    
     await state.clear()
 
     # Фойдаланувчини базага сақлаш (тез рўйхатга олиш)
@@ -712,6 +723,7 @@ async def reject_ad_callback(callback: types.CallbackQuery):
 
         count, blocked = increment_rejection(user_id)
 
+        # ═══ БЛОК ХАБАРИ ═══
         if blocked:
             try:
                 await bot.send_message(
@@ -726,9 +738,25 @@ async def reject_ad_callback(callback: types.CallbackQuery):
                 )
             except Exception:
                 pass
+
+            # Админларга блок хабари
+            for admin_id in REVIEW_ADMINS:
+                if admin_id == callback.from_user.id:
+                    continue
+                try:
+                    await bot.send_message(
+                        chat_id=admin_id,
+                        text=(
+                            f"🚫 Фойдаланувчи ID:{user_id} "
+                            f"блокланди ({count} марта рад)"
+                        )
+                    )
+                except Exception:
+                    pass
         else:
-            remaining = MAX_REJECTIONS - count
+            # ═══ РАД ХАБАРИ (блок эмас) ═══
             try:
+                remaining = MAX_REJECTIONS - count
                 await bot.send_message(
                     chat_id=user_id,
                     text=(
@@ -738,7 +766,8 @@ async def reject_ad_callback(callback: types.CallbackQuery):
                         f"💰 {price}\n\n"
                         f"Сабаб: Эълон талабларга жавоб бермайди.\n"
                         f"Қайтадан ёзиб кўринг: /start\n\n"
-                        f"⚠️ Диққат: {remaining} та уриниш қолди."
+                        f"⚠️ Диққат: {remaining} та уриниш қолди. "
+                        f"Кейинги рад қилишда блокланасиз."
                     ),
                     parse_mode="Markdown"
                 )
@@ -775,8 +804,6 @@ async def _update_other_admins(ad_id, acted_admin_id, status_text):
             )
         except Exception:
             pass
-
-
 
 
 # ═══════════════════════════════════════
