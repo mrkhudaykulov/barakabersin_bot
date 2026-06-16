@@ -641,17 +641,32 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         logging.error(f"Notification error: {e}")
 
     # ═══ АДМИНГА ХАБАР ═══
-    await callback.bot.edit_message_caption(
-        chat_id=callback.message.chat.id,
-        message_id=callback.message.message_id,
+    text_content = (
         f"✅ *Эълон #{ad_id} тасдиқланди!*\n\n"
         f"🐾 {a_type}\n"
         f"📍 {region}\n"
         f"💰 {price}\n\n"
-        f"Каналга жойланди.",
-        parse_mode="Markdown",
-        reply_markup=None
+        f"Каналга жойланди."
     )
+    
+    try:
+        # Агар расмли эълон бўлса (caption ўзгартирамиз)
+        await callback.bot.edit_message_caption(
+            chat_id=callback.message.chat.id,
+            message_id=callback.message.message_id,
+            caption=text_content,
+            parse_mode="Markdown",
+            reply_markup=None
+        )
+    except Exception:
+        # Агар оддий матнли эълон бўлса (text ўзгартирамиз)
+        await callback.bot.edit_message_text(
+            chat_id=callback.message.chat.id,
+            message_id=callback.message.message_id,
+            text=text_content,
+            parse_mode="Markdown",
+            reply_markup=None
+        )
 
     # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══
     try:
