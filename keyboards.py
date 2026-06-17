@@ -242,3 +242,23 @@ def notify_menu_keyboard():
         ],
         resize_keyboard=True
     )
+
+def notification_districts_keyboard(region_text):
+    """Хабардорлик учун туманлар — танланган вилоят бўйича + Барчаси"""
+    districts = DISTRICTS.get(region_text, [])
+
+    buttons = []
+    # Аввал "Барчаси" тугмаси
+    buttons.append([KeyboardButton(text="📍 Барчаси")])
+
+    # Кейин туманлар — 2 тадан қаторга
+    for i in range(0, len(districts), 2):
+        row = [KeyboardButton(text=districts[i])]
+        if i + 1 < len(districts):
+            row.append(KeyboardButton(text=districts[i + 1]))
+        buttons.append(row)
+
+    # Охирда орқага
+    buttons.append([KeyboardButton(text="🔙 Орқага")])
+
+    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
