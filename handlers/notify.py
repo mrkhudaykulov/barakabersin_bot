@@ -1,18 +1,21 @@
 from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, KeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    KeyboardButton, ReplyKeyboardMarkup
+)
 
 from config import bot
 from states import NotifyStates
 from keyboards import (
     search_animal_keyboard,
-    animal_types_keyboard, 
+    animal_types_keyboard,
     regions_keyboard,
-    regions_with_all_keyboard,
     notification_districts_keyboard,
     main_menu,
     notify_menu_keyboard,
-    standard_step_keyboard
+    standard_step_keyboard,
+    districts
 )
 
 from database import (
@@ -28,9 +31,30 @@ from database import (
 router = Router()
 
 
+# ═══════════════════════════════════════
+# ТУГМА МАТНЛАРИНИ БИР ЎРНАГА ЙИҒИШ
+# ═══════════════════════════════════════
+BTN_CANCEL = "❌ Бекор қилиш"
+BTN_BACK = "🔙 Орқага"
+BTN_ALL_DISTRICTS = "📍 Барчаси"
+
+
+def is_cancel(text):
+    return text and text.strip() == BTN_CANCEL
+
+def is_back(text):
+    return text and text.strip() == BTN_BACK
+
+def is_all_districts(text):
+    return text and "Барчаси" in text
+
+
+# ═══════════════════════════════════════
+# 🔔 ХАБАРДОР ҚИЛ — МЕНЮ
+# ═══════════════════════════════════════
+
 @router.message(F.text == "🔔 Хабардор қил")
 async def notify_start(message: types.Message):
-
     await message.answer(
         "🔔 Хабарнома маркази\n\n"
         "Бу марказ орқали Сиз эълонлар ҳақида "
@@ -38,31 +62,38 @@ async def notify_start(message: types.Message):
         reply_markup=notify_menu_keyboard()
     )
 
+
+# ═══════════════════════════════════════
+# ➕ ЯНГИ КУЗАТУВ — БОШЛАШ
+# ═══════════════════════════════════════
+
 @router.message(F.text == "➕ Янги кузатув")
-async def create_notification(
-    message: types.Message,
-    state: FSMContext
-):
-
-    await state.set_state(
-        NotifyStates.animal_type
-    )
-
+async def create_notification(message: types.Message, state: FSMContext):
+    await state.set_state(NotifyStates.animal_type)
     await message.answer(
         "Қайси чорва ҳақида хабардор қилиш керак?",
         reply_markup=search_animal_keyboard()
     )
 
+
+# ═══════════════════════════════════════
+# 1-ҚАДАМ: ҲАЙВОН ТУРИ
+# ═══════════════════════════════════════
+
 @router.message(NotifyStates.animal_type)
 async def notify_animal(message: types.Message, state: FSMContext):
-
-    if message.text == "❌ Бекор қилиш":
+    # Бекор
+    if is_cancel(message.text):
         await state.clear()
         await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
         return
 
-    # ➕ КИРИТИЛГАН ЎЗГАРТИРИШ (Валидация):
-    valid_types = ["Буқа", "Сигир", "Тана", "Бузоқ", "Қўчқор", "Совлиқ", "Қўзи", "Эчки", "От", "Туя", "Парранда", "Барчаси"]
+    # Валидация
+    valid_types = [
+        "Буқа", "Сигир", "Тана", "Бузоқ", "Қўчқор",
+        "Совлиқ", "Қўзи", "Эчки", "От", "Туя",
+        "Парранда", "Барчаси"
+    ]
     if message.text not in valid_types:
         await message.answer(
             "⚠️ Тугмалардан бирини танланг:",
@@ -72,27 +103,35 @@ async def notify_animal(message: types.Message, state: FSMContext):
 
     await state.update_data(animal_type=fix_keyboard_text(message.text))
     await state.set_state(NotifyStates.region)
-    await message.answer("Қайси вилоят бўйича?", reply_markup=regions_keyboard())
+    await message.answer(
+        "Қайси вилоят бўйича?",
+        reply_markup=regions_keyboard()
+    )
 
+
+# ═══════════════════════════════════════
+# 2-ҚАДАМ: ВИЛОЯТ
+# ═══════════════════════════════════════
 
 @router.message(NotifyStates.region)
 async def notify_region(message: types.Message, state: FSMContext):
-    if message.text == "❌ Бекор қилиш":
+    if is_cancel(message.text):
         await state.clear()
         await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
         return
 
-    if message.text == "🔙 Орқага":
+    if is_back(message.text):
         await state.set_state(NotifyStates.animal_type)
         await message.answer(
             "Қайси чорва ҳақида хабардор қилиш керак?",
             reply_markup=search_animal_keyboard()
         )
         return
-    
-    region_fixed=fix_keyboard_text(message.text)
+
+    region_fixed = fix_keyboard_text(message.text)
     await state.update_data(region=region_fixed)
     await state.set_state(NotifyStates.district)
+
     await message.answer(
         "🏘 Қайси туманда қидирилади?\n\n"
         "Ёки, *📍 Барчаси* тугмасини танланг.",
@@ -100,72 +139,116 @@ async def notify_region(message: types.Message, state: FSMContext):
         reply_markup=notification_districts_keyboard(region_fixed)
     )
 
+
+# ═══════════════════════════════════════
+# 3-ҚАДАМ: ТУМАН
+# ═══════════════════════════════════════
+
 @router.message(NotifyStates.district)
 async def notify_district(message: types.Message, state: FSMContext):
-    if message.text == "❌ Бекор қилиш":
+    # ═══ БЕКОР ═══
+    if is_cancel(message.text):
         await state.clear()
         await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
         return
 
-    if message.text == "🔙 Орқага":
+    # ═══ ОРҚАГА ═══
+    if is_back(message.text):
         await state.set_state(NotifyStates.region)
         await message.answer(
-            "Қайси вилоят бўйича хабардор қилиш керак?", 
+            "Қайси вилоят бўйича хабардор қилиш керак?",
             reply_markup=regions_keyboard()
         )
         return
 
+    # ═══ БАРЧАСИ ═══
+    if is_all_districts(message.text):
+        await state.update_data(district="Барчаси")
+        await state.set_state(NotifyStates.min_price)
+        await message.answer(
+            "Минимал (энг паст) нархи қанча бўлсин?\n\n"
+            "*Масалан:* 5 000 000 ёки 5млн",
+            parse_mode="Markdown",
+            reply_markup=standard_step_keyboard()
+        )
+        return
+
+    # ═══ ТУМАН ВАЛИДАЦИЯСИ ═══
+    data = await state.get_data()
+    region = data.get("region", "")
+    valid_districts = districts.get(region, [])
+
+    if message.text not in valid_districts:
+        await message.answer(
+            f"⚠️ *{region}* вилоятида бундай туман топилмади.\n\n"
+            f"Рўхатдан танланг ёки *📍 Барчаси* танланг.",
+            parse_mode="Markdown",
+            reply_markup=notification_districts_keyboard(region)
+        )
+        return
+
+    # ═══ САҚЛАШ ═══
     await state.update_data(district=message.text)
     await state.set_state(NotifyStates.min_price)
     await message.answer(
-        "Минимал (энг паст) нархи қанча бўлсин?\n\n*Масалан:* 5 000 000 ёки 5млн",
+        "Минимал (энг паст) нархи қанча бўлсин?\n\n"
+        "*Масалан:* 5 000 000 ёки 5млн",
         parse_mode="Markdown",
         reply_markup=standard_step_keyboard()
     )
 
+
+# ═══════════════════════════════════════
+# 4-ҚАДАМ: МИНИМАЛ НАРХ
+# ═══════════════════════════════════════
+
 @router.message(NotifyStates.min_price)
 async def notify_min_price(message: types.Message, state: FSMContext):
-    # 3. ➕ Нарх босқичида "Орқага" босилса, қайтадан Туман сўраш блоки
-    if message.text == "🔙 Орқага":
+    if is_cancel(message.text):
+        await state.clear()
+        await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
+        return
+
+    if is_back(message.text):
         user_data = await state.get_data()
-        saved_region = user_data.get("region", "Тошкент") # Агар вилоят топилмаса хато бермаслиги учун
-        
+        saved_region = user_data.get("region", "Тошкент")
         await state.set_state(NotifyStates.district)
         await message.answer(
-            "🏘 Қайси туманда қидирилади?\n\nАгар фарқи бўлмаса, *📍 Барчаси* танланг.",
+            "🏘 Қайси туманда қидирилади?\n\n"
+            "Агар фарқи бўлмаса, *📍 Барчаси* танланг.",
             parse_mode="Markdown",
             reply_markup=notification_districts_keyboard(saved_region)
         )
         return
 
-    if message.text == "❌ Бекор қилиш":
-        await state.clear()
-        await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
-        return
-
-    # Нархни парсинг қилиш ва текшириш қисми (ўзингизнинг кодингиз)
     price = parse_price_text(message.text)
-
     if price <= 0:
         await message.answer(
-            "Нархни тўғри киритинг.",
+            "⚠️ Нархни тўғри рақамда киритинг:\nМасалан: 3000000",
             reply_markup=standard_step_keyboard()
         )
         return
 
     await state.update_data(min_price=price)
     await state.set_state(NotifyStates.max_price)
-
     await message.answer(
         "Максимал (энг баланд) нархи қанча бўлсин?",
         reply_markup=standard_step_keyboard()
     )
-    
+
+
+# ═══════════════════════════════════════
+# 5-ҚАДАМ: МАКСИМАЛ НАРХ → САҚЛАШ
+# ═══════════════════════════════════════
 
 @router.message(NotifyStates.max_price)
 async def notify_max_price(message: types.Message, state: FSMContext):
-    # ═══ ➕ НАВИГАЦИЯ ТЕКШИРУВИ (ҚЎШИЛДИ) ═══
-    if message.text == "🔙 Орқага":
+    if is_cancel(message.text):
+        await state.clear()
+        await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
+        return
+
+    if is_back(message.text):
         await state.set_state(NotifyStates.min_price)
         await message.answer(
             "Минимал (энг паст) нархи қанча бўлсин?",
@@ -173,39 +256,31 @@ async def notify_max_price(message: types.Message, state: FSMContext):
         )
         return
 
-    if message.text == "❌ Бекор қилиш":
-        await state.clear()
-        await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
-        return
-        
     max_price = parse_price_text(message.text)
-
     if max_price <= 0:
         await message.answer(
-            "Нархни тўғри киритинг.",
+            "⚠️ Нархни тўғри рақамда киритинг:",
             reply_markup=standard_step_keyboard()
         )
         return
 
     data = await state.get_data()
-
     if max_price < data["min_price"]:
         await message.answer(
-            "Максимал нарх минимал нархдан катта бўлиши керак.\nҚайтадан киритинг:",
+            "⚠️ Максимал нарх минимал нархдан катта бўлиши керак.\n"
+            "Қайтадан киритинг:",
             reply_markup=standard_step_keyboard()
         )
         return
-   
+
+    # Текшириш — такрорми?
+    p = get_placeholder()
     conn = get_connection()
     cur = conn.cursor()
 
-    p = get_placeholder()
-
-    
     cur.execute(
         f"""
-        SELECT id
-        FROM notifications
+        SELECT id FROM notifications
         WHERE user_id = {p}
         AND animal_type = {p}
         AND region = {p}
@@ -217,23 +292,22 @@ async def notify_max_price(message: types.Message, state: FSMContext):
             message.from_user.id,
             data["animal_type"],
             data["region"],
-            data.get("district", "📍 Барчаси"),
+            data.get("district", "Барчаси"),
             data["min_price"],
             max_price
         )
     )
-    
-    exists = cur.fetchone()
-    
-    if exists:
+
+    if cur.fetchone():
         conn.close()
-    
         await message.answer(
             "⚠️ Бу эслатма аввал яратилган.",
             reply_markup=main_menu()
         )
+        await state.clear()
         return
-        
+
+    # Сақлаш
     cur.execute(
         f"""
         INSERT INTO notifications
@@ -244,7 +318,7 @@ async def notify_max_price(message: types.Message, state: FSMContext):
             message.from_user.id,
             data["animal_type"],
             data["region"],
-            data.get("district", "📍 Барчаси"),
+            data.get("district", "Барчаси"),
             data["min_price"],
             max_price
         )
@@ -252,17 +326,24 @@ async def notify_max_price(message: types.Message, state: FSMContext):
     conn.commit()
     conn.close()
 
-    await state.clear()
+    district_text = data.get("district", "Барчаси")
+    if district_text == "Барчаси":
+        district_text = "Барчаси"
 
+    await state.clear()
     await message.answer(
-        "✅ Эслатма сақланди.\n\n"
-        "Мос эълон чиқса автомат хабар қиламиз!",
+        f"✅ *Эслатма сақланди!*\n\n"
+        f"🐾 {data['animal_type']}\n"
+        f"📍 {data['region']} в, {district_text}\n"
+        f"💰 {data['min_price']:,} — {max_price:,} сўм\n\n"
+        f"Мос эълон чиқса автомат хабар қиламиз!",
+        parse_mode="Markdown",
         reply_markup=main_menu()
     )
 
 
 # ═══════════════════════════════════════
-# 📌 МЕНИНГ КУЗАТУВЛАРИМ — РЎЙХАТ
+# 📌 МЕНИНГ КУЗАТУВЛАРИМ
 # ═══════════════════════════════════════
 
 @router.message(F.text == "📌 Менинг кузатувларим")
@@ -284,22 +365,26 @@ async def my_notifications(message: types.Message):
     )
 
     for n in notifications:
-        notif_id, animal, region, district, min_p, max_p = n[0], n[1], n[2], n[3], n[4], n[5]
-        
-        inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="✏️ Таҳрирлаш",
-                    callback_data=f"edit_notif_{notif_id}"
-                ),
-                InlineKeyboardButton(
-                    text="❌ Ўчириш",
-                    callback_data=f"del_notif_{notif_id}"
-                )
-            ]
-        ])
-        
-        district_text = district if district and district != "Барчаси" else "Барчаси"
+        notif_id, animal, region, district, min_p, max_p = (
+            n[0], n[1], n[2], n[3], n[4], n[5]
+        )
+
+        district_text = (
+            district if district and district != "Барчаси"
+            else "Барчаси"
+        )
+
+        inline_kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text="✏️ Таҳрирлаш",
+                callback_data=f"edit_notif_{notif_id}"
+            ),
+            InlineKeyboardButton(
+                text="❌ Ўчириш",
+                callback_data=f"del_notif_{notif_id}"
+            )
+        ]])
+
         await message.answer(
             f"🐾 *{animal}*\n"
             f"📍 {region} в, {district_text}\n"
@@ -310,14 +395,13 @@ async def my_notifications(message: types.Message):
 
 
 # ═══════════════════════════════════════
-# ❌ КУЗАТУВНИ ЎЧИРИШ (CALLBACK)
+# ❌ КУЗАТУВНИ ЎЧИРИШ
 # ═══════════════════════════════════════
 
 @router.callback_query(F.data.startswith("del_notif_"))
 async def delete_notification_callback(callback: types.CallbackQuery):
     notif_id = int(callback.data.replace("del_notif_", ""))
 
-    # ═══ ТЕКШИРИШ — ФАҚАТ ЭГАСИ ЎЧИРА ОЛАДИ ═══
     p = get_placeholder()
     conn = get_connection()
     cur = conn.cursor()
@@ -341,14 +425,13 @@ async def delete_notification_callback(callback: types.CallbackQuery):
 
 
 # ═══════════════════════════════════════
-# ✏️ КУЗАТУВНИ ТАҲРИРЛАШ (CALLBACK)
+# ✏️ КУЗАТУВНИ ТАҲРИРЛАШ
 # ═══════════════════════════════════════
 
 @router.callback_query(F.data.startswith("edit_notif_"))
 async def edit_notification_start(callback: types.CallbackQuery, state: FSMContext):
     notif_id = int(callback.data.replace("edit_notif_", ""))
 
-    # ═══ ТЕКШИРИШ — ФАҚАТ ЭГАСИ ТАҲРИРЛАЙ ОЛАДИ ═══
     p = get_placeholder()
     conn = get_connection()
     cur = conn.cursor()
@@ -371,20 +454,17 @@ async def edit_notification_start(callback: types.CallbackQuery, state: FSMConte
         parse_mode="Markdown"
     )
     await callback.answer()
-    
 
 
 @router.message(NotifyStates.edit_min_price)
 async def edit_min_price(message: types.Message, state: FSMContext):
     price = parse_price_text(message.text)
-
     if price <= 0:
         await message.answer("⚠️ Нархни тўғри рақамда киритинг:")
         return
 
     await state.update_data(edit_min_price=price)
     await state.set_state(NotifyStates.edit_max_price)
-
     await message.answer(
         "✏️ Янги *максимал нархни* киритинг:\n_(масалан: 10000000)_",
         parse_mode="Markdown"
@@ -394,7 +474,6 @@ async def edit_min_price(message: types.Message, state: FSMContext):
 @router.message(NotifyStates.edit_max_price)
 async def edit_max_price(message: types.Message, state: FSMContext):
     max_price = parse_price_text(message.text)
-
     if max_price <= 0:
         await message.answer("⚠️ Нархни тўғри рақамда киритинг:")
         return
@@ -410,7 +489,6 @@ async def edit_max_price(message: types.Message, state: FSMContext):
 
     notif_id = data.get("edit_notif_id")
 
-    # Базани янгилаш
     p = get_placeholder()
     conn = get_connection()
     cur = conn.cursor()
@@ -426,44 +504,9 @@ async def edit_max_price(message: types.Message, state: FSMContext):
     conn.close()
 
     await state.clear()
-
     await message.answer(
         f"✅ *Кузатув янгиланди!*\n\n"
         f"💰 {fmt_number(min_price)} — {fmt_number(max_price)} сўм",
         parse_mode="Markdown",
         reply_markup=notify_menu_keyboard()
     )
-'''
-@router.message(NotifyStates.animal_type)
-async def notify_animal_fallback(message: types.Message, state: FSMContext):
-    """Kuzatuv — hayvon turida noto'g'ri matn"""
-    await message.answer(
-        "⚠️ Тугмалардан бирини танланг:",
-        reply_markup=search_animal_keyboard()
-    )
-
-
-@router.message(NotifyStates.region)
-async def notify_region_fallback(message: types.Message, state: FSMContext):
-    """Kuzatuv — viloyatda noto'g'ri matn"""
-    await message.answer(
-        "⚠️ Тугмалардан бирини танланг:",
-        reply_markup=regions_keyboard()
-    )
-'''
-
-@router.message(NotifyStates.min_price)
-async def notify_min_fallback(message: types.Message, state: FSMContext):
-    """Kuzatuv — min narxda noto'g'ri matn"""
-    await message.answer(
-        "⚠️ Минимал нархни рақамда киритинг:\nМасалан: 3000000"
-    )
-
-
-@router.message(NotifyStates.max_price)
-async def notify_max_fallback(message: types.Message, state: FSMContext):
-    """Kuzatuv — max narxda noto'g'ri matn"""
-    await message.answer(
-        "⚠️ Максимал нархни рақамда киритинг:\nМасалан: 10000000"
-    )
-
