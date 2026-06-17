@@ -245,7 +245,7 @@ def notify_menu_keyboard():
 
 def notification_districts_keyboard(region_text):
     """Хабардорлик учун туманлар — танланган вилоят бўйича + Барчаси"""
-    districts = DISTRICTS.get(region_text, [])
+    districts = districts.get(region_text, [])
 
     buttons = []
     # Аввал "Барчаси" тугмаси
