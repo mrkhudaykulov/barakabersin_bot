@@ -169,12 +169,26 @@ async def notify_min_price(message: types.Message, state: FSMContext):
 
 @router.message(NotifyStates.max_price)
 async def notify_max_price(message: types.Message, state: FSMContext):
+    # ═══ ➕ НАВИГАЦИЯ ТЕКШИРУВИ (ҚЎШИЛДИ) ═══
+    if message.text == "🔙 Орқага":
+        await state.set_state(NotifyStates.min_price)
+        await message.answer(
+            "Минимал (энг паст) нархи қанча бўлсин?",
+            reply_markup=standard_step_keyboard()
+        )
+        return
 
+    if message.text == "❌ Бекор қилиш":
+        await state.clear()
+        await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
+        return
+        
     max_price = parse_price_text(message.text)
 
     if max_price <= 0:
         await message.answer(
-            "Нархни тўғри киритинг."
+            "Нархни тўғри киритинг.",
+            reply_markup=standard_step_keyboard()
         )
         return
 
@@ -182,13 +196,11 @@ async def notify_max_price(message: types.Message, state: FSMContext):
 
     if max_price < data["min_price"]:
         await message.answer(
-            "Максимал нарх минимал нархдан катта бўлиши керак.",
+            "Максимал нарх минимал нархдан катта бўлиши керак.\nҚайтадан киритинг:",
             reply_markup=standard_step_keyboard()
         )
         return
-
-    data = await state.get_data()
-
+   
     conn = get_connection()
     cur = conn.cursor()
 
@@ -222,12 +234,11 @@ async def notify_max_price(message: types.Message, state: FSMContext):
         conn.close()
     
         await message.answer(
-            "⚠️ Бу эслатма аввал яратилган."
+            "⚠️ Бу эслатма аввал яратилган.",
+            reply_markup=main_menu()
         )
         return
-    
-    
-    
+        
     cur.execute(
         f"""
         INSERT INTO notifications
