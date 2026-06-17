@@ -963,86 +963,55 @@ def match_price_index(text):
     return text
 
 
-def get_notification_users(
-        animal_type,
-        region,
-        price
-):
+def get_notification_users(animal_type, region, price, district=None):
+    """Мос кузатувчиларни топиш — ҳайвон тури, вилоят, туман, нарх бўйича"""
     conn = get_connection()
     cursor = conn.cursor()
-
     p = get_placeholder()
 
     if DATABASE_URL:
-        cursor.execute(
-            f"""
+        cursor.execute(f"""
             SELECT user_id
             FROM notifications
             WHERE animal_type = {p}
-            AND region = {p}
-            AND min_price <= {p}
-            AND max_price >= {p}
-            AND is_active = TRUE
-            """,
-            (
-                animal_type,
-                region,
-                price,
-                price
-            )
-        )
+              AND region = {p}
+              AND min_price <= {p}
+              AND max_price >= {p}
+              AND is_active = TRUE
+              AND (district = 'Барчаси' OR district = {p})
+        """, (animal_type, region, price, price, district or 'Барчаси'))
     else:
-        cursor.execute(
-            f"""
+        cursor.execute(f"""
             SELECT user_id
             FROM notifications
             WHERE animal_type = {p}
-            AND region = {p}
-            AND min_price <= {p}
-            AND max_price >= {p}
-            AND is_active = 1
-            """,
-            (
-                animal_type,
-                region,
-                price,
-                price
-            )
-        )
+              AND region = {p}
+              AND min_price <= {p}
+              AND max_price >= {p}
+              AND is_active = 1
+              AND (district = 'Барчаси' OR district = {p})
+        """, (animal_type, region, price, price, district or 'Барчаси'))
 
     rows = cursor.fetchall()
-
     conn.close()
-
     return rows
 
 
 def get_user_notifications(user_id):
-
     conn = get_connection()
     cur = conn.cursor()
-
     p = get_placeholder()
 
-    cur.execute(
-        f"""
-        SELECT
-            id,
-            animal_type,
-            region,
-            min_price,
-            max_price
+    cur.execute(f"""
+        SELECT id, animal_type, region, district,
+               min_price, max_price
         FROM notifications
         WHERE user_id = {p}
         ORDER BY id DESC
-        """,
-        (user_id,)
-    )
+    """, (user_id,))
 
     rows = cur.fetchall()
-
     conn.close()
-
     return rows
 
 def delete_notification(notification_id):
