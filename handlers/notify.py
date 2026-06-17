@@ -55,6 +55,11 @@ async def create_notification(
 @router.message(NotifyStates.animal_type)
 async def notify_animal(message: types.Message, state: FSMContext):
 
+    if message.text == "❌ Бекор қилиш":
+        await state.clear()
+        await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
+        return
+
     await state.update_data(
         animal_type=fix_keyboard_text(message.text)
     )
@@ -72,9 +77,23 @@ async def notify_animal(message: types.Message, state: FSMContext):
 
 @router.message(NotifyStates.region)
 async def notify_region(message: types.Message, state: FSMContext):
+    if message.text == "❌ Бекор қилиш":
+        await state.clear()
+        await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
+        return
+
+    if message.text == "🔙 Орқага":
+        await state.set_state(NotifyStates.animal_type)
+        await message.answer(
+            "Қайси чорва ҳақида хабардор қилиш керак?",
+            reply_markup=search_animal_keyboard()
+        )
+        return
+
     await state.update_data(
         region=fix_keyboard_text(message.text)
     )
+    
     await state.set_state(NotifyStates.district)  # ← Туманга ўтиш
     await message.answer(
         "🏘 Қайси туманда қидирилади?\n\n"
@@ -147,6 +166,7 @@ async def notify_max_price(message: types.Message, state: FSMContext):
         WHERE user_id = {p}
         AND animal_type = {p}
         AND region = {p}
+        AND district = {p}
         AND min_price = {p}
         AND max_price = {p}
         """,
@@ -154,6 +174,7 @@ async def notify_max_price(message: types.Message, state: FSMContext):
             message.from_user.id,
             data["animal_type"],
             data["region"],
+            data.get("district", "Барчаси"),
             data["min_price"],
             max_price
         )
@@ -174,27 +195,18 @@ async def notify_max_price(message: types.Message, state: FSMContext):
     cur.execute(
         f"""
         INSERT INTO notifications
-        (
-            user_id,
-            animal_type,
-            region,
-            min_price,
-            max_price
-        )
-        VALUES
-        (
-            {p},{p},{p},{p},{p}
-        )
+        (user_id, animal_type, region, district, min_price, max_price)
+        VALUES ({p},{p},{p},{p},{p},{p})
         """,
         (
             message.from_user.id,
             data["animal_type"],
             data["region"],
+            data.get("district", "Барчаси"),
             data["min_price"],
             max_price
         )
     )
-
     conn.commit()
     conn.close()
 
@@ -230,8 +242,8 @@ async def my_notifications(message: types.Message):
     )
 
     for n in notifications:
-        notif_id, animal, region, min_p, max_p = n[0], n[1], n[2], n[3], n[4]
-
+        notif_id, animal, region, district, min_p, max_p = n[0], n[1], n[2], n[3], n[4], n[5]
+        
         inline_kb = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(
@@ -244,10 +256,11 @@ async def my_notifications(message: types.Message):
                 )
             ]
         ])
-
+        
+        district_text = district if district and district != "Барчаси" else "Барчаси"
         await message.answer(
             f"🐾 *{animal}*\n"
-            f"📍 {region}\n"
+            f"📍 {region} в, {district_text}\n"
             f"💰 {fmt_number(min_p)} — {fmt_number(max_p)} сўм",
             parse_mode="Markdown",
             reply_markup=inline_kb
@@ -378,9 +391,6 @@ async def edit_max_price(message: types.Message, state: FSMContext):
         parse_mode="Markdown",
         reply_markup=notify_menu_keyboard()
     )
-
-
-
 
 @router.message(NotifyStates.animal_type)
 async def notify_animal_fallback(message: types.Message, state: FSMContext):
