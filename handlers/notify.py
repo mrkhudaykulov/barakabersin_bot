@@ -15,7 +15,7 @@ from keyboards import (
     main_menu,
     notify_menu_keyboard,
     standard_step_keyboard,
-    districts
+    DISTRICTS
 )
 
 from database import (
@@ -176,12 +176,11 @@ async def notify_district(message: types.Message, state: FSMContext):
     # ═══ ТУМАН ВАЛИДАЦИЯСИ ═══
     data = await state.get_data()
     region = data.get("region", "")
-    valid_districts = districts.get(region, [])
+    valid_districts = DISTRICTS.get(region, [])
 
-    if message.text not in valid_districts:
+    if not is_all_districts(message.text) and message.text not in valid_districts:
         await message.answer(
-            f"⚠️ *{region}* вилоятида бундай туман топилмади.\n\n"
-            f"Рўхатдан танланг ёки *📍 Барчаси* танланг.",
+            f"⚠️ *{region}* вилоятида бундай туман топилмади.",
             parse_mode="Markdown",
             reply_markup=notification_districts_keyboard(region)
         )
