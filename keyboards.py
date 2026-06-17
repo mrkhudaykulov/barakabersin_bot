@@ -242,32 +242,20 @@ def notify_menu_keyboard():
         resize_keyboard=True
     )
 
-def notification_districts_keyboard(region_text):
-    """Хабардорлик учун туманлар — танланган вилоят бўйича + Барчаси"""
-    
-    # 1. Тепадаги districts_keyboard функцияси ичидаги луғатдан 
-    # хатосиз нусха олиш учун 'districts_list' номидан фойдаланамиз
-    districts_list = districts_keyboard(region_text).keyboard
-    
-    # Бу ердан навигация тугмаларини олиб ташлаб, фақат соф туман номларини ажратамиз
-    clean_districts = []
-    for row in districts_list:
-        for button in row:
-            if button.text not in ["🔙 Орқага", "❌ Бекор қилиш"]:
-                clean_districts.append(button.text)
+def notification_districts_keyboard(region):
+    """Хабардорлик учун туманлар — вилоят бўйича + Барчаси"""
+    builder = ReplyKeyboardBuilder()
 
-    buttons = []
     # Аввал "Барчаси" тугмаси
-    buttons.append([KeyboardButton(text="📍 Барчаси")])
+    builder.add(KeyboardButton(text="📍 Барчаси"))
 
-    # Кейин тозаланган туманлар — 2 тадан қаторга солинади
-    for i in range(0, len(clean_districts), 2):
-        row = [KeyboardButton(text=clean_districts[i])]
-        if i + 1 < len(clean_districts):
-            row.append(KeyboardButton(text=clean_districts[i + 1]))
-        buttons.append(row)
+    # Туманлар
+    list_d = DISTRICTS.get(region, [])
+    for d in list_d:
+        builder.add(KeyboardButton(text=d))
 
-    # Охирда орқага
-    buttons.append([KeyboardButton(text="🔙 Орқага")])
+    builder.adjust(3)
+    builder.row(KeyboardButton(text="🔙 Орқага"))
 
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+    return builder.as_markup(resize_keyboard=True)
+
