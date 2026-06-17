@@ -32,21 +32,32 @@ router = Router()
 
 
 # ═══════════════════════════════════════
-# ТУГМА МАТНЛАРИНИ БИР ЎРНАГА ЙИҒИШ
+# ТЕКШИРУВ ФУНКЦИЯЛАРИ — БИР ЖОЙДА
 # ═══════════════════════════════════════
-BTN_CANCEL = "❌ Бекор қилиш"
-BTN_BACK = "🔙 Орқага"
-BTN_ALL_DISTRICTS = "📍 Барчаси"
-
 
 def is_cancel(text):
-    return text and text.strip() == BTN_CANCEL
+    """Бекор қилиш — emoji фарқини ҳисобга олмайди"""
+    if not text:
+        return False
+    return "Бекор" in text
 
 def is_back(text):
-    return text and text.strip() == BTN_BACK
+    """Орқага — emoji фарқини ҳисобга олмайди"""
+    if not text:
+        return False
+    return "Орқага" in text
 
 def is_all_districts(text):
-    return text and "Барчаси" in text
+    """Барчаси"""
+    if not text:
+        return False
+    return "Барчаси" in text
+
+def is_home(text):
+    """Бош меню"""
+    if not text:
+        return False
+    return "Бош меню" in text
 
 
 # ═══════════════════════════════════════
@@ -54,7 +65,8 @@ def is_all_districts(text):
 # ═══════════════════════════════════════
 
 @router.message(F.text == "🔔 Хабардор қил")
-async def notify_start(message: types.Message):
+async def notify_start(message: types.Message, state: FSMContext):
+    await state.clear()
     await message.answer(
         "🔔 Хабарнома маркази\n\n"
         "Бу марказ орқали Сиз эълонлар ҳақида "
@@ -64,11 +76,12 @@ async def notify_start(message: types.Message):
 
 
 # ═══════════════════════════════════════
-# ➕ ЯНГИ КУЗАТУВ — БОШЛАШ
+# ➕ ЯНГИ КУЗАТУВ
 # ═══════════════════════════════════════
 
 @router.message(F.text == "➕ Янги кузатув")
 async def create_notification(message: types.Message, state: FSMContext):
+    await state.clear()
     await state.set_state(NotifyStates.animal_type)
     await message.answer(
         "Қайси чорва ҳақида хабардор қилиш керак?",
@@ -82,13 +95,11 @@ async def create_notification(message: types.Message, state: FSMContext):
 
 @router.message(NotifyStates.animal_type)
 async def notify_animal(message: types.Message, state: FSMContext):
-    # Бекор
-    if is_cancel(message.text):
+    if is_cancel(message.text) or is_back(message.text):
         await state.clear()
         await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
         return
 
-    # Валидация
     valid_types = [
         "Буқа", "Сигир", "Тана", "Бузоқ", "Қўчқор",
         "Совлиқ", "Қўзи", "Эчки", "От", "Туя",
@@ -131,7 +142,6 @@ async def notify_region(message: types.Message, state: FSMContext):
     region_fixed = fix_keyboard_text(message.text)
     await state.update_data(region=region_fixed)
     await state.set_state(NotifyStates.district)
-
     await message.answer(
         "🏘 Қайси туманда қидирилади?\n\n"
         "Ёки, *📍 Барчаси* тугмасини танланг.",
@@ -146,22 +156,21 @@ async def notify_region(message: types.Message, state: FSMContext):
 
 @router.message(NotifyStates.district)
 async def notify_district(message: types.Message, state: FSMContext):
-    # ═══ БЕКОР ═══
     if is_cancel(message.text):
         await state.clear()
         await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
         return
 
-    # ═══ ОРҚАГА ═══
     if is_back(message.text):
+        data = await state.get_data()
+        region = data.get("region", "")
         await state.set_state(NotifyStates.region)
         await message.answer(
-            "Қайси вилоят бўйича хабардор қилиш керак?",
+            "Қайси вилоят бўйича?",
             reply_markup=regions_keyboard()
         )
         return
 
-    # ═══ БАРЧАСИ ═══
     if is_all_districts(message.text):
         await state.update_data(district="Барчаси")
         await state.set_state(NotifyStates.min_price)
@@ -173,20 +182,20 @@ async def notify_district(message: types.Message, state: FSMContext):
         )
         return
 
-    # ═══ ТУМАН ВАЛИДАЦИЯСИ ═══
+    # Валидация
     data = await state.get_data()
     region = data.get("region", "")
     valid_districts = DISTRICTS.get(region, [])
 
-    if not is_all_districts(message.text) and message.text not in valid_districts:
+    if message.text not in valid_districts:
         await message.answer(
-            f"⚠️ *{region}* вилоятида бундай туман топилмади.",
+            f"⚠️ *{region}* вилоятида бундай туман топилмади.\n\n"
+            f"Рўхатдан танланг ёки *📍 Барчаси* танланг.",
             parse_mode="Markdown",
             reply_markup=notification_districts_keyboard(region)
         )
         return
 
-    # ═══ САҚЛАШ ═══
     await state.update_data(district=message.text)
     await state.set_state(NotifyStates.min_price)
     await message.answer(
@@ -209,14 +218,14 @@ async def notify_min_price(message: types.Message, state: FSMContext):
         return
 
     if is_back(message.text):
-        user_data = await state.get_data()
-        saved_region = user_data.get("region", "Тошкент")
+        data = await state.get_data()
+        region = data.get("region", "Тошкент")
         await state.set_state(NotifyStates.district)
         await message.answer(
             "🏘 Қайси туманда қидирилади?\n\n"
             "Агар фарқи бўлмаса, *📍 Барчаси* танланг.",
             parse_mode="Markdown",
-            reply_markup=notification_districts_keyboard(saved_region)
+            reply_markup=notification_districts_keyboard(region)
         )
         return
 
@@ -272,7 +281,7 @@ async def notify_max_price(message: types.Message, state: FSMContext):
         )
         return
 
-    # Текшириш — такрорми?
+    # Такрорий текшириш
     p = get_placeholder()
     conn = get_connection()
     cur = conn.cursor()
@@ -326,8 +335,6 @@ async def notify_max_price(message: types.Message, state: FSMContext):
     conn.close()
 
     district_text = data.get("district", "Барчаси")
-    if district_text == "Барчаси":
-        district_text = "Барчаси"
 
     await state.clear()
     await message.answer(
@@ -346,7 +353,8 @@ async def notify_max_price(message: types.Message, state: FSMContext):
 # ═══════════════════════════════════════
 
 @router.message(F.text == "📌 Менинг кузатувларим")
-async def my_notifications(message: types.Message):
+async def my_notifications(message: types.Message, state: FSMContext):
+    await state.clear()
     notifications = get_user_notifications(message.from_user.id)
 
     if not notifications:
