@@ -112,6 +112,16 @@ def init_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admin_review_messages (
+                ad_id INTEGER NOT NULL,
+                admin_id BIGINT NOT NULL,
+                message_id BIGINT NOT NULL,
+                chat_id BIGINT NOT NULL,
+                PRIMARY KEY (ad_id, admin_id)
+            )
+        """)
+
     
 
     else:
@@ -185,6 +195,16 @@ def init_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admin_review_messages (
+                ad_id INTEGER NOT NULL,
+                admin_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                chat_id INTEGER NOT NULL,
+                PRIMARY KEY (ad_id, admin_id)
+            )
+        """)
+
     conn.commit()
     conn.close()
 
@@ -222,7 +242,13 @@ def migrate_db():
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS reviewed_by BIGINT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS rejection_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP"
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP",
+            """CREATE TABLE IF NOT EXISTS admin_review_messages (
+                ad_id INTEGER NOT NULL, admin_id BIGINT NOT NULL,
+                message_id BIGINT NOT NULL, chat_id BIGINT NOT NULL,
+                PRIMARY KEY (ad_id, admin_id)
+            )"""
+            
         ]
         for sql in migrations:
             try:
@@ -244,7 +270,12 @@ def migrate_db():
             "ALTER TABLE ads ADD COLUMN reviewed_by INTEGER",
             "ALTER TABLE users ADD COLUMN rejection_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN blocked_at TIMESTAMP"
+            "ALTER TABLE users ADD COLUMN blocked_at TIMESTAMP",
+            """CREATE TABLE IF NOT EXISTS admin_review_messages (
+                ad_id INTEGER NOT NULL, admin_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL, chat_id INTEGER NOT NULL,
+                PRIMARY KEY (ad_id, admin_id)
+            )"""
         ]
         for sql in sqlite_migrations:
             try:
@@ -1208,3 +1239,65 @@ def get_blocked_users():
     rows = cursor.fetchall()
     conn.close()
     return rows
+
+# Админга юборилган хабарни бошқа Админ томонидан таҳрирлаш (тасдиқлаш ва рад қилиш кнопкаларини)
+
+def save_admin_review_message(ad_id: int, admin_id: int, message_id: int, chat_id: int):
+    """Ҳар бир админга юборилган review хабарини базага сақлайди."""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        if DATABASE_URL:
+            cursor.execute(f"""
+                INSERT INTO admin_review_messages (ad_id, admin_id, message_id, chat_id)
+                VALUES ({p}, {p}, {p}, {p})
+                ON CONFLICT (ad_id, admin_id) DO UPDATE
+                SET message_id = EXCLUDED.message_id, chat_id = EXCLUDED.chat_id
+            """, (ad_id, admin_id, message_id, chat_id))
+        else:
+            cursor.execute(f"""
+                INSERT OR REPLACE INTO admin_review_messages (ad_id, admin_id, message_id, chat_id)
+                VALUES ({p}, {p}, {p}, {p})
+            """, (ad_id, admin_id, message_id, chat_id))
+        conn.commit()
+    except Exception as e:
+        logging.error(f"save_admin_review_message хато: {e}")
+    finally:
+        conn.close()
+ 
+ 
+def get_admin_review_messages(ad_id: int) -> list:
+    """ad_id бўйича барча админлар учун (admin_id, message_id, chat_id) қайтаради."""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(f"""
+            SELECT admin_id, message_id, chat_id
+            FROM admin_review_messages
+            WHERE ad_id = {p}
+        """, (ad_id,))
+        return cursor.fetchall()
+    except Exception as e:
+        logging.error(f"get_admin_review_messages хато: {e}")
+        return []
+    finally:
+        conn.close()
+ 
+ 
+def delete_admin_review_messages(ad_id: int):
+    """Эълон кўрилгандан кейин базадан тозалаш."""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            f"DELETE FROM admin_review_messages WHERE ad_id = {p}",
+            (ad_id,)
+        )
+        conn.commit()
+    except Exception as e:
+        logging.error(f"delete_admin_review_messages хато: {e}")
+    finally:
+        conn.close()
