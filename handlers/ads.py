@@ -881,28 +881,38 @@ async def reject_ad_callback(callback: types.CallbackQuery):
 
 async def _update_other_admins(ad_id: int, acted_admin_id: int, status_text: str):
     """
-    Бир админ тасдиқлаш/рад этгандан кейин қолган барча админларнинг
-    чатидаги тасдиқлаш хабарини тугмасиз кўринишга ўзгартиради.
+    Хамма админдаги тасдиқлаш хабарини ЎЗИ ўзгартиради.
+    Расм/видео бўлса caption, матн бўлса text ўзгартирилади.
     """
     rows = get_admin_review_messages(ad_id)
- 
+
+    new_text = (
+        f"ℹ️ Эълон #{ad_id} кўрилди.\n\n"
+        f"{status_text}"
+    )
+
     for admin_id, message_id, chat_id in rows:
         if admin_id == acted_admin_id:
-            continue  # Амал қилган админнинг хабари аллақачон ўзгарган
+            continue  # Бу админники approve/reject ичида аллақачон ўзгарган
+
+        edited = False
+
+        # ═══ 1-УРИНИШ: caption ўзгартириш (расмли/видеоли хабар) ═══
         try:
-            new_text = f"ℹ️ Эълон #{ad_id} кўрилди.\n\n{status_text}"
- 
-            # Расмли хабарни caption орқали таҳрирлаш
+            await bot.edit_message_caption(
+                chat_id=chat_id,
+                message_id=message_id,
+                caption=new_text,
+                parse_mode="Markdown",
+                reply_markup=None
+            )
+            edited = True
+        except Exception:
+            pass
+
+        # ═══ 2-УРИНИШ: text ўзгартириш (матнли хабар) ═══
+        if not edited:
             try:
-                await bot.edit_message_caption(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    caption=new_text,
-                    parse_mode="Markdown",
-                    reply_markup=None  # Тугмаларни олиб ташлаш
-                )
-            except Exception:
-                # Оддий матнли хабар бўлса
                 await bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
@@ -910,12 +920,26 @@ async def _update_other_admins(ad_id: int, acted_admin_id: int, status_text: str
                     parse_mode="Markdown",
                     reply_markup=None
                 )
-        except Exception as e:
-            logging.error(f"Админ {admin_id} хабарини янгилашда хато: {e}")
- 
-    # Базадан тозалаш — бу эълон учун артиқ керак эмас
-    delete_admin_review_messages(ad_id)
+                edited = True
+            except Exception:
+                pass
 
+        # ═══ 3-УРИНИШ: Камида тугмаларни ўчириш ═══
+        if not edited:
+            try:
+                await bot.edit_message_reply_markup(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    reply_markup=None
+                )
+                edited = True
+            except Exception as e:
+                logging.error(
+                    f"Админ {admin_id} хабарини таҳрирлашда "
+                    f"хаммаси хато: {e}"
+                )
+
+    delete_admin_review_messages(ad_id)
 
 # ═══════════════════════════════════════
 # 🗂 МЕНИНГ ЭЪЛОНЛАРИМ
