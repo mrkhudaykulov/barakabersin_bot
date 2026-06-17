@@ -89,17 +89,8 @@ async def notify_region(message: types.Message, state: FSMContext):
             reply_markup=search_animal_keyboard()
         )
         return
-
-    # ➕ КИРИТИЛГАН ЎЗГАРТИРИШ (Вилоят тугмасини текшириш):
-    valid_regions = ["Қашқадарё", "Сурхондарё", "Тошкент", "Фарғона", "Андижон", "Наманган", "Самарқанд", "Бухоро", "Навоий", "Жиззах", "Сирдарё", "Хоразм", "Қорақалпоғистон"]
-    if message.text not in valid_regions:
-        await message.answer(
-            "⚠️ Тугмалардан бирини танланг:",
-            reply_markup=regions_keyboard()
-        )
-        return
-
-    region=fix_keyboard_text(message.text)
+    
+    region_fixed=fix_keyboard_text(message.text)
     await state.update_data(region=region_fixed)
     await state.set_state(NotifyStates.district)
     await message.answer(
