@@ -734,8 +734,10 @@ async def approve_ad_callback(callback: types.CallbackQuery):
                 reply_markup=None
             )
 
-    # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══
+    # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══       
     try:
+        post_link = f"https://t.me/internetmolbozor/{sent.message_id}"
+
         await bot.send_message(
             chat_id=user_id,
             text=(
@@ -743,7 +745,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
                 f"🐾 {a_type}\n"
                 f"📍 {region}\n"
                 f"💰 {price}\n\n"
-                f"Каналда кўринг: @internetmolbozor\n\n"
+                f"📢 <a href='{post_link}'>Каналда кўринг</a>\n\n"
                 f"📅 Эълон <b>{AD_EXPIRE_DAYS} кун</b> актив бўлади."
             ),
             parse_mode="HTML"
