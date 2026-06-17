@@ -659,7 +659,8 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         users = get_notification_users(
             animal_type=a_type,
             region=region,
-            price=ad_price
+            price=ad_price,
+            district=dist
         )
 
         post_link = (
