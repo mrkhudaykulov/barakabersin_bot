@@ -72,20 +72,21 @@ async def notify_animal(message: types.Message, state: FSMContext):
 
 @router.message(NotifyStates.region)
 async def notify_region(message: types.Message, state: FSMContext):
-
     await state.update_data(
         region=fix_keyboard_text(message.text)
     )
-
-    await state.set_state(
-        NotifyStates.min_price
-    )
-
+    await state.set_state(NotifyStates.district)  # ← Туманга ўтиш
     await message.answer(
-        "Минимал (энг паст) нархи қанча бўлсин?\n\nМасалан:\n3000000",
-        reply_markup=standard_step_keyboard()
+        "🏘 Қайси туманда қидирилади?\n\n"
+        "Агар фарқи бўлмаса, *📍 Барчаси* танланг.",
+        parse_mode="Markdown",
+        reply_markup=notification_districts_keyboard(
+            fix_keyboard_text(message.text)
+        )
     )
-    
+
+
+
 @router.message(NotifyStates.min_price)
 async def notify_min_price(message: types.Message, state: FSMContext):
 
