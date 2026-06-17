@@ -104,11 +104,51 @@ async def notify_region(message: types.Message, state: FSMContext):
         )
     )
 
+@router.message(NotifyStates.district)  # Айнан шу туман қадам функцияси
+async def notify_district(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Орқага":
+        await state.set_state(NotifyStates.region)
+        await message.answer(
+            "Қайси вилоят бўйича хабардор қилиш керак?", 
+            reply_markup=regions_with_all_keyboard()
+        )
+        return
 
+    if message.text == "❌ Бекор қилиш":
+        await state.clear()
+        await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
+        return
+
+    await state.update_data(district=message.text)
+    
+    await state.set_state(NotifyStates.min_price)
+    await message.answer(
+        "Минимал (энг паст) нархи қанча бўлсин?\n\n*Масалан:* 5 000 000 ёки 5млн",
+        parse_mode="Markdown",
+        reply_markup=standard_step_keyboard()
+    )
 
 @router.message(NotifyStates.min_price)
 async def notify_min_price(message: types.Message, state: FSMContext):
+    # 3. ➕ Нарх босқичида "Орқага" босилса, қайтадан Туман сўраш блоки
+    if message.text == "🔙 Орқага":
+        user_data = await state.get_data()
+        saved_region = user_data.get("region", "Тошкент") # Агар вилоят топилмаса хато бермаслиги учун
+        
+        await state.set_state(NotifyStates.district)
+        await message.answer(
+            "🏘 Қайси туманда қидирилади?\n\nАгар фарқи бўлмаса, *📍 Барчаси* танланг.",
+            parse_mode="Markdown",
+            reply_markup=notification_districts_keyboard(saved_region)
+        )
+        return
 
+    if message.text == "❌ Бекор қилиш":
+        await state.clear()
+        await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
+        return
+
+    # Нархни парсинг қилиш ва текшириш қисми (ўзингизнинг кодингиз)
     price = parse_price_text(message.text)
 
     if price <= 0:
@@ -118,18 +158,14 @@ async def notify_min_price(message: types.Message, state: FSMContext):
         )
         return
 
-    await state.update_data(
-        min_price=price
-    )
-
-    await state.set_state(
-        NotifyStates.max_price
-    )
+    await state.update_data(min_price=price)
+    await state.set_state(NotifyStates.max_price)
 
     await message.answer(
         "Максимал (энг баланд) нархи қанча бўлсин?",
         reply_markup=standard_step_keyboard()
     )
+    
 
 @router.message(NotifyStates.max_price)
 async def notify_max_price(message: types.Message, state: FSMContext):
