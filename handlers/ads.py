@@ -20,7 +20,8 @@ from database import (
     fmt_number, fix_keyboard_text, get_connection, get_placeholder,
     save_user, get_user_phone, extend_ad, archive_ad, AD_EXPIRE_DAYS,
     get_notification_users, is_user_blocked, approve_ad, reject_ad,
-    get_pending_ad, increment_rejection, MAX_REJECTIONS
+    get_pending_ad, increment_rejection, MAX_REJECTIONS,
+    save_admin_review_message, get_admin_review_messages, delete_admin_review_messages
 )
 
 router = Router()
@@ -452,25 +453,18 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
 # АДМИНЛАРГА ЮБОРИШ
 # ═══════════════════════════════════════
 
-async def _send_to_reviewers(
-    ad_id, data, caption, media_list, user, phone
-):
-    """Эълонни барча админларга тасдиқлаш учун юбориш"""
-    from config import REVIEW_ADMINS
 
+async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
+    """Эълонни барча админларга тасдиқлаш учун юбориш ва хабар ID ларини сақлаш."""
+    from config import REVIEW_ADMINS
+ 
     review_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(
-                text="✅ Тасдиқлаш",
-                callback_data=f"approve_{ad_id}"
-            ),
-            InlineKeyboardButton(
-                text="❌ Рад қилиш",
-                callback_data=f"reject_{ad_id}"
-            )
+            InlineKeyboardButton(text="✅ Тасдиқлаш", callback_data=f"approve_{ad_id}"),
+            InlineKeyboardButton(text="❌ Рад қилиш", callback_data=f"reject_{ad_id}")
         ]
     ])
-
+ 
     review_text = (
         f"🔔 *ЯНГИ ЭЪЛОН — ТАСДИҚЛАШ КУТИЛМОQДА*\n\n"
         f"#️⃣ {html.escape(data['animal_type'])}\n"
@@ -484,13 +478,13 @@ async def _send_to_reviewers(
         f"👤 {user.full_name} (ID: {user.id})\n\n"
         f"🆔 Эълон ID: {ad_id}"
     )
-
+ 
     for admin_id in REVIEW_ADMINS:
         try:
             if media_list:
                 first_media = media_list[0]
                 if first_media["type"] == "photo":
-                    await bot.send_photo(
+                    sent = await bot.send_photo(
                         chat_id=admin_id,
                         photo=first_media["file_id"],
                         caption=review_text,
@@ -498,23 +492,39 @@ async def _send_to_reviewers(
                         reply_markup=review_kb
                     )
                 elif first_media["type"] == "video":
-                    await bot.send_video(
+                    sent = await bot.send_video(
                         chat_id=admin_id,
                         video=first_media["file_id"],
                         caption=review_text,
                         parse_mode="Markdown",
                         reply_markup=review_kb
                     )
+                else:
+                    sent = await bot.send_message(
+                        chat_id=admin_id,
+                        text=review_text,
+                        parse_mode="Markdown",
+                        reply_markup=review_kb
+                    )
             else:
-                await bot.send_message(
+                sent = await bot.send_message(
                     chat_id=admin_id,
                     text=review_text,
                     parse_mode="Markdown",
                     reply_markup=review_kb
                 )
+ 
+            # ═══ Хабар ID сини базага сақлаш ═══
+            save_admin_review_message(
+                ad_id=ad_id,
+                admin_id=admin_id,
+                message_id=sent.message_id,
+                chat_id=admin_id
+            )
+ 
         except Exception as e:
             logging.error(f"Админ {admin_id} га юборишда хато: {e}")
-
+ 
 
 # ═══════════════════════════════════════
 # ТАСДИҚЛАШ КАЛЛБЕК
@@ -869,22 +879,42 @@ async def reject_ad_callback(callback: types.CallbackQuery):
 # БОШҚА АДМИНЛАРНИНГ ХАБАРИНИ ЯНГИЛАШ
 # ═══════════════════════════════════════
 
-async def _update_other_admins(ad_id, acted_admin_id, status_text):
-    from config import REVIEW_ADMINS
-
-    for admin_id in REVIEW_ADMINS:
+async def _update_other_admins(ad_id: int, acted_admin_id: int, status_text: str):
+    """
+    Бир админ тасдиқлаш/рад этгандан кейин қолган барча админларнинг
+    чатидаги тасдиқлаш хабарини тугмасиз кўринишга ўзгартиради.
+    """
+    rows = get_admin_review_messages(ad_id)
+ 
+    for admin_id, message_id, chat_id in rows:
         if admin_id == acted_admin_id:
-            continue
+            continue  # Амал қилган админнинг хабари аллақачон ўзгарган
         try:
-            await bot.send_message(
-                chat_id=admin_id,
-                text=(
-                    f"ℹ️ Эълон #{ad_id} кўрилди.\n\n"
-                    f"{status_text}"
+            new_text = f"ℹ️ Эълон #{ad_id} кўрилди.\n\n{status_text}"
+ 
+            # Расмли хабарни caption орқали таҳрирлаш
+            try:
+                await bot.edit_message_caption(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    caption=new_text,
+                    parse_mode="Markdown",
+                    reply_markup=None  # Тугмаларни олиб ташлаш
                 )
-            )
-        except Exception:
-            pass
+            except Exception:
+                # Оддий матнли хабар бўлса
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=new_text,
+                    parse_mode="Markdown",
+                    reply_markup=None
+                )
+        except Exception as e:
+            logging.error(f"Админ {admin_id} хабарини янгилашда хато: {e}")
+ 
+    # Базадан тозалаш — бу эълон учун артиқ керак эмас
+    delete_admin_review_messages(ad_id)
 
 
 # ═══════════════════════════════════════
