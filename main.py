@@ -6,7 +6,7 @@ import os
 
 from config import bot, dp
 from database import init_db
-from handlers import register_all_handlers, notifications
+from handlers import register_all_handlers
 from handlers.scheduler import start_scheduler
 
 logging.basicConfig(level=logging.INFO)
