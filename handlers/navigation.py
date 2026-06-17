@@ -38,7 +38,7 @@ async def start_cmd(message: types.Message):
         logging.error(f"Базага ёзишда хатолик: {e}")
 
     await message.answer(
-        "Ассалому алайкум! Чорва бозор ботига хуш келибсиз.",
+        "Ассалому алайкум! Чорва бозор ботига хуш келибсиз. Керакли бўлимни менюдаги тугмаларда танланг!",
         reply_markup=main_menu()
     )
 
