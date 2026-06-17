@@ -40,6 +40,7 @@ class PriceInputStates(StatesGroup):
 class NotifyStates(StatesGroup):
     animal_type = State()
     region = State()
+    district = State()
     min_price = State()
     max_price = State()
     edit_min_price = State()
