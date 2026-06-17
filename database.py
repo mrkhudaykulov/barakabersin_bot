@@ -95,6 +95,7 @@ def init_db():
                 user_id BIGINT NOT NULL,
                 animal_type TEXT NOT NULL,
                 region TEXT NOT NULL,
+                district TEXT DEFAULT 'Барчаси',
                 min_price BIGINT,
                 max_price BIGINT,
                 is_active BOOLEAN DEFAULT TRUE,
@@ -177,6 +178,7 @@ def init_db():
                 user_id INTEGER,
                 animal_type TEXT,
                 region TEXT,
+                district TEXT DEFAULT 'Барчаси',
                 min_price INTEGER,
                 max_price INTEGER,
                 is_active INTEGER DEFAULT 1,
@@ -243,6 +245,7 @@ def migrate_db():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS rejection_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP",
+            "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS district TEXT DEFAULT 'Барчаси'",
             """CREATE TABLE IF NOT EXISTS admin_review_messages (
                 ad_id INTEGER NOT NULL, admin_id BIGINT NOT NULL,
                 message_id BIGINT NOT NULL, chat_id BIGINT NOT NULL,
@@ -271,6 +274,7 @@ def migrate_db():
             "ALTER TABLE users ADD COLUMN rejection_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN blocked_at TIMESTAMP",
+            "ALTER TABLE notifications ADD COLUMN district TEXT DEFAULT 'Барчаси'",
             """CREATE TABLE IF NOT EXISTS admin_review_messages (
                 ad_id INTEGER NOT NULL, admin_id INTEGER NOT NULL,
                 message_id INTEGER NOT NULL, chat_id INTEGER NOT NULL,
