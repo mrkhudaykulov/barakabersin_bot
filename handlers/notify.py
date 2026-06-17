@@ -1,11 +1,14 @@
 from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, KeyboardButton, ReplyKeyboardMarkup
 
+from config import bot
 from states import NotifyStates
 from keyboards import (
     search_animal_keyboard,
+    animal_types_keyboard, 
     regions_keyboard,
+    notification_districts_keyboard,
     main_menu,
     notify_menu_keyboard,
     standard_step_keyboard
