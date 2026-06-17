@@ -8,6 +8,7 @@ from keyboards import (
     search_animal_keyboard,
     animal_types_keyboard, 
     regions_keyboard,
+    regions_with_all_keyboard,
     notification_districts_keyboard,
     main_menu,
     notify_menu_keyboard,
@@ -60,19 +61,18 @@ async def notify_animal(message: types.Message, state: FSMContext):
         await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
         return
 
-    await state.update_data(
-        animal_type=fix_keyboard_text(message.text)
-    )
+    # ➕ КИРИТИЛГАН ЎЗГАРТИРИШ (Валидация):
+    valid_types = ["Буқа", "Сигир", "Тана", "Бузоқ", "Қўчқор", "Совлиқ", "Қўзи", "Эчки", "От", "Туя", "Парранда", "Барчаси"]
+    if message.text not in valid_types:
+        await message.answer(
+            "⚠️ Тугмалардан бирини танланг:",
+            reply_markup=search_animal_keyboard()
+        )
+        return
 
-    await state.set_state(
-        NotifyStates.region
-    )
-
-    await message.answer(
-        "Қайси вилоят бўйича?",
-        reply_markup=regions_keyboard()
-    )
-
+    await state.update_data(animal_type=fix_keyboard_text(message.text))
+    await state.set_state(NotifyStates.region)
+    await message.answer("Қайси вилоят бўйича?", reply_markup=regions_keyboard())
 
 
 @router.message(NotifyStates.region)
@@ -90,37 +90,41 @@ async def notify_region(message: types.Message, state: FSMContext):
         )
         return
 
-    await state.update_data(
-        region=fix_keyboard_text(message.text)
-    )
-    
-    await state.set_state(NotifyStates.district)  # ← Туманга ўтиш
-    await message.answer(
-        "🏘 Қайси туманда қидирилади?\n\n"
-        "Агар фарқи бўлмаса, *📍 Барчаси* танланг.",
-        parse_mode="Markdown",
-        reply_markup=notification_districts_keyboard(
-            fix_keyboard_text(message.text)
-        )
-    )
-
-@router.message(NotifyStates.district)  # Айнан шу туман қадам функцияси
-async def notify_district(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Орқага":
-        await state.set_state(NotifyStates.region)
+    # ➕ КИРИТИЛГАН ЎЗГАРТИРИШ (Вилоят тугмасини текшириш):
+    valid_regions = ["Қашқадарё", "Сурхондарё", "Тошкент", "Фарғона", "Андижон", "Наманган", "Самарқанд", "Бухоро", "Навоий", "Жиззах", "Сирдарё", "Хоразм", "Қорақалпоғистон"]
+    if message.text not in valid_regions:
         await message.answer(
-            "Қайси вилоят бўйича хабардор қилиш керак?", 
-            reply_markup=regions_with_all_keyboard()
+            "⚠️ Тугмалардан бирини танланг:",
+            reply_markup=regions_keyboard()
         )
         return
 
+    region=fix_keyboard_text(message.text)
+    await state.update_data(region=region_fixed)
+    await state.set_state(NotifyStates.district)
+    await message.answer(
+        "🏘 Қайси туманда қидирилади?\n\n"
+        "Ёки, *📍 Барчаси* тугмасини танланг.",
+        parse_mode="Markdown",
+        reply_markup=notification_districts_keyboard(region_fixed)
+    )
+
+@router.message(NotifyStates.district)
+async def notify_district(message: types.Message, state: FSMContext):
     if message.text == "❌ Бекор қилиш":
         await state.clear()
         await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
         return
 
+    if message.text == "🔙 Орқага":
+        await state.set_state(NotifyStates.region)
+        await message.answer(
+            "Қайси вилоят бўйича хабардор қилиш керак?", 
+            reply_markup=regions_keyboard()
+        )
+        return
+
     await state.update_data(district=message.text)
-    
     await state.set_state(NotifyStates.min_price)
     await message.answer(
         "Минимал (энг паст) нархи қанча бўлсин?\n\n*Масалан:* 5 000 000 ёки 5млн",
@@ -222,7 +226,7 @@ async def notify_max_price(message: types.Message, state: FSMContext):
             message.from_user.id,
             data["animal_type"],
             data["region"],
-            data.get("district", "Барчаси"),
+            data.get("district", "📍 Барчаси"),
             data["min_price"],
             max_price
         )
@@ -249,7 +253,7 @@ async def notify_max_price(message: types.Message, state: FSMContext):
             message.from_user.id,
             data["animal_type"],
             data["region"],
-            data.get("district", "Барчаси"),
+            data.get("district", "📍 Барчаси"),
             data["min_price"],
             max_price
         )
@@ -438,7 +442,7 @@ async def edit_max_price(message: types.Message, state: FSMContext):
         parse_mode="Markdown",
         reply_markup=notify_menu_keyboard()
     )
-
+'''
 @router.message(NotifyStates.animal_type)
 async def notify_animal_fallback(message: types.Message, state: FSMContext):
     """Kuzatuv — hayvon turida noto'g'ri matn"""
@@ -455,7 +459,7 @@ async def notify_region_fallback(message: types.Message, state: FSMContext):
         "⚠️ Тугмалардан бирини танланг:",
         reply_markup=regions_keyboard()
     )
-
+'''
 
 @router.message(NotifyStates.min_price)
 async def notify_min_fallback(message: types.Message, state: FSMContext):
