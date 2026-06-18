@@ -22,30 +22,7 @@ from keyboards import (
 router = Router()
 
 
-# ═══════════════════════════════════════
-# ADMIN FSM STATES
-# ═══════════════════════════════════════
 
-class AdminStates(StatesGroup):
-    menu = State()
-    ads_menu = State()
-    prices_menu = State()
-    block_menu = State()
-    premium_menu = State()
-    # Нарх қўшиш
-    add_price_animal = State()
-    add_price_region = State()
-    add_price_value = State()
-    add_multi_text = State()
-    del_price_id = State()
-    del_animal_name = State()
-    del_region_name = State()
-    del_ad_id = State()
-    del_user_ads_id = State()
-    unblock_id = State()
-    premium_give_id = State()
-    premium_remove_id = State()
-    broadcast_text = State()
 
 
 # ═══════════════════════════════════════
