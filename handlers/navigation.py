@@ -15,7 +15,7 @@ from keyboards import (
     admin_menu_keyboard
 )
 from states import AdStates, CalcStates, SearchStates, PriceInputStates, NotifyStates
-from database import get_connection
+from database import get_connection, get_placeholder
 from config import ADMINS
 
 router = Router()
@@ -26,14 +26,17 @@ async def start_cmd(message: types.Message):
     try:
         conn = get_connection()
         cursor = conn.cursor()
+        
+        p = get_placeholder()
+        
         if "postgresql" in str(conn):
             cursor.execute(
-                "INSERT INTO users (user_id) VALUES (%s) ON CONFLICT DO NOTHING",
+                f"INSERT INTO users (user_id) VALUES ({p}) ON CONFLICT DO NOTHING",
                 (message.from_user.id,)
             )
         else:
             cursor.execute(
-                "INSERT OR IGNORE INTO users (user_id) VALUES ({p})",
+                f"INSERT OR IGNORE INTO users (user_id) VALUES ({p})",
                 (message.from_user.id,)
             )
         conn.commit()
