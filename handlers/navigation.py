@@ -4,6 +4,7 @@ import sqlite3
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 from keyboards import (
     notify_menu_keyboard, notification_districts_keyboard,
@@ -14,6 +15,7 @@ from keyboards import (
 )
 from states import AdStates, CalcStates, SearchStates, PriceInputStates, NotifyStates
 from database import get_connection
+from config import ADMINS
 
 router = Router()
 
@@ -38,9 +40,20 @@ async def start_cmd(message: types.Message):
     except Exception as e:
         logging.error(f"Базага ёзишда хатолик: {e}")
 
+    # ═══ АДМИН ТЕКШИРИШ ═══
+    if message.from_user.id in ADMINS:
+        kb = ReplyKeyboardMarkup(keyboard=[
+            [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
+            [KeyboardButton(text="📊 Нархлар индекси"), KeyboardButton(text="🗂 Менинг эълонларим")],
+            [KeyboardButton(text="🧮 Ферма калькулятори"), KeyboardButton(text="🔔 Хабардор қил")],
+            [KeyboardButton(text="🔐 Админ панел")]
+        ], resize_keyboard=True)
+    else:
+        kb = main_menu()
+
     await message.answer(
         "Ассалому алайкум! Чорва бозор ботига хуш келибсиз. Керакли бўлимни менюдаги тугмаларда танланг!",
-        reply_markup=main_menu()
+        reply_markup=kb
     )
 
 
