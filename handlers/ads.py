@@ -669,7 +669,8 @@ async def approve_ad_callback(callback: types.CallbackQuery):
             
             sent_messages = await bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
             # Матн бириктирилган биринчи хабар ID сини оламиз
-            sent_msg_ids.append(str(sent_messages[0].message_id))
+            for msg in sent_messages:
+                sent_msg_ids.append(str(msg.message_id))
             # Хабардорлик тизими (Notification) линки тўғри ишлаши учун 'sent' ўзгарувчисини эълон қиламиз
             sent = sent_messages[0]
 
