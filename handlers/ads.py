@@ -27,7 +27,10 @@ from database import (
     approve_ad, reject_ad,
     get_pending_ad, increment_rejection, 
     MAX_REJECTIONS, save_admin_review_message, 
-    get_admin_review_messages, delete_admin_review_messages
+    get_admin_review_messages, delete_admin_review_messages,
+    get_monthly_ad_count,
+    MAX_ADS_PER_MONTH_REGULAR,
+    MAX_ADS_PER_MONTH_PREMIUM
 )
 
 router = Router()
@@ -52,6 +55,27 @@ async def start_ad(message: types.Message, state: FSMContext):
     
     await state.clear()
 
+    # ═══ ОЙЛИК ЛИМИТ ТЕКШИРИШ ═══
+    user_id = message.from_user.id
+    is_premium = is_premium_user(user_id)
+    limit = MAX_ADS_PER_MONTH_PREMIUM if is_premium else MAX_ADS_PER_MONTH_REGULAR
+
+    monthly_count = get_monthly_ad_count(user_id)
+
+    if monthly_count >= limit:
+        status_text = "Премиум" if is_premium else "оддий"
+        await message.answer(
+            f"⚠️ *Ойлик лимит тугади!*\n\n"
+            f"👤 Сиз {status_text} фойдаланувчисиз\n"
+            f"📊 Бу ойда: *{monthly_count}/{limit}* та эълон жойланди\n\n"            
+            f"Кейинги ойда қайта фойдаланишингиз мумкин.",
+            parse_mode="Markdown",
+            reply_markup=main_menu()
+        )
+        return
+
+    await state.clear()
+    
     # Фойдаланувчини базага сақлаш (тез рўйхатга олиш)
     save_user(
         user_id=message.from_user.id,
@@ -59,17 +83,20 @@ async def start_ad(message: types.Message, state: FSMContext):
         username=message.from_user.username
     )
 
+    remaining = limit - monthly_count - 1
     await state.set_state(AdStates.photo)
     await state.update_data(media_list=[])
     await message.answer(
-        "Илтимос, ҳайвоннинг расмларини ёки видеосини юборинг "
-        "(Бир нечта юборишингиз мумкин).\n\n"
-        "Юбориб бўлгач '📥 Расмларни тасдиқлаш' тугмасини босинг:",
+        f"Илтимос, ҳайвоннинг расмларини ёки видеосини юборинг "
+        f"(Бир нечта юборишингиз мумкин).\n\n"
+        f"📊 Ойлик лимит: *{monthly_count + 1}/{limit}* "
+        f"(қолди: {remaining} та)\n\n"
+        f"Юбориб бўлгач '📥 Расмларни тасдиқлаш' тугмасини босинг:",
+        parse_mode="Markdown",
         reply_markup=cancel_keyboard()
-    )
+    )   
 
 
-# БЎЛДИ (чегара билан):
 @router.message(AdStates.photo, F.photo | F.video)
 async def process_photo(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
