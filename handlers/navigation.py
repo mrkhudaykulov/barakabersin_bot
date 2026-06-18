@@ -8,13 +8,15 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 from keyboards import (
     notify_menu_keyboard, notification_districts_keyboard,
-    main_menu, calc_menu_keyboard, standard_step_keyboard,
+    main_menu, main_menu_admin, calc_menu_keyboard, standard_step_keyboard,
     calc_qoramol_direction_keyboard, photo_confirm_keyboard,
     animal_types_keyboard, regions_keyboard, districts_keyboard,
     description_keyboard, search_animal_keyboard,
-    admin_menu_keyboard
+    admin_menu_keyboard, admin_ads_keyboard,
+    admin_prices_keyboard, admin_block_keyboard, admin_premium_keyboard
 )
 from states import AdStates, CalcStates, SearchStates, PriceInputStates, NotifyStates
+from admin import AdminStates
 from database import get_connection, get_placeholder
 from config import ADMINS
 
@@ -111,17 +113,79 @@ async def global_cancel_handler(message: types.Message, state: FSMContext):
 
     await state.clear()
     if message.from_user.id in ADMINS:
-        from keyboards import main_menu_admin
         await message.answer("❌ Жараён бекор қилинди.", reply_markup=main_menu_admin())
     else:
         await message.answer("❌ Жараён бекор қилинди.", reply_markup=main_menu())
+
 
 @router.message(F.text == "🔙 Орқага")
 async def global_back_handler(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     if current_state is None:
-        await message.answer("❌ Фаол жараён мавжуд эмас.", reply_markup=main_menu())
+        if message.from_user.id in ADMINS:
+            await message.answer("❌ Фаол жараён мавжуд эмас.", reply_markup=main_menu_admin())
+        else:
+            await message.answer("❌ Фаол жараён мавжуд эмас.", reply_markup=main_menu())
         return
+
+    # ═══ АДМИН ПАНЕЛ — ЯНГИ БЛОК ═══
+    if current_state and current_state.startswith("AdminStates"):
+        if current_state in [
+            AdminStates.ads_menu.state,
+            AdminStates.prices_menu.state,
+            AdminStates.block_menu.state,
+            AdminStates.premium_menu.state,
+        ]:
+            await state.set_state(AdminStates.menu)
+            await message.answer("🔐 Админ панел", reply_markup=admin_menu_keyboard())
+            return
+
+        elif current_state in [
+            AdminStates.add_price_animal.state,
+            AdminStates.add_price_region.state,
+            AdminStates.add_price_value.state,
+            AdminStates.add_multi_text.state,
+            AdminStates.del_price_id.state,
+            AdminStates.del_animal_name.state,
+            AdminStates.del_region_name.state,
+        ]:
+            await state.set_state(AdminStates.prices_menu)
+            await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
+            return
+
+        elif current_state in [
+            AdminStates.del_ad_id.state,
+            AdminStates.del_user_ads_id.state,
+        ]:
+            await state.set_state(AdminStates.ads_menu)
+            await message.answer("📋 Эълонлар бошқариши", reply_markup=admin_ads_keyboard())
+            return
+
+        elif current_state == AdminStates.unblock_id.state:
+            await state.set_state(AdminStates.block_menu)
+            await message.answer("🚫 Блок бошқариши", reply_markup=admin_block_keyboard())
+            return
+
+        elif current_state in [
+            AdminStates.premium_give_id.state,
+            AdminStates.premium_remove_id.state,
+        ]:
+            await state.set_state(AdminStates.premium_menu)
+            await message.answer("💎 Премиум бошқариши", reply_markup=admin_premium_keyboard())
+            return
+
+        elif current_state == AdminStates.broadcast_text.state:
+            await state.set_state(AdminStates.menu)
+            await message.answer("🔐 Админ панел", reply_markup=admin_menu_keyboard())
+            return
+
+        else:
+            await state.clear()
+            if message.from_user.id in ADMINS:
+                await message.answer("🏠 Асосий меню", reply_markup=main_menu_admin())
+            else:
+                await message.answer("🏠 Асосий меню", reply_markup=main_menu())
+            return
 
     # ═══ Қидириш ═══
     if current_state == SearchStates.animal_type.state:
