@@ -336,7 +336,7 @@ async def process_description(message: types.Message, state: FSMContext):
         await message.answer(
             "Алоқа учун телефон рақамингизни юборинг:\n"
             "⚠️ Диққат! Сизга харидорлар шу рақам орқали телефон қилиши учун, "
-            "ТЕЛЕФОН рақамингиз эълонда кўринади!",
+            "ТЕЛЕФОН рақамингиз ва фойдаланувчи номи эълонда кўринади!",
             reply_markup=phone_keyboard()
         )
 
