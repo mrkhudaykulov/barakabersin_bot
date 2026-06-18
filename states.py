@@ -29,6 +29,7 @@ class CalcStates(StatesGroup):
 class SearchStates(StatesGroup):
     animal_type = State()
     region = State()
+    district = State()
 
 
 class PriceInputStates(StatesGroup):
