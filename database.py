@@ -1303,8 +1303,8 @@ def is_premium_user(user_id: int) -> bool:
 # ОЙЛИК ЭЪЛОН ЛИМИТИ
 # ═══════════════════════════════════════
 
-MAX_ADS_PER_MONTH_REGULAR = 7
-MAX_ADS_PER_MONTH_PREMIUM = 50
+MAX_ADS_PER_MONTH_REGULAR = 15
+MAX_ADS_PER_MONTH_PREMIUM = 150
 
 
 def get_monthly_ad_count(user_id: int) -> int:
