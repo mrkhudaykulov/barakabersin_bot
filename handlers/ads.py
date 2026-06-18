@@ -454,6 +454,14 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             ))
 
         ad_id = cursor.fetchone()[0]
+        # ═══ МЕДИАЛАРНИ ad_media ЖАДВАЛИГА САҚЛАШ
+        if media_list and ad_id:
+            for media in media_list:
+                cursor.execute(f"""
+                    INSERT INTO ad_media (ad_id, media_type, file_id)
+                    VALUES ({p}, {p}, {p})
+                """, (ad_id, media.get('type'), media.get('file_id')))
+                
         conn.commit()
         conn.close()
 
