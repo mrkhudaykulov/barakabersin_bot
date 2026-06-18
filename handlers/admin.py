@@ -1107,19 +1107,4 @@ async def check_prices(message: types.Message, state: FSMContext):
         text += "\n✅ Market_prices — барчасида нарх бор\n"
 
     await message.answer(text, parse_mode="Markdown")
-
-
-# ═══════════════════════════════════════
-# ОРҚАГА / БОШ МЕНЮ
-# ═══════════════════════════════════════
-
-@router.message(AdminStates.menu, F.text == "🏠 Бош меню")
-@router.message(AdminStates.ads_menu, F.text == "🔙 Орқага")
-@router.message(AdminStates.prices_menu, F.text == "🔙 Орқага")
-@router.message(AdminStates.block_menu, F.text == "🔙 Орқага")
-@router.message(AdminStates.premium_menu, F.text == "🔙 Орқага")
-async def admin_back_to_menu(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    await state.clear()
-    await message.answer("🏠 Бош меню", reply_markup=admin_menu_keyboard())
+    
