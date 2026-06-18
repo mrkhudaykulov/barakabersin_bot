@@ -588,56 +588,56 @@ async def approve_ad_callback(callback: types.CallbackQuery):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT user_id, animal_type, quantity, price,
-               description, region, district, mfy, phone, username
-        FROM ads WHERE id = {p}
-    """, (ad_id,))
-    ad = cursor.fetchone()
-    conn.close()
-
-    if not ad:
-        await callback.answer("❌ Эълон топилмади.")
-        return
-
-    user_id, a_type, qty, price, desc, region, dist, mfy, phone, username = ad
-
-    bot_info = await bot.get_me()
-    caption = (
-        f"#️⃣ #{html.escape(a_type)}\n"
-        f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
-        f"💰 <b>Нархи:</b> {html.escape(price)}\n"
-        f"📝 <b>Изоҳ:</b> {html.escape(desc)}\n"
-        f"📍 <b>Манзил:</b> {html.escape(region)} в, "
-        f"{html.escape(dist)} т, "
-        f"{html.escape(mfy)} МФЙ\n\n"
-        f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
-        f"💬 <b>Телеграм:</b> {username}\n\n"
-        f"Канал: @internetmolbozor\n"
-        f"Эълон жойланг: @{bot_info.username}"
-    )
     
+    try:
+        cursor.execute(f"""
+            SELECT user_id, animal_type, quantity, price,
+                   description, region, district, mfy, phone, username
+            FROM ads WHERE id = {p}
+        """, (ad_id,))
+        ad = cursor.fetchone()
+
+        if not ad:
+            await callback.answer("❌ Эълон топилмади.")
+            return
+
+        user_id, a_type, qty, price, desc, region, dist, mfy, phone, username = ad
+
+        bot_info = await bot.get_me()
+        caption = (
+            f"#️⃣ #{html.escape(a_type)}\n"
+            f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
+            f"💰 <b>Нархи:</b> {html.escape(price)}\n"
+            f"📝 <b>Изоҳ:</b> {html.escape(desc)}\n"
+            f"📍 <b>Манзил:</b> {html.escape(region)} в, "
+            f"{html.escape(dist)} т, "
+            f"{html.escape(mfy)} МФЙ\n\n"
+            f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
+            f"💬 <b>Телеграм:</b> {username}\n\n"
+            f"Канал: @internetmolbozor\n"
+            f"Эълон жойланг: @{bot_info.username}"
+        )
         
-        # ═══ БАЗАДАН БАРЧА МЕДИАЛАРНИ ОЛИШ ═══
-    media_list = []
-    cursor.execute(
-        f"SELECT media_type, file_id FROM ad_media WHERE ad_id = {p}",
-        (ad_id,)
-    )
-    db_media = cursor.fetchall()
-    conn.close()
+        # Медиаларни олиш (Энди база очиқ пайтда ишлайди)
+        media_list = []
+        cursor.execute(
+            f"SELECT media_type, file_id FROM ad_media WHERE ad_id = {p}",
+            (ad_id,)
+        )
+        db_media = cursor.fetchall()
 
-    for m_type, m_file_id in db_media:
-        media_list.append({"type": m_type, "file_id": m_file_id})
+        for m_type, m_file_id in db_media:
+            media_list.append({"type": m_type, "file_id": m_file_id})
 
-    # Фоллбэк — базада медиа бўлмаса админ хабаридан уриниб кўрамиз
-    if not media_list:
-        if callback.message.photo:
-            media_list.append({"type": "photo", "file_id": callback.message.photo[-1].file_id})
-        elif callback.message.video:
-            media_list.append({"type": "video", "file_id": callback.message.video.file_id})
-    
-    
+        if not media_list:
+            if callback.message.photo:
+                media_list.append({"type": "photo", "file_id": callback.message.photo[-1].file_id})
+            elif callback.message.video:
+                media_list.append({"type": "video", "file_id": callback.message.video.file_id})
+                
+    finally:
+        # Базадан ҳамма нарса ўқиб бўлингач, уланишни хавфсиз ёпамиз
+        conn.close()
     
     # ═══ КАНАЛГА ЮБОРИШ (АЛЬБОМ ЁКИ ОДДИЙ) ═══
     sent_msg_ids = []
@@ -1144,156 +1144,135 @@ async def handle_ad_action(callback: types.CallbackQuery):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT user_id, msg_id, animal_type, quantity, price, region, district, mfy, phone, username
-        FROM ads WHERE id = {p}
-    """, (int(ad_id),))
+    
+    try:
+        cursor.execute(f"""
+            SELECT user_id, msg_id, animal_type, quantity, price, region, district, mfy, phone, username
+            FROM ads WHERE id = {p}
+        """, (int(ad_id),))
+        ad = cursor.fetchone()
 
-    ad = cursor.fetchone()
-
-    if not ad:
-        await callback.answer("Эълон топилмади.")
-        conn.close()
-        return
-        
-
-    # ═══ ЭГА ТЕКШИРИШ ═══
-    ad_owner_id = ad[0]
-    if callback.from_user.id != ad_owner_id:
-        await callback.answer("⛔ Сиз бу эълон эгаси эмассиз!")
-        conn.close()
-        return
-
-    msg_ids_str, a_type, qty, price, region, dist, mfy, phone, username = ad[1:]    
-    msg_ids = [int(mid) for mid in str(msg_ids_str).split(",")]
-
-    if action == "sold":
-        cursor.execute(
-            f"UPDATE ads SET status = 'sold' WHERE id = {p}",
-            (ad_id,)
-        )
-        conn.commit()
-
-        new_caption = (
-            f"🔴 <b>СОТИЛДИ!</b> 🔴\n\n"
-            f"#️⃣ #{html.escape(a_type)}\n"
-            f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
-            f"💰 <b>Нархи:</b> {html.escape(price)}\n"
-            f"📍 <b>Манзил:</b> {html.escape(region)} в, "
-            f"{html.escape(dist)} т\n"
-            f"🤝 Харидорга барака берсин!"
-        )
-        try:
-            await bot.edit_message_caption(
-                chat_id=CHANNEL_ID,
-                message_id=msg_ids[0],
-                caption=new_caption,
-                parse_mode="HTML"
-            )
-            await callback.message.edit_text(
-                "✅ Каналда 'Сотилди' деб белгиланди."
-            )
-        except Exception:
-            await callback.answer("Постни таҳрирлаб бўлмади.")
-
-    elif action == "del":
-        cursor.execute(
-            f"UPDATE ads SET status = 'deleted' WHERE id = {p}",
-            (ad_id,)
-        )
-        conn.commit()
-
-        for msg_id in msg_ids:
-            try:
-                await bot.delete_message(
-                    chat_id=CHANNEL_ID, message_id=msg_id
-                )
-            except Exception:
-                pass
-        await callback.message.edit_text(
-            "❌ Эълон каналдан бутунлай ўчирилди."
-        )
-
-    # БЎЛДИ:
-    elif action == "repost":
-        # Премиум текшириш
-        if not is_premium_user(callback.from_user.id):
-            await callback.answer("⛔ Бу функция фақат Премиум эгалари учун!", show_alert=True)
-            conn.close()
+        if not ad:
+            await callback.answer("Эълон топилмади.")
+            return
+            
+        ad_owner_id = ad[0]
+        if callback.from_user.id != ad_owner_id:
+            await callback.answer("⛔ Сиз бу эълон эгаси эмассиз!")
             return
 
-        conn.close()
+        msg_ids_str, a_type, qty, price, region, dist, mfy, phone, username = ad[1:]    
+        msg_ids = [int(mid) for mid in str(msg_ids_str).split(",")]
 
-        # Каналга қайта юбориш
-        media_list_db = []
-        conn2 = get_connection()
-        cur2 = conn2.cursor()
-        cur2.execute(
-            f"SELECT media_type, file_id FROM ad_media WHERE ad_id = {get_placeholder()} ORDER BY id",
-            (int(ad_id),)
-        )
-        media_list_db = cur2.fetchall()
-        conn2.close()
+        if action == "sold":
+            cursor.execute(f"UPDATE ads SET status = 'sold' WHERE id = {p}", (ad_id,))
+            conn.commit()
 
-        new_caption = (
-            f"#️⃣ <b>#{html.escape(a_type)}</b>\n"
-            f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
-            f"💰 <b>Нархи:</b> {html.escape(price)}\n"
-            f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т, {html.escape(mfy)} МФЙ\n"
-            f"📞 {html.escape(phone)}"
-        )
+            new_caption = (
+                f"🔴 <b>СОТИЛДИ!</b> 🔴\n\n"
+                f"#️⃣ #{html.escape(a_type)}\n"
+                f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
+                f"💰 <b>Нархи:</b> {html.escape(price)}\n"
+                f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т\n"
+                f"🤝 Харидорга барака берсин!"
+            )
+            try:
+                await bot.edit_message_caption(chat_id=CHANNEL_ID, message_id=msg_ids[0], caption=new_caption, parse_mode="HTML")
+                await callback.message.edit_text("✅ Каналда 'Сотилди' деб белгиланди.")
+            except Exception:
+                await callback.answer("Постни таҳрирлаб бўлмади.")
 
-        new_msg_ids = []
-        try:
-            if media_list_db:
-                if len(media_list_db) == 1:
-                    m_type, f_id = media_list_db[0]
-                    if m_type == "photo":
-                        sent = await bot.send_photo(CHANNEL_ID, photo=f_id, caption=new_caption, parse_mode="HTML")
-                    else:
-                        sent = await bot.send_video(CHANNEL_ID, video=f_id, caption=new_caption, parse_mode="HTML")
-                    new_msg_ids.append(str(sent.message_id))
-                else:
-                    media_group = []
-                    for i, (m_type, f_id) in enumerate(media_list_db):
-                        cap = new_caption if i == 0 else None
-                        if m_type == "photo":
-                            media_group.append(InputMediaPhoto(media=f_id, caption=cap, parse_mode="HTML"))
-                        else:
-                            media_group.append(InputMediaVideo(media=f_id, caption=cap, parse_mode="HTML"))
-                    sent_msgs = await bot.send_media_group(CHANNEL_ID, media=media_group)
-                    new_msg_ids = [str(m.message_id) for m in sent_msgs]
-            else:
-                sent = await bot.send_message(CHANNEL_ID, text=new_caption, parse_mode="HTML")
-                new_msg_ids.append(str(sent.message_id))
+        elif action == "del":
+            cursor.execute(f"UPDATE ads SET status = 'deleted' WHERE id = {p}", (ad_id,))
+            conn.commit()
 
-            # Эски постларни ўчириш
-            for old_msg_id in msg_ids:
+            for msg_id in msg_ids:
                 try:
-                    await bot.delete_message(chat_id=CHANNEL_ID, message_id=old_msg_id)
+                    await bot.delete_message(chat_id=CHANNEL_ID, message_id=msg_id)
                 except Exception:
                     pass
+            await callback.message.edit_text("❌ Эълон каналдан бутунлай ўчирилди.")
 
-            # Базани янгилаш
-            new_msg_str = ",".join(new_msg_ids)
-            repost_ad(int(ad_id))
-            conn3 = get_connection()
-            cur3 = conn3.cursor()
-            cur3.execute(
-                f"UPDATE ads SET msg_id = {get_placeholder()} WHERE id = {get_placeholder()}",
-                (new_msg_str, int(ad_id))
+        elif action == "repost":
+            if not is_premium_user(callback.from_user.id):
+                await callback.answer("⛔ Бу функция фақат Премиум эгалари учун!", show_alert=True)
+                return
+
+            # Алоҳида сўровлар учун жорий уланишни ёпиб турамиз
+            conn.close()
+
+            media_list_db = []
+            conn2 = get_connection()
+            cur2 = conn2.cursor()
+            cur2.execute(
+                f"SELECT media_type, file_id FROM ad_media WHERE ad_id = {get_placeholder()} ORDER BY id",
+                (int(ad_id),)
             )
-            conn3.commit()
-            conn3.close()
+            media_list_db = cur2.fetchall()
+            conn2.close()
 
-            await callback.message.edit_text(
-                f"✅ <b>{html.escape(a_type)}</b> эълони каналга қайта жойланди!\n\n"
-                f"📅 Яна <b>7 кун</b> актив бўлади.",
-                parse_mode="HTML"
+            new_caption = (
+                f"#️⃣ <b>#{html.escape(a_type)}</b>\n"
+                f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
+                f"💰 <b>Нархи:</b> {html.escape(price)}\n"
+                f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т, {html.escape(mfy)} МФЙ\n"
+                f"📞 {html.escape(phone)}"
             )
-            await callback.answer("Қайта жойланди! ✅")
 
-        except Exception as e:
-            logging.error(f"Repost xato: {e}")
-            await callback.answer("Хатолик юз берди.", show_alert=True)
-        return
+            new_msg_ids = []
+            try:
+                if media_list_db:
+                    if len(media_list_db) == 1:
+                        m_type, f_id = media_list_db[0]
+                        if m_type == "photo":
+                            sent = await bot.send_photo(CHANNEL_ID, photo=f_id, caption=new_caption, parse_mode="HTML")
+                        else:
+                            sent = await bot.send_video(CHANNEL_ID, video=f_id, caption=new_caption, parse_mode="HTML")
+                        new_msg_ids.append(str(sent.message_id))
+                    else:
+                        media_group = []
+                        for i, (m_type, f_id) in enumerate(media_list_db):
+                            cap = new_caption if i == 0 else None
+                            if m_type == "photo":
+                                media_group.append(InputMediaPhoto(media=f_id, caption=cap, parse_mode="HTML"))
+                            else:
+                                media_group.append(InputMediaVideo(media=f_id, caption=cap, parse_mode="HTML"))
+                        sent_msgs = await bot.send_media_group(CHANNEL_ID, media=media_group)
+                        new_msg_ids = [str(m.message_id) for m in sent_msgs]
+                else:
+                    sent = await bot.send_message(CHANNEL_ID, text=new_caption, parse_mode="HTML")
+                    new_msg_ids.append(str(sent.message_id))
+
+                for old_msg_id in msg_ids:
+                    try:
+                        await bot.delete_message(chat_id=CHANNEL_ID, message_id=old_msg_id)
+                    except Exception:
+                        pass
+
+                new_msg_str = ",".join(new_msg_ids)
+                repost_ad(int(ad_id))
+                conn3 = get_connection()
+                cur3 = conn3.cursor()
+                cur3.execute(
+                    f"UPDATE ads SET msg_id = {get_placeholder()} WHERE id = {get_placeholder()}",
+                    (new_msg_str, int(ad_id))
+                )
+                conn3.commit()
+                conn3.close()
+
+                await callback.message.edit_text(
+                    f"✅ <b>{html.escape(a_type)}</b> эълони каналга қайта жойланди!\n\n"
+                    f"📅 Яна <b>7 кун</b> актив бўлади.",
+                    parse_mode="HTML"
+                )
+                await callback.answer("Қайта жойланди! ✅")
+
+            except Exception as e:
+                logging.error(f"Repost xato: {e}")
+                await callback.answer("Хатолик юз берди.", show_alert=True)
+    finally:
+        # try-finally блоки орқали connection нинг ёпилиши 100% кафолатланади
+        try:
+            conn.close()
+        except Exception:
+            pass
