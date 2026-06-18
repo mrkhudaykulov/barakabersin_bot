@@ -1021,23 +1021,6 @@ async def my_ads(message: types.Message):
                 ])
         inline_kb = InlineKeyboardMarkup(inline_keyboard=buttons)
         
-'''
-        # Канал ҳаволаси
-        channel_link = ""
-        if msg_id_str:
-            first_msg_id = str(msg_id_str).split(",")[0].strip()
-            channel_link = f"\n📢 <a href='https://t.me/internetmolbozor/{first_msg_id}'>Каналда кўриш</a>"
-
-        await message.answer(
-            f"📦 <b>#{html.escape(a_type)}</b> — {html.escape(price)}\n"
-            f"📅 {time_badge}"
-            f"{channel_link}",
-            parse_mode="HTML",
-            reply_markup=inline_kb
-        )
-'''
-
-# БЎЛДИ (тўғри):
         channel_link = ""
         first_msg_id = None
         if msg_id_str:
