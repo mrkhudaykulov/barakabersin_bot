@@ -204,10 +204,10 @@ async def do_del_ad(message: types.Message, state: FSMContext):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
+    cursor.execute(f"""
         "SELECT id, animal_type, quantity, price, region, district, msg_id FROM ads WHERE id = {p}",
         (ad_id,)
-    )
+    """)
     row = cursor.fetchone()
 
     if not row:
@@ -226,7 +226,7 @@ async def do_del_ad(message: types.Message, state: FSMContext):
         except Exception as e:
             logging.error(f"Каналдан ўчириш хато: msg_id={msg_id}, error={e}")
 
-    cursor.execute("DELETE FROM ads WHERE id = {p}", (ad_id,))
+    cursor.execute(f"DELETE FROM ads WHERE id = {p}", (ad_id,))
     conn.commit()
     conn.close()
 
@@ -273,7 +273,7 @@ async def do_del_user_ads(message: types.Message, state: FSMContext):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) FROM ads WHERE user_id = {p}", (user_id,))
+    cursor.execute(f"SELECT COUNT(*) FROM ads WHERE user_id = {p}", (user_id,))
     count = cursor.fetchone()[0]
 
     if count == 0:
@@ -281,7 +281,7 @@ async def do_del_user_ads(message: types.Message, state: FSMContext):
         conn.close()
         return
 
-    cursor.execute("SELECT msg_id FROM ads WHERE user_id = {p}", (user_id,))
+    cursor.execute(f"SELECT msg_id FROM ads WHERE user_id = {p}", (user_id,))
     all_msg_ids = cursor.fetchall()
 
     deleted_count = 0
@@ -294,7 +294,7 @@ async def do_del_user_ads(message: types.Message, state: FSMContext):
             except Exception:
                 pass
 
-    cursor.execute("DELETE FROM ads WHERE user_id = {p}", (user_id,))
+    cursor.execute(f"DELETE FROM ads WHERE user_id = {p}", (user_id,))
     conn.commit()
     conn.close()
 
@@ -579,7 +579,7 @@ async def do_del_price(message: types.Message, state: FSMContext):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, animal_type, region, price FROM market_prices WHERE id = {p}", (price_id,))
+    cursor.execute(f"SELECT id, animal_type, region, price FROM market_prices WHERE id = {p}", (price_id,))
     row = cursor.fetchone()
 
     if not row:
@@ -588,7 +588,7 @@ async def do_del_price(message: types.Message, state: FSMContext):
         return
 
     _, animal, region, price = row
-    cursor.execute("DELETE FROM market_prices WHERE id = {p}", (price_id,))
+    cursor.execute(f"DELETE FROM market_prices WHERE id = {p}", (price_id,))
     conn.commit()
     conn.close()
 
@@ -630,7 +630,7 @@ async def do_del_animal(message: types.Message, state: FSMContext):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM market_prices WHERE animal_type = {p}", (animal,))
+    cursor.execute(f"SELECT COUNT(*) FROM market_prices WHERE animal_type = {p}", (animal,))
     count = cursor.fetchone()[0]
 
     if count == 0:
@@ -638,7 +638,7 @@ async def do_del_animal(message: types.Message, state: FSMContext):
         conn.close()
         return
 
-    cursor.execute("DELETE FROM market_prices WHERE animal_type = {p}", (animal,))
+    cursor.execute(f"DELETE FROM market_prices WHERE animal_type = {p}", (animal,))
     conn.commit()
     conn.close()
 
@@ -677,7 +677,7 @@ async def do_del_region(message: types.Message, state: FSMContext):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM market_prices WHERE region = {p}", (region,))
+    cursor.execute(f"SELECT COUNT(*) FROM market_prices WHERE region = {p}", (region,))
     count = cursor.fetchone()[0]
 
     if count == 0:
@@ -685,7 +685,7 @@ async def do_del_region(message: types.Message, state: FSMContext):
         conn.close()
         return
 
-    cursor.execute("DELETE FROM market_prices WHERE region = {p}", (region,))
+    cursor.execute(f"DELETE FROM market_prices WHERE region = {p}", (region,))
     conn.commit()
     conn.close()
 
@@ -704,7 +704,7 @@ async def ask_clear_prices(message: types.Message, state: FSMContext):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM market_prices")
+    cursor.execute(f"SELECT COUNT(*) FROM market_prices")
     count = cursor.fetchone()[0]
     conn.close()
 
@@ -926,9 +926,9 @@ async def show_premium_list(message: types.Message, state: FSMContext):
     conn = get_connection()
     cursor = conn.cursor()
     if __import__('os').getenv("DATABASE_URL"):
-        cursor.execute("SELECT user_id, full_name, username FROM users WHERE is_premium = TRUE ORDER BY user_id")
+        cursor.execute(f"SELECT user_id, full_name, username FROM users WHERE is_premium = TRUE ORDER BY user_id")
     else:
-        cursor.execute("SELECT user_id, full_name, username FROM users WHERE is_premium = 1 ORDER BY user_id")
+        cursor.execute(f"SELECT user_id, full_name, username FROM users WHERE is_premium = 1 ORDER BY user_id")
     rows = cursor.fetchall()
     conn.close()
 
@@ -976,7 +976,7 @@ async def do_broadcast(message: types.Message, state: FSMContext):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT user_id FROM users")
+    cursor.execute(f"SELECT user_id FROM users")
     users = cursor.fetchall()
     conn.close()
 
@@ -1079,11 +1079,11 @@ async def check_prices(message: types.Message, state: FSMContext):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT id, animal_type, region, price FROM ads WHERE status = 'active'")
+    cursor.execute(f"SELECT id, animal_type, region, price FROM ads WHERE status = 'active'")
     ads = cursor.fetchall()
     zero_ads = [f"🆔{r[0]} | {r[1]} | {r[2]} | `{r[3]}`" for r in ads if parse_price_text(str(r[3])) == 0]
 
-    cursor.execute("SELECT id, animal_type, region, price FROM market_prices")
+    cursor.execute(f"SELECT id, animal_type, region, price FROM market_prices")
     mp = cursor.fetchall()
     zero_mp = [f"🆔{r[0]} | {r[1]} | {r[2]} | `{r[3]}`" for r in mp if r[3] is None or r[3] == 0]
 
