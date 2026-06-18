@@ -267,7 +267,15 @@ def notification_districts_keyboard(region):
 
 
 #  Админ бошқариш панели
-
+def main_menu_admin():
+    """Админ учун бош меню"""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
+        [KeyboardButton(text="📊 Нархлар индекси"), KeyboardButton(text="🗂 Менинг эълонларим")],
+        [KeyboardButton(text="🧮 Ферма калькулятори"), KeyboardButton(text="🔔 Хабардор қил")],
+        [KeyboardButton(text="🔐 Админ панел")]
+    ], resize_keyboard=True)
+    
 def admin_menu_keyboard():
     """Админ асосий менюси"""
     return ReplyKeyboardMarkup(keyboard=[
