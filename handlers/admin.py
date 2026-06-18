@@ -7,7 +7,7 @@ from aiogram import Router, types
 from aiogram.filters import Command
 
 from config import bot, ADMINS, CHANNEL_ID
-from database import get_full_statistics, fmt_number, get_connection, get_placeholder, unblock_user, get_blocked_users, get_rejection_count
+from database import get_full_statistics, fmt_number, get_connection, get_placeholder, unblock_user, get_blocked_users, get_rejection_count, is_premium_user
 
 
 router = Router()
@@ -646,6 +646,11 @@ async def admin_help(message: types.Message):
         "🚫 *Блок бошқариш:*\n"
         "`/blocked` — блокланганлар рўйхати\n"
         "`/unblock USER_ID` — блокдан чиқариш\n\n"
+
+        "💎 *Премиум:*\n"
+        "`/premium USER_ID` — премиум бериш\n"
+        "`/unpremium USER_ID` — олиб ташлаш\n"
+        "`/premiumlist` — аъзолар рўйхати\n\n"
         
          "👥 *Статистика:*\n"
         "`/stats` — бот статистикаси\n\n"
@@ -997,3 +1002,177 @@ async def unblock_user_cmd(message: types.Message):
         )
     except Exception:
         pass
+
+# ═══════════════════════════════════════
+# /premium — Премиум бериш
+# ═══════════════════════════════════════
+
+@router.message(Command("premium"))
+async def give_premium(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Сизга рухсат йўқ.")
+        return
+
+    parts = message.text.split()
+    if len(parts) < 2:
+        await message.answer(
+            "📋 *Формат:*\n"
+            "`/premium USER_ID`\n\n"
+            "*Мисол:* `/premium 123456789`\n\n"
+            "Премиум олишларни кўриш: /premiumlist",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        await message.answer("⚠️ USER_ID рақам бўлиши керак!")
+        return
+
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"SELECT full_name, username, is_premium FROM users WHERE user_id = {p}",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+
+    if not row:
+        await message.answer(f"❌ USER_ID={user_id} базада топилмади.")
+        conn.close()
+        return
+
+    full_name, username, already_premium = row
+
+    if already_premium:
+        conn.close()
+        await message.answer(
+            f"ℹ️ `{user_id}` аллақачон Премиум аъзо.",
+            parse_mode="Markdown"
+        )
+        return
+
+    if __import__('os').getenv("DATABASE_URL"):
+        cursor.execute(
+            f"UPDATE users SET is_premium = TRUE WHERE user_id = {p}",
+            (user_id,)
+        )
+    else:
+        cursor.execute(
+            f"UPDATE users SET is_premium = 1 WHERE user_id = {p}",
+            (user_id,)
+        )
+    conn.commit()
+    conn.close()
+
+    uname = f"@{username}" if username else "—"
+    await message.answer(
+        f"💎 *Премиум берилди!*\n\n"
+        f"👤 {full_name or '—'} ({uname})\n"
+        f"🆔 `{user_id}`\n\n"
+        f"Олиш: /premiumlist",
+        parse_mode="Markdown"
+    )
+
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            text=(
+                "💎 *Табриклаймиз!*\n\n"
+                "Сизга *Премиум* аъзолик берилди!\n\n"
+                "✅ Эълонингиз муддати тугашига 2 кун қолганда "
+                "каналга *қайта жойлаш* имкониятига эга бўлдингиз.\n\n"
+                "Эълонларингиз: /start → *Менинг эълонларим*"
+            ),
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass
+
+
+# ═══════════════════════════════════════
+# /unpremium — Премиумни олиб ташлаш
+# ═══════════════════════════════════════
+
+@router.message(Command("unpremium"))
+async def remove_premium(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Сизга рухсат йўқ.")
+        return
+
+    parts = message.text.split()
+    if len(parts) < 2:
+        await message.answer(
+            "📋 *Формат:*\n"
+            "`/unpremium USER_ID`\n\n"
+            "*Мисол:* `/unpremium 123456789`",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        await message.answer("⚠️ USER_ID рақам бўлиши керак!")
+        return
+
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if __import__('os').getenv("DATABASE_URL"):
+        cursor.execute(
+            f"UPDATE users SET is_premium = FALSE WHERE user_id = {p}",
+            (user_id,)
+        )
+    else:
+        cursor.execute(
+            f"UPDATE users SET is_premium = 0 WHERE user_id = {p}",
+            (user_id,)
+        )
+    conn.commit()
+    conn.close()
+
+    await message.answer(
+        f"✅ `{user_id}` дан Премиум олиб ташланди.",
+        parse_mode="Markdown"
+    )
+
+
+# ═══════════════════════════════════════
+# /premiumlist — Премиум аъзолар рўйхати
+# ═══════════════════════════════════════
+
+@router.message(Command("premiumlist"))
+async def premium_list(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Сизга рухсат йўқ.")
+        return
+
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if __import__('os').getenv("DATABASE_URL"):
+        cursor.execute(
+            "SELECT user_id, full_name, username FROM users WHERE is_premium = TRUE ORDER BY user_id"
+        )
+    else:
+        cursor.execute(
+            "SELECT user_id, full_name, username FROM users WHERE is_premium = 1 ORDER BY user_id"
+        )
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        await message.answer("💎 Ҳозирча Премиум аъзолар йўқ.")
+        return
+
+    text = f"💎 *Премиум аъзолар ({len(rows)} та):*\n\n"
+    for uid, full_name, username in rows:
+        uname = f"@{username}" if username else "—"
+        text += f"👤 {full_name or '—'} ({uname}) — `{uid}` | /unpremium {uid}\n"
+
+    await message.answer(text, parse_mode="Markdown")
