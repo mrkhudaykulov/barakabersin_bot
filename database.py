@@ -234,17 +234,20 @@ def migrate_db():
         migrations = [
             # ads жадвали
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()",
-            "ALTER TABLE ads ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP DEFAULT (NOW() + INTERVAL '10 days')",
+            "ALTER TABLE ads ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP DEFAULT (NOW() + INTERVAL '7 days')",
             # users жадвали
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()",
-            "ALTER TABLE notifications ADD CONSTRAINT unique_notification UNIQUE (user_id, animal_type, region, min_price, max_price)",
+            "ALTER TABLE notifications DROP CONSTRAINT IF EXISTS unique_notification",
+            "ALTER TABLE notifications ADD CONSTRAINT unique_notification UNIQUE (user_id, animal_type, region, district, min_price, max_price)",            
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS reviewed_by BIGINT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS rejection_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE ads ALTER COLUMN expires_at SET DEFAULT (NOW() + INTERVAL '7 days')",            
             "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS district TEXT DEFAULT 'Барчаси'",
             """CREATE TABLE IF NOT EXISTS admin_review_messages (
                 ad_id INTEGER NOT NULL, admin_id BIGINT NOT NULL,
@@ -269,11 +272,12 @@ def migrate_db():
             "ALTER TABLE users ADD COLUMN phone TEXT",
             "ALTER TABLE users ADD COLUMN full_name TEXT",
             "ALTER TABLE users ADD COLUMN username TEXT",
-            "ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",                  
             "ALTER TABLE ads ADD COLUMN reviewed_by INTEGER",
             "ALTER TABLE users ADD COLUMN rejection_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN blocked_at TIMESTAMP",
+            "ALTER TABLE users ADD COLUMN is_premium INTEGER DEFAULT 0",
             "ALTER TABLE notifications ADD COLUMN district TEXT DEFAULT 'Барчаси'",
             """CREATE TABLE IF NOT EXISTS admin_review_messages (
                 ad_id INTEGER NOT NULL, admin_id INTEGER NOT NULL,
@@ -469,30 +473,27 @@ def archive_ad(ad_id: int):
     conn.close()
 
 
-def extend_ad(ad_id: int, days: int = 10):
-    """Эълон муддатини uzaytirish"""
+def repost_ad(ad_id: int):
+    """Эълонни каналга қайта жойлаш — expires_at 7 кунга янгиланади"""
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-
     if DATABASE_URL:
         cursor.execute(f"""
             UPDATE ads
-            SET expires_at = NOW() + INTERVAL '{days} days',
+            SET expires_at = NOW() + INTERVAL '7 days',
                 status = 'active'
             WHERE id = {p}
         """, (ad_id,))
     else:
         cursor.execute(f"""
             UPDATE ads
-            SET expires_at = datetime('now', '+{days} days'),
+            SET expires_at = datetime('now', '+7 days'),
                 status = 'active'
             WHERE id = {p}
         """, (ad_id,))
-
     conn.commit()
     conn.close()
-
 
 # ═══════════════════════════════════════
 # YORDAMCHI FUNKSIYALAR
@@ -1274,3 +1275,17 @@ def delete_admin_review_messages(ad_id: int):
         logging.error(f"delete_admin_review_messages хато: {e}")
     finally:
         conn.close()
+
+def is_premium_user(user_id: int) -> bool:
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"SELECT is_premium FROM users WHERE user_id = {p}",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return False
+    return bool(row[0])
