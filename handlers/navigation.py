@@ -15,8 +15,7 @@ from keyboards import (
     admin_menu_keyboard, admin_ads_keyboard,
     admin_prices_keyboard, admin_block_keyboard, admin_premium_keyboard
 )
-from states import AdStates, CalcStates, SearchStates, PriceInputStates, NotifyStates
-from admin import AdminStates
+from states import AdStates, CalcStates, SearchStates, PriceInputStates, NotifyStates, AdminStates
 from database import get_connection, get_placeholder
 from config import ADMINS
 
