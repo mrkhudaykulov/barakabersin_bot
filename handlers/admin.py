@@ -1009,13 +1009,39 @@ async def admin_stats(message: types.Message, state: FSMContext):
 
     stats = get_full_statistics()
 
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(f"SELECT COUNT(*) FROM users")
+    total_users = cursor.fetchone()[0]
+
+    if "postgresql" in str(conn):
+        cursor.execute(f"SELECT COUNT(*) FROM users WHERE is_premium = TRUE")
+    else:
+        cursor.execute(f"SELECT COUNT(*) FROM users WHERE is_premium = 1")
+    premium_users = cursor.fetchone()[0]
+
+    cursor.execute(f"SELECT COUNT(*) FROM blocked_users")
+    blocked = cursor.fetchone()[0]
+
+    conn.close()
+
+    active_users = total_users - blocked
+
     text = "📈 *БОТ СТАТИСТИКАСИ*\n"
     text += f"{'═' * 28}\n\n"
-    text += f"📋 Жами эълонлар: *{stats['total_ads']}* та\n"
-    text += f"✅ Фаол: *{stats['active_ads']}* та\n"
-    text += f"🤝 Сотилган: *{stats['sold_ads']}* та\n"
-    text += f"👥 Фойдаланувчилар: *{stats['total_users']}* та\n"
-    text += f"📊 Нарх маълумотлари: *{stats['market_price_entries']}* та\n\n"
+    text += f"👥 *ФОЙДАЛАНУВЧИЛАР:*\n"
+    text += f"  📋 Жами: *{total_users}* та\n"
+    text += f"  💎 Премиум: *{premium_users}* та\n"
+    text += f"  🚫 Блокланган: *{blocked}* та\n"
+    text += f"  ✅ Хабар олиш мумкин: *{active_users}* та\n\n"
+
+    text += f"📋 *ЭЪЛОНЛАР:*\n"
+    text += f"  Жами: *{stats['total_ads']}* та\n"
+    text += f"  ✅ Фаол: *{stats['active_ads']}* та\n"
+    text += f"  🤝 Сотилган: *{stats['sold_ads']}* та\n"
+    text += f"  📊 Нархлар: *{stats['market_price_entries']}* та\n\n"
 
     if stats["by_animal"]:
         text += f"🐾 *ҲАЙВОН ТУРЛАРИ БЎЙИЧА:*\n"
