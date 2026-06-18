@@ -205,9 +205,9 @@ async def do_del_ad(message: types.Message, state: FSMContext):
     cursor = conn.cursor()
 
     cursor.execute(f"""
-        "SELECT id, animal_type, quantity, price, region, district, msg_id FROM ads WHERE id = {p}",
-        (ad_id,)
-    """)
+        SELECT id, animal_type, quantity, price, region, district, msg_id FROM ads WHERE id = {p}
+        """, (ad_id,)
+    )
     row = cursor.fetchone()
 
     if not row:
