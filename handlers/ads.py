@@ -1162,25 +1162,28 @@ async def handle_ad_action(callback: types.CallbackQuery):
             return
 
         msg_ids_str, a_type, qty, price, region, dist, mfy, phone, username = ad[1:]    
-        msg_ids = [int(mid) for mid in str(msg_ids_str).split(",")]
+        msg_ids = [int(mid) for mid in str(msg_ids_str).split(",") if mid.strip().isdigit()]
 
         if action == "sold":
             cursor.execute(f"UPDATE ads SET status = 'sold' WHERE id = {p}", (ad_id,))
             conn.commit()
 
-            new_caption = (
-                f"🔴 <b>СОТИЛДИ!</b> 🔴\n\n"
-                f"#️⃣ #{html.escape(a_type)}\n"
-                f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
-                f"💰 <b>Нархи:</b> {html.escape(price)}\n"
-                f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т\n"
-                f"🤝 Харидорга барака берсин!"
-            )
-            try:
-                await bot.edit_message_caption(chat_id=CHANNEL_ID, message_id=msg_ids[0], caption=new_caption, parse_mode="HTML")
-                await callback.message.edit_text("✅ Каналда 'Сотилди' деб белгиланди.")
-            except Exception:
-                await callback.answer("Постни таҳрирлаб бўлмади.")
+            if msg_ids:
+                new_caption = (
+                    f"🔴 <b>СОТИЛДИ!</b> 🔴\n\n"
+                    f"#️⃣ #{html.escape(a_type)}\n"
+                    f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
+                    f"💰 <b>Нархи:</b> {html.escape(price)}\n"
+                    f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т\n"
+                    f"🤝 Харидорга барака берсин!"
+                )
+                try:
+                    await bot.edit_message_caption(chat_id=CHANNEL_ID, message_id=msg_ids[0], caption=new_caption, parse_mode="HTML")
+                    await callback.message.edit_text("✅ Каналда 'Сотилди' деб белгиланди.")
+                except Exception:
+                    await callback.answer("Постни таҳрирлаб бўлмади.")
+            else:
+                await callback.message.edit_text("✅ Эълон 'Сотилди' ҳолатига ўтказилди (каналдаги ИД топилмаганлиги сабабли).")
 
         elif action == "del":
             cursor.execute(f"UPDATE ads SET status = 'deleted' WHERE id = {p}", (ad_id,))
