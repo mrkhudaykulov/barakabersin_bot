@@ -70,12 +70,13 @@ DISTRICTS = {
 
 
 def main_menu():
-    return ReplyKeyboardMarkup(keyboard=[
+    buttons = [
         [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
         [KeyboardButton(text="📊 Нархлар индекси"), KeyboardButton(text="🗂 Менинг эълонларим")],
-        [KeyboardButton(text="🧮 Ферма калькулятори"), KeyboardButton(text="🔔 Хабардор қил")]
-              
-    ], resize_keyboard=True)
+        [KeyboardButton(text="🧮 Ферма калькулятори"), KeyboardButton(text="🔔 Хабардор қил")],
+    ]
+    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+    
 
 
 def calc_menu_keyboard():
