@@ -1174,3 +1174,56 @@ async def premium_list(message: types.Message):
         text += f"👤 {full_name or '—'} ({uname}) — `{uid}` | /unpremium {uid}\n"
 
     await message.answer(text, parse_mode="Markdown")
+
+
+@router.message(Command("checkprices"))
+async def check_prices(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # ═══ ADS ЖАДВАЛИ ═══
+    cursor.execute("SELECT id, animal_type, region, price FROM ads WHERE status = 'active'")
+    ads = cursor.fetchall()
+
+    zero_ads = []
+    for ad_id, a_type, region, price_text in ads:
+        parsed = parse_price_text(str(price_text))
+        if parsed == 0:
+            zero_ads.append(f"🆔{ad_id} | {a_type} | {region} | `{price_text}`")
+
+    # ═══ MARKET_PRICES ЖАДВАЛИ ═══
+    cursor.execute("SELECT id, animal_type, region, price FROM market_prices")
+    mp = cursor.fetchall()
+
+    zero_mp = []
+    for mp_id, a_type, region, price in mp:
+        if price is None or price == 0:
+            zero_mp.append(f"🆔{mp_id} | {a_type} | {region} | `{price}`")
+
+    conn.close()
+
+    text = f"🔍 *Нарх текшириш*\n\n"
+    text += f"📋 Ads: {len(ads)} та\n"
+    text += f"📋 Market_prices: {len(mp)} та\n\n"
+
+    if zero_ads:
+        text += f"❌ *Ads — нархсиз ({len(zero_ads)} та):*\n"
+        for line in zero_ads[:20]:
+            text += f"  {line}\n"
+    else:
+        text += "✅ Ads — барчасида нарх бор\n"
+
+    text += "\n"
+
+    if zero_mp:
+        text += f"❌ *Market_prices — нархсиз ({len(zero_mp)} та):*\n"
+        for line in zero_mp[:20]:
+            text += f"  {line}\n"
+    else:
+        text += "✅ Market_prices — барчасида нарх бор\n"
+
+    await message.answer(text, parse_mode="Markdown")
