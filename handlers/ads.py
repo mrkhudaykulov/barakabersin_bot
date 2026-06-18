@@ -959,7 +959,6 @@ async def my_ads(message: types.Message):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-
     if __import__('os').getenv("DATABASE_URL"):
         cursor.execute(f"""
             SELECT id, animal_type, price, status,
@@ -980,7 +979,6 @@ async def my_ads(message: types.Message):
             WHERE user_id = {p} AND status = {p}
             ORDER BY id DESC
         """, (message.from_user.id, 'active'))
-
     ads = cursor.fetchall()
     conn.close()
 
@@ -999,7 +997,7 @@ async def my_ads(message: types.Message):
         # Муддат индикатори
         if days_left is not None and days_left <= 2:
             time_badge = f"🔴 {days_left} кун қолди"
-        elif days_left is not None and days_left <= 7:
+        elif days_left is not None and days_left <= 5:
             time_badge = f"🟡 {days_left} кун қолди"
         else:
             time_badge = f"🟢 {days_left} кун қолди" if days_left else "🟢 Актив"
@@ -1010,7 +1008,6 @@ async def my_ads(message: types.Message):
                 InlineKeyboardButton(text="❌ Ўчириш", callback_data=f"del_{ad_id}")
             ]
         ]
-        # Фақат 2 кун қолганда ВА премиум фойдаланувчига кўринади
         if days_left is not None and days_left <= 2:
             if is_premium_user(message.from_user.id):
                 buttons.append([
@@ -1020,33 +1017,66 @@ async def my_ads(message: types.Message):
                     )
                 ])
         inline_kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-        
+
         channel_link = ""
         first_msg_id = None
         if msg_id_str:
             first_msg_id = str(msg_id_str).split(",")[0].strip()
             channel_link = f"\n📢 <a href='https://t.me/internetmolbozor/{first_msg_id}'>Каналда кўриш</a>"
 
+        ad_text = (
+            f"📦 <b>#{html.escape(a_type)}</b> — {html.escape(price)}\n"
+            f"📅 {time_badge}"
+            f"{channel_link}"
+        )
+
         if first_msg_id and is_premium_user(message.from_user.id):
-            try:
-                await bot.forward_message(
-                    chat_id=message.chat.id,
-                    from_chat_id=CHANNEL_ID,
-                    message_id=int(first_msg_id)
-                )
-            except Exception:
-                pass
-            await message.answer(
-                f"📦 <b>#{html.escape(a_type)}</b> — {html.escape(price)}\n"
-                f"📅 {time_badge}",
-                parse_mode="HTML",
-                reply_markup=inline_kb
+            # Медиаларни базадан олиш
+            conn2 = get_connection()
+            cur2 = conn2.cursor()
+            cur2.execute(
+                f"SELECT media_type, file_id FROM ad_media WHERE ad_id = {get_placeholder()} ORDER BY id",
+                (ad_id,)
             )
+            media_rows = cur2.fetchall()
+            conn2.close()
+
+            try:
+                if media_rows:
+                    m_type, f_id = media_rows[0]
+                    if m_type == "photo":
+                        await bot.send_photo(
+                            chat_id=message.chat.id,
+                            photo=f_id,
+                            caption=ad_text,
+                            parse_mode="HTML",
+                            reply_markup=inline_kb
+                        )
+                    else:
+                        await bot.send_video(
+                            chat_id=message.chat.id,
+                            video=f_id,
+                            caption=ad_text,
+                            parse_mode="HTML",
+                            reply_markup=inline_kb
+                        )
+                else:
+                    await message.answer(
+                        ad_text,
+                        parse_mode="HTML",
+                        disable_web_page_preview=True,
+                        reply_markup=inline_kb
+                    )
+            except Exception:
+                await message.answer(
+                    ad_text,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True,
+                    reply_markup=inline_kb
+                )
         else:
             await message.answer(
-                f"📦 <b>#{html.escape(a_type)}</b> — {html.escape(price)}\n"
-                f"📅 {time_badge}"
-                f"{channel_link}",
+                ad_text,
                 parse_mode="HTML",
                 disable_web_page_preview=True,
                 reply_markup=inline_kb
