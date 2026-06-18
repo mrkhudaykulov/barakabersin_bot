@@ -8,6 +8,13 @@ from database import search_all, fmt_number, fix_keyboard_text, get_connection, 
 from states import SearchStates
 from keyboards import main_menu, search_animal_keyboard, regions_with_all_keyboard, notification_districts_keyboard
 
+# ЁРДАМЧИ ФУНКЦИЯ
+def is_all_districts(text):
+    """Барчаси"""
+    if not text:
+        return False
+    return "Барчаси" in text
+    
 router = Router()
 
 
