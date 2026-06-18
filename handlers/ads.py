@@ -1086,50 +1086,15 @@ async def my_ads(message: types.Message):
         )
 
         if first_msg_id and is_premium_user(message.from_user.id):
-            conn2 = get_connection()
-            cur2 = conn2.cursor()
-            cur2.execute(
-                f"SELECT media_type, file_id FROM ad_media WHERE ad_id = {get_placeholder()} ORDER BY id",
-                (ad_id,)
+            # Премиум — ҳавола preview билан кўринади
+            await message.answer(
+                ad_text,
+                parse_mode="HTML",
+                disable_web_page_preview=False,
+                reply_markup=inline_kb
             )
-            media_rows = cur2.fetchall()
-            conn2.close()
-
-            try:
-                if media_rows:
-                    m_type, f_id = media_rows[0]
-                    if m_type == "photo":
-                        await bot.send_photo(
-                            chat_id=message.chat.id,
-                            photo=f_id,
-                            caption=ad_text,
-                            parse_mode="HTML",
-                            reply_markup=inline_kb
-                        )
-                    else:
-                        await bot.send_video(
-                            chat_id=message.chat.id,
-                            video=f_id,
-                            caption=ad_text,
-                            parse_mode="HTML",
-                            reply_markup=inline_kb
-                        )
-                else:
-                    # Расм йўқ — ҳавола preview билан
-                    await message.answer(
-                        ad_text,
-                        parse_mode="HTML",
-                        disable_web_page_preview=True,
-                        reply_markup=inline_kb
-                    )
-            except Exception:
-                await message.answer(
-                    ad_text,
-                    parse_mode="HTML",
-                    disable_web_page_preview=True,
-                    reply_markup=inline_kb
-                )
         else:
+            # Оддий — preview ўчирилган
             await message.answer(
                 ad_text,
                 parse_mode="HTML",
