@@ -1,20 +1,57 @@
 import asyncio
 import html
-import sqlite3
 import logging
 
 from aiogram import Router, types
+from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
+from aiogram.fsm.state import State, StatesGroup
 
 from config import bot, ADMINS, CHANNEL_ID
-from database import get_full_statistics, fmt_number, get_connection, get_placeholder, unblock_user, get_blocked_users, get_rejection_count, is_premium_user, parse_price_text
-
+from database import (
+    get_full_statistics, fmt_number, get_connection, get_placeholder,
+    unblock_user, get_blocked_users, get_rejection_count, is_premium_user,
+    parse_price_text
+)
+from keyboards import (
+    main_menu, admin_menu_keyboard, admin_ads_keyboard,
+    admin_prices_keyboard, admin_block_keyboard, admin_premium_keyboard,
+    standard_step_keyboard
+)
 
 router = Router()
 
+
 # ═══════════════════════════════════════
-# KIRILL TEKSHIRISH
+# ADMIN FSM STATES
 # ═══════════════════════════════════════
+
+class AdminStates(StatesGroup):
+    menu = State()
+    ads_menu = State()
+    prices_menu = State()
+    block_menu = State()
+    premium_menu = State()
+    # Нарх қўшиш
+    add_price_animal = State()
+    add_price_region = State()
+    add_price_value = State()
+    add_multi_text = State()
+    del_price_id = State()
+    del_animal_name = State()
+    del_region_name = State()
+    del_ad_id = State()
+    del_user_ads_id = State()
+    unblock_id = State()
+    premium_give_id = State()
+    premium_remove_id = State()
+    broadcast_text = State()
+
+
+# ═══════════════════════════════════════
+# КИРИЛЛ ТЕКШИРИШ
+# ═══════════════════════════════════════
+
 VALID_ANIMALS = [
     "Буқа", "Сигир", "Тана", "Бузоқ", "Қўй",
     "Қўчқор", "Совлиқ", "Қўзи", "Эчки", "Улоқ",
@@ -27,6 +64,7 @@ VALID_REGIONS = [
     "Навоий", "Жиззах", "Сирдарё", "Хоразм",
     "Қорақалпоғистон"
 ]
+
 
 def is_latin(text):
     latin_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
@@ -48,57 +86,317 @@ def validate_region(text):
         return text
     return None
 
+
+def is_admin(user_id):
+    return user_id in ADMINS
+
+
 # ═══════════════════════════════════════
-# 1. /addprice — Bitta narx qo'shish
+# 🔐 АДМИН МЕНЮ
 # ═══════════════════════════════════════
-@router.message(Command("addprice"))
-async def admin_add_price(message: types.Message):
-    if message.from_user.id not in ADMINS:
+
+@router.message(F.text == "🔐 Админ панел")
+async def admin_panel(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
         await message.answer("⛔ Сизга рухсат йўқ.")
         return
+    await state.set_state(AdminStates.menu)
+    await message.answer(
+        "🔐 *Админ панел*\n\n"
+        "Бўлимни танланг:",
+        parse_mode="Markdown",
+        reply_markup=admin_menu_keyboard()
+    )
 
-    parts = message.text.split(maxsplit=3)
 
-    if len(parts) < 4:
-        await message.answer(
-            "📋 *Format:*\n"
-            "`/addprice Сигир Тошкент 15000000`\n\n"
-            "⚠️ *Фақат кириллда ёзинг!*\n"
-            "Рўхат: /adminhelp",
-            parse_mode="Markdown"
-        )
+# ═══════════════════════════════════════
+# 📋 ЭЪЛОНЛАР МЕНЮСИ
+# ═══════════════════════════════════════
+
+@router.message(AdminStates.menu, F.text == "📋 Эълонлар")
+async def admin_ads_menu(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.ads_menu)
+    await message.answer(
+        "📋 *Эълонлар бошқариши*\n\n"
+        "Керакли амални танланг:",
+        parse_mode="Markdown",
+        reply_markup=admin_ads_keyboard()
+    )
+
+
+@router.message(AdminStates.ads_menu, F.text == "👁 Эълонларни кўриш")
+async def admin_view_ads(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
         return
 
-    animal = validate_animal(parts[1])
-    region = validate_region(parts[2])
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        SELECT id, animal_type, quantity, price,
+               region, district, status, user_id
+        FROM ads ORDER BY id DESC LIMIT 50
+    """)
+    rows = cursor.fetchall()
+    conn.close()
 
-    if animal is None:
-        await message.answer(
-            f"⚠️ *Ҳайвон тури нотўғри:* `{parts[1]}`\n\n"
-            f"*Рўхатдан танланг:*\n"
-            f"Буқа, Сигир, Тана, Бузоқ, Қўй, Қўчқор,\n"
-            f"Совлиқ, Қўзи, Эчки, Улоқ, От, Туя,\n"
-            f"Парранда\n\n"
-            f"⚠️ *Фақат кириллда ёзинг!*",
-            parse_mode="Markdown"
-        )
+    if not rows:
+        await message.answer("❌ Базада эълонлар йўқ.")
         return
 
-    if region is None:
-        await message.answer(
-            f"⚠️ *Вилоят нотўғри:* `{parts[2]}`\n\n"
-            f"*Рўхатдан танланг:*\n"
-            f"Қашқадарё, Сурхондарё, Тошкент, Фарғона,\n"
-            f"Андижон, Наманган, Самарқанд, Бухоро,\n"
-            f"Навоий, Жиззах, Сирдарё, Хоразм,\n"
-            f"Қорақалпоғистон\n\n"
-            f"⚠️ *Фақат кириллда ёзинг!*",
-            parse_mode="Markdown"
+    status_emoji = {"active": "✅", "sold": "🤝", "deleted": "🗑", "pending": "⏳"}
+
+    text = f"📋 *Эълонлар ({len(rows)} та):*\n\n"
+    for ad_id, a_type, qty, price, region, dist, status, uid in rows:
+        emoji = status_emoji.get(status, "❓")
+        text += (
+            f"{emoji} `#{ad_id}` — 🐾 *{a_type}* | "
+            f"🔢 {qty} | 💰 {price}\n"
+            f"   📍 {region}, {dist} | 👤 {uid}\n\n"
         )
+
+    if len(text) > 4000:
+        parts = text.split("\n\n")
+        current = ""
+        for part in parts:
+            if len(current) + len(part) > 3800:
+                await message.answer(current, parse_mode="Markdown")
+                current = part + "\n\n"
+            else:
+                current += part + "\n\n"
+        if current:
+            await message.answer(current, parse_mode="Markdown")
+    else:
+        await message.answer(text, parse_mode="Markdown")
+
+
+@router.message(AdminStates.ads_menu, F.text == "🗑 ID бўйича ўчириш")
+async def ask_del_ad(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.del_ad_id)
+    await message.answer(
+        "📋 Эълон ID сини киритинг:\n\n"
+        "_Кўриш учун: Эълонларни кўриш_",
+        parse_mode="Markdown",
+        reply_markup=standard_step_keyboard()
+    )
+
+
+@router.message(AdminStates.del_ad_id)
+async def do_del_ad(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(AdminStates.ads_menu)
+        await message.answer("📋 Эълонлар бошқариши", reply_markup=admin_ads_keyboard())
         return
 
     try:
-        price = int(parts[3].replace(" ", ""))
+        ad_id = int(message.text.strip())
+    except ValueError:
+        await message.answer("⚠️ ID рақам бўлиши керак!")
+        return
+
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT id, animal_type, quantity, price, region, district, msg_id FROM ads WHERE id = {p}",
+        (ad_id,)
+    )
+    row = cursor.fetchone()
+
+    if not row:
+        await message.answer(f"❌ ID={ad_id} топилмади.")
+        conn.close()
+        return
+
+    _, a_type, qty, price, region, dist, msg_ids_str = row
+
+    msg_ids = [int(mid) for mid in str(msg_ids_str).split(",") if mid.strip().isdigit()]
+    deleted_count = 0
+    for msg_id in msg_ids:
+        try:
+            await bot.delete_message(chat_id=CHANNEL_ID, message_id=msg_id)
+            deleted_count += 1
+        except Exception as e:
+            logging.error(f"Каналдан ўчириш хато: msg_id={msg_id}, error={e}")
+
+    cursor.execute("DELETE FROM ads WHERE id = {p}", (ad_id,))
+    conn.commit()
+    conn.close()
+
+    await message.answer(
+        f"🗑 *Ўчирилди!*\n\n"
+        f"🆔 ID: {ad_id}\n"
+        f"🐾 {a_type}\n"
+        f"💰 {price}\n"
+        f"📍 {region}, {dist}\n"
+        f"📨 Каналдан: {deleted_count} та хабар ўчирилди",
+        parse_mode="Markdown"
+    )
+    await state.set_state(AdminStates.ads_menu)
+    await message.answer("📋 Давом этинг:", reply_markup=admin_ads_keyboard())
+
+
+@router.message(AdminStates.ads_menu, F.text == "🗑 Фойдаланувчи эълонларини ўчириш")
+async def ask_del_user_ads(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.del_user_ads_id)
+    await message.answer(
+        "📋 Фойдаланувчи USER_ID сини киритинг:",
+        reply_markup=standard_step_keyboard()
+    )
+
+
+@router.message(AdminStates.del_user_ads_id)
+async def do_del_user_ads(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(AdminStates.ads_menu)
+        await message.answer("📋 Эълонлар бошқариши", reply_markup=admin_ads_keyboard())
+        return
+
+    try:
+        user_id = int(message.text.strip())
+    except ValueError:
+        await message.answer("⚠️ USER_ID рақам бўлиши керак!")
+        return
+
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) FROM ads WHERE user_id = {p}", (user_id,))
+    count = cursor.fetchone()[0]
+
+    if count == 0:
+        await message.answer(f"❌ USER_ID={user_id} учун эълонлар топилмади.")
+        conn.close()
+        return
+
+    cursor.execute("SELECT msg_id FROM ads WHERE user_id = {p}", (user_id,))
+    all_msg_ids = cursor.fetchall()
+
+    deleted_count = 0
+    for (msg_ids_str,) in all_msg_ids:
+        msg_ids = [int(mid) for mid in str(msg_ids_str).split(",") if mid.strip().isdigit()]
+        for msg_id in msg_ids:
+            try:
+                await bot.delete_message(chat_id=CHANNEL_ID, message_id=msg_id)
+                deleted_count += 1
+            except Exception:
+                pass
+
+    cursor.execute("DELETE FROM ads WHERE user_id = {p}", (user_id,))
+    conn.commit()
+    conn.close()
+
+    await message.answer(
+        f"🗑 USER_ID={user_id} — *{count} та* эълон ўчирилди.\n"
+        f"📨 Каналдан: {deleted_count} та хабар ўчирилди.",
+        parse_mode="Markdown"
+    )
+    await state.set_state(AdminStates.ads_menu)
+    await message.answer("📋 Давом этинг:", reply_markup=admin_ads_keyboard())
+
+
+# ═══════════════════════════════════════
+# 💰 НАРХЛАР МЕНЮСИ
+# ═══════════════════════════════════════
+
+@router.message(AdminStates.menu, F.text == "💰 Нархлар")
+async def admin_prices_menu(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.prices_menu)
+    await message.answer(
+        "💰 *Нархлар бошқариши*\n\n"
+        "Керакли амални танланг:",
+        parse_mode="Markdown",
+        reply_markup=admin_prices_keyboard()
+    )
+
+
+# ── Нарх қўшиш (3 қадам) ──
+
+@router.message(AdminStates.prices_menu, F.text == "➕ Нарх қўшиш")
+async def ask_add_price(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.add_price_animal)
+    await message.answer(
+        "🐾 Ҳайвон турини киритинг (кириллда):\n"
+        f"Рўхат: {', '.join(VALID_ANIMALS)}",
+        reply_markup=standard_step_keyboard()
+    )
+
+
+@router.message(AdminStates.add_price_animal)
+async def add_price_animal(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(AdminStates.prices_menu)
+        await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
+        return
+
+    animal = validate_animal(message.text.strip())
+    if animal is None:
+        await message.answer(
+            f"⚠️ Нотўғри. Кириллда ёзинг:\n{', '.join(VALID_ANIMALS)}"
+        )
+        return
+
+    await state.update_data(mp_animal=animal)
+    await state.set_state(AdminStates.add_price_region)
+    await message.answer(
+        "📍 Вилоятни киритинг (кириллда):\n"
+        f"Рўхат: {', '.join(VALID_REGIONS)}"
+    )
+
+
+@router.message(AdminStates.add_price_region)
+async def add_price_region(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(AdminStates.prices_menu)
+        await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
+        return
+
+    region = validate_region(message.text.strip())
+    if region is None:
+        await message.answer(
+            f"⚠️ Нотўғри. Кириллда ёзинг:\n{', '.join(VALID_REGIONS)}"
+        )
+        return
+
+    await state.update_data(mp_region=region)
+    await state.set_state(AdminStates.add_price_value)
+    await message.answer(
+        "💰 Нархни киритинг (сўмда):\nМасалан: `15000000`",
+        parse_mode="Markdown"
+    )
+
+
+@router.message(AdminStates.add_price_value)
+async def add_price_save(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(AdminStates.prices_menu)
+        await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
+        return
+
+    try:
+        price = int(message.text.strip().replace(" ", ""))
     except ValueError:
         await message.answer("⚠️ Нарх рақам бўлиши керак!")
         return
@@ -106,6 +404,10 @@ async def admin_add_price(message: types.Message):
     if price < 1000:
         await message.answer("⚠️ Нарх жуда кичик!")
         return
+
+    data = await state.get_data()
+    animal = data.get("mp_animal")
+    region = data.get("mp_region")
 
     p = get_placeholder()
     conn = get_connection()
@@ -121,34 +423,42 @@ async def admin_add_price(message: types.Message):
         f"✅ *Нарх киритилди!*\n\n"
         f"🐾 {animal}\n"
         f"📍 {region}\n"
-        f"💰 {price:,} so'm\n\n"
-        f"Кўриш: /viewprices",
+        f"💰 {price:,} сўм",
         parse_mode="Markdown"
     )
+    await state.set_state(AdminStates.prices_menu)
+    await message.answer("💰 Давом этинг:", reply_markup=admin_prices_keyboard())
 
-# ═══════════════════════════════════════
-# 2. /addmulti — Ko'p narx qo'shish
-# ═══════════════════════════════════════
-@router.message(Command("addmulti"))
-async def admin_add_multi(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
+
+# ── Кўп нарх қўшиш ──
+
+@router.message(AdminStates.prices_menu, F.text == "➕ Кўп нарх қўшиш")
+async def ask_add_multi(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.add_multi_text)
+    await message.answer(
+        "📋 *Формат:*\n\n"
+        "Ҳар сатрда битта:\n"
+        "`Сигир Тошкент 15000000`\n"
+        "`Қўй Самарқанд 3500000`\n"
+        "`Эчки Фарғона 2800000`\n\n"
+        "⚠️ Фақат кириллда!",
+        parse_mode="Markdown",
+        reply_markup=standard_step_keyboard()
+    )
+
+
+@router.message(AdminStates.add_multi_text)
+async def do_add_multi(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(AdminStates.prices_menu)
+        await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
         return
 
     lines = message.text.strip().split("\n")
-
-    if len(lines) < 2:
-        await message.answer(
-            "📋 *Format:*\n\n"
-            "`/addmulti\n"
-            "Сигир Тошкент 15000000\n"
-            "Қўй Самарқанд 3500000\n"
-            "Эчки Фарғона 2800000`\n\n"
-            "⚠️ *Фақат кириллда ёзинг!*",
-            parse_mode="Markdown"
-        )
-        return
-
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
@@ -156,7 +466,7 @@ async def admin_add_multi(message: types.Message):
     success = 0
     errors = []
 
-    for line in lines[1:]:
+    for line in lines:
         parts = line.strip().split()
         if len(parts) < 3:
             errors.append(f"❌ `{line.strip()}` — format xato")
@@ -166,11 +476,10 @@ async def admin_add_multi(message: types.Message):
         region = validate_region(parts[1])
 
         if animal is None:
-            errors.append(f"❌ `{parts[0]}` — ҳайвон нотўғри (кириллда ёзинг)")
+            errors.append(f"❌ `{parts[0]}` — ҳайвон нотўғри")
             continue
-
         if region is None:
-            errors.append(f"❌ `{parts[1]}` — вилоят нотўғри (кириллда ёзинг)")
+            errors.append(f"❌ `{parts[1]}` — вилоят нотўғри")
             continue
 
         try:
@@ -198,14 +507,15 @@ async def admin_add_multi(message: types.Message):
         text += "\n".join(errors[:10])
 
     await message.answer(text, parse_mode="Markdown")
+    await state.set_state(AdminStates.prices_menu)
+    await message.answer("💰 Давом этинг:", reply_markup=admin_prices_keyboard())
 
-# ═══════════════════════════════════════
-# 3. /viewprices — Narxlarni ko'rish (ID bilan)
-# ═══════════════════════════════════════
-@router.message(Command("viewprices"))
-async def admin_view_prices(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
+
+# ── Нархларни кўриш ──
+
+@router.message(AdminStates.prices_menu, F.text == "👁 Нархларни кўриш")
+async def admin_view_prices(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
         return
 
     p = get_placeholder()
@@ -219,16 +529,12 @@ async def admin_view_prices(message: types.Message):
     conn.close()
 
     if not rows:
-        await message.answer(
-            "❌ Базада нархлар йўқ.\n\nКиритиш: /addprice yoki /addmulti"
-        )
+        await message.answer("❌ Базада нархлар йўқ.")
         return
 
     text = f"📊 *Базадаги нархлар ({len(rows)} та):*\n\n"
-    text += f"_Ўчириш учун: /delprice ID raqami_\n\n"
-
     for row_id, animal, region, price, date in rows:
-        text += f"🆔 `{row_id}` — 🐾 *{animal}* | 📍 {region} | 💰 {price:,} so'm\n"
+        text += f"🆔 `{row_id}` — 🐾 *{animal}* | 📍 {region} | 💰 {price:,} сўм\n"
 
     if len(text) > 4000:
         parts = text.split("\n")
@@ -244,30 +550,28 @@ async def admin_view_prices(message: types.Message):
     else:
         await message.answer(text, parse_mode="Markdown")
 
-# ═══════════════════════════════════════
-# 4. /delprice — Bitta narxni o'chirish
-# ═══════════════════════════════════════
 
-@router.message(Command("delprice"))
-async def admin_del_price(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
+# ── Нархни ID бўйича ўчириш ──
+
+@router.message(AdminStates.prices_menu, F.text == "🗑 Нархни ўчириш ID")
+async def ask_del_price(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
         return
+    await state.set_state(AdminStates.del_price_id)
+    await message.answer("📋 Нарх ID сини киритинг:", reply_markup=standard_step_keyboard())
 
-    parts = message.text.split()
 
-    if len(parts) < 2:
-        await message.answer(
-            "📋 *Format:*\n"
-            "`/delprice ID`\n\n"
-            "*Мисол:* `/delprice 5`\n\n"
-            "ID ни билиш учун: /viewprices",
-            parse_mode="Markdown"
-        )
+@router.message(AdminStates.del_price_id)
+async def do_del_price(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(AdminStates.prices_menu)
+        await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
         return
 
     try:
-        price_id = int(parts[1])
+        price_id = int(message.text.strip())
     except ValueError:
         await message.answer("⚠️ ID рақам бўлиши керак!")
         return
@@ -275,11 +579,7 @@ async def admin_del_price(message: types.Message):
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT id, animal_type, region, price FROM market_prices WHERE id = {p}",
-        (price_id,)
-    )
+    cursor.execute("SELECT id, animal_type, region, price FROM market_prices WHERE id = {p}", (price_id,))
     row = cursor.fetchone()
 
     if not row:
@@ -288,63 +588,49 @@ async def admin_del_price(message: types.Message):
         return
 
     _, animal, region, price = row
-
     cursor.execute("DELETE FROM market_prices WHERE id = {p}", (price_id,))
     conn.commit()
     conn.close()
 
     await message.answer(
-        f"🗑 *Ўчирилди!*\n\n"
-        f"🆔 ID: {price_id}\n"
-        f"🐾 {animal}\n"
-        f"📍 {region}\n"
-        f"💰 {price:,} сўм",
+        f"🗑 *Ўчирилди!*\n\n🆔 ID: {price_id}\n🐾 {animal}\n📍 {region}\n💰 {price:,} сўм",
         parse_mode="Markdown"
     )
+    await state.set_state(AdminStates.prices_menu)
+    await message.answer("💰 Давом этинг:", reply_markup=admin_prices_keyboard())
 
-# ═══════════════════════════════════════
-# 5. /delanimal — Hayvon turi bo'yicha o'chirish
-# ═══════════════════════════════════════
 
-@router.message(Command("delanimal"))
-async def admin_del_animal(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
+# ── Ҳайвон бўйича ўчириш ──
+
+@router.message(AdminStates.prices_menu, F.text == "🗑 Ҳайвон бўйича ўчириш")
+async def ask_del_animal(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.del_animal_name)
+    await message.answer(
+        f"🐾 Ҳайвон турини киритинг:\nРўхат: {', '.join(VALID_ANIMALS)}",
+        reply_markup=standard_step_keyboard()
+    )
+
+
+@router.message(AdminStates.del_animal_name)
+async def do_del_animal(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(AdminStates.prices_menu)
+        await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
         return
 
-    parts = message.text.split()
-
-    if len(parts) < 2:
-        await message.answer(
-            "📋 *Формат:*\n"
-            "`/delanimal Ҳайвонтури`\n\n"
-            "*Мисол:* `/delanimal Сигир`\n\n"
-            "⚠️ *Фақат кириллда ёзинг!*\n"
-            f"*Рўйхат:* {', '.join(VALID_ANIMALS)}",
-            parse_mode="Markdown"
-        )
-        return
-
-    animal = validate_animal(parts[1])
-
+    animal = validate_animal(message.text.strip())
     if animal is None:
-        await message.answer(
-            f"⚠️ *Ҳайвон тури нотўғри:* `{parts[1]}`\n\n"
-            f"*Рўйхатдан танланг:*\n"
-            f"{', '.join(VALID_ANIMALS)}\n\n"
-            f"⚠️ *Фақат кириллда ёзинг!*",
-            parse_mode="Markdown"
-        )
+        await message.answer(f"⚠️ Нотўғри: {message.text}")
         return
 
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT COUNT(*) FROM market_prices WHERE animal_type = {p}",
-        (animal,)
-    )
+    cursor.execute("SELECT COUNT(*) FROM market_prices WHERE animal_type = {p}", (animal,))
     count = cursor.fetchone()[0]
 
     if count == 0:
@@ -352,61 +638,46 @@ async def admin_del_animal(message: types.Message):
         conn.close()
         return
 
-    cursor.execute(
-        "DELETE FROM market_prices WHERE animal_type = {p}",
-        (animal,)
-    )
+    cursor.execute("DELETE FROM market_prices WHERE animal_type = {p}", (animal,))
     conn.commit()
     conn.close()
 
+    await message.answer(f"🗑 *{animal}* — {count} та нарх ўчирилди.", parse_mode="Markdown")
+    await state.set_state(AdminStates.prices_menu)
+    await message.answer("💰 Давом этинг:", reply_markup=admin_prices_keyboard())
+
+
+# ── Вилоят бўйича ўчириш ──
+
+@router.message(AdminStates.prices_menu, F.text == "🗑 Вилоят бўйича ўчириш")
+async def ask_del_region(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.del_region_name)
     await message.answer(
-        f"🗑 *{animal}* — {count} та нарх ўчирилди.",
-        parse_mode="Markdown"
+        f"📍 Вилоятни киритинг:\nРўхат: {', '.join(VALID_REGIONS)}",
+        reply_markup=standard_step_keyboard()
     )
 
-# ═══════════════════════════════════════
-# 6. /delregion — Viloyat bo'yicha o'chirish
-# ═══════════════════════════════════════
 
-@router.message(Command("delregion"))
-async def admin_del_region(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
+@router.message(AdminStates.del_region_name)
+async def do_del_region(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(AdminStates.prices_menu)
+        await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
         return
 
-    parts = message.text.split()
-
-    if len(parts) < 2:
-        await message.answer(
-            "📋 *Формат:*\n"
-            "`/delregion Вилоят`\n\n"
-            "*Мисол:* `/delregion Тошкент`\n\n"
-            "⚠️ *Фақат кириллда ёзинг!*\n"
-            f"*Рўйхат:* {', '.join(VALID_REGIONS)}",
-            parse_mode="Markdown"
-        )
-        return
-
-    region = validate_region(parts[1])
-
+    region = validate_region(message.text.strip())
     if region is None:
-        await message.answer(
-            f"⚠️ *Вилоят нотўғри:* `{parts[1]}`\n\n"
-            f"*Рўйхатдан танланг:*\n"
-            f"{', '.join(VALID_REGIONS)}\n\n"
-            f"⚠️ *Фақат кириллда ёзинг!*",
-            parse_mode="Markdown"
-        )
+        await message.answer(f"⚠️ Нотўғри: {message.text}")
         return
 
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT COUNT(*) FROM market_prices WHERE region = {p}",
-        (region,)
-    )
+    cursor.execute("SELECT COUNT(*) FROM market_prices WHERE region = {p}", (region,))
     count = cursor.fetchone()[0]
 
     if count == 0:
@@ -414,26 +685,20 @@ async def admin_del_region(message: types.Message):
         conn.close()
         return
 
-    cursor.execute(
-        "DELETE FROM market_prices WHERE region = {p}",
-        (region,)
-    )
+    cursor.execute("DELETE FROM market_prices WHERE region = {p}", (region,))
     conn.commit()
     conn.close()
 
-    await message.answer(
-        f"🗑 *{region}* — {count} та нарх ўчирилди.",
-        parse_mode="Markdown"
-    )
+    await message.answer(f"🗑 *{region}* — {count} та нарх ўчирилди.", parse_mode="Markdown")
+    await state.set_state(AdminStates.prices_menu)
+    await message.answer("💰 Давом этинг:", reply_markup=admin_prices_keyboard())
 
-# ═══════════════════════════════════════
-# 7. /clearprices — HAMMA narxni o'chirish (tasdiqlash bilan)
-# ═══════════════════════════════════════
 
-@router.message(Command("clearprices"))
-async def admin_clear_prices(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
+# ── Барчасини ўчириш ──
+
+@router.message(AdminStates.prices_menu, F.text == "🗑 Барчасини ўчириш")
+async def ask_clear_prices(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
         return
 
     p = get_placeholder()
@@ -451,55 +716,261 @@ async def admin_clear_prices(message: types.Message):
         f"⚠️ *ДИҚҚАТ!*\n\n"
         f"Базада *{count} та* нарх маълумоти бор.\n"
         f"Буларнинг *БАРЧАСИ* ўчирилади!\n\n"
-        f"Ишончингиз комил бўлса:\n"
-        f"`/clearprices_confirm`\n\n"
-        f"Бекор қилиш учун ҳеч нарса ёзманг.",
+        f"Тасдиқлаш учун: /clearprices_confirm",
         parse_mode="Markdown"
     )
 
 
-@router.message(Command("clearprices_confirm"))
-async def admin_clear_prices_confirm(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
+# ═══════════════════════════════════════
+# 🚫 БЛОК МЕНЮСИ
+# ═══════════════════════════════════════
+
+@router.message(AdminStates.menu, F.text == "🚫 Блок")
+async def admin_block_menu(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.block_menu)
+    await message.answer(
+        "🚫 *Блок бошқариши*",
+        parse_mode="Markdown",
+        reply_markup=admin_block_keyboard()
+    )
+
+
+@router.message(AdminStates.block_menu, F.text == "🚫 Блокланганлар рўйхати")
+async def show_blocked(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    blocked = get_blocked_users()
+    if not blocked:
+        await message.answer("✅ Блокланган фойдаланувчилар йўқ.")
+        return
+
+    text = f"🚫 *Блокланганлар ({len(blocked)} та):*\n\n"
+    for user_id, full_name, username, count, blocked_at in blocked:
+        uname = f"@{username}" if username else "—"
+        text += (
+            f"👤 {full_name or '—'} ({uname})\n"
+            f"   ID: `{user_id}` | Рад: {count} марта\n\n"
+        )
+
+    await message.answer(text, parse_mode="Markdown")
+
+
+@router.message(AdminStates.block_menu, F.text == "🔓 Блокдан чиқариш")
+async def ask_unblock(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.unblock_id)
+    await message.answer("📋 USER_ID киритинг:", reply_markup=standard_step_keyboard())
+
+
+@router.message(AdminStates.unblock_id)
+async def do_unblock(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(AdminStates.block_menu)
+        await message.answer("🚫 Блок бошқариши", reply_markup=admin_block_keyboard())
+        return
+
+    try:
+        user_id = int(message.text.strip())
+    except ValueError:
+        await message.answer("⚠️ USER_ID рақам бўлиши керак!")
+        return
+
+    unblock_user(user_id)
+    await message.answer(f"✅ `{user_id}` блокдан чиқарилди.", parse_mode="Markdown")
+
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            text="✅ *Блок олинди!*\nЭнди қайтадан эълон бера оласиз.",
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass
+
+    await state.set_state(AdminStates.block_menu)
+    await message.answer("🚫 Давом этинг:", reply_markup=admin_block_keyboard())
+
+
+# ═══════════════════════════════════════
+# 💎 ПРЕМИУМ МЕНЮСИ
+# ═══════════════════════════════════════
+
+@router.message(AdminStates.menu, F.text == "💎 Премиум")
+async def admin_premium_menu(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.premium_menu)
+    await message.answer(
+        "💎 *Премиум бошқариши*",
+        parse_mode="Markdown",
+        reply_markup=admin_premium_keyboard()
+    )
+
+
+@router.message(AdminStates.premium_menu, F.text == "💎 Премиум бериш")
+async def ask_premium_give(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.premium_give_id)
+    await message.answer("📋 USER_ID киритинг:", reply_markup=standard_step_keyboard())
+
+
+@router.message(AdminStates.premium_give_id)
+async def do_premium_give(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(AdminStates.premium_menu)
+        await message.answer("💎 Премиум бошқариши", reply_markup=admin_premium_keyboard())
+        return
+
+    try:
+        user_id = int(message.text.strip())
+    except ValueError:
+        await message.answer("⚠️ USER_ID рақам бўлиши керак!")
         return
 
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM market_prices")
-    count = cursor.fetchone()[0]
+    cursor.execute(f"SELECT full_name, username, is_premium FROM users WHERE user_id = {p}", (user_id,))
+    row = cursor.fetchone()
 
-    if count == 0:
-        await message.answer("❌ Базада нархлар йўқ.")
+    if not row:
+        await message.answer(f"❌ USER_ID={user_id} базада топилмади.")
         conn.close()
         return
 
-    cursor.execute("DELETE FROM market_prices")
+    full_name, username, already_premium = row
+    if already_premium:
+        conn.close()
+        await message.answer(f"ℹ️ `{user_id}` аллақачон Премиум.", parse_mode="Markdown")
+        return
+
+    if __import__('os').getenv("DATABASE_URL"):
+        cursor.execute(f"UPDATE users SET is_premium = TRUE WHERE user_id = {p}", (user_id,))
+    else:
+        cursor.execute(f"UPDATE users SET is_premium = 1 WHERE user_id = {p}", (user_id,))
     conn.commit()
     conn.close()
 
-    await message.answer(f"🗑 *{count} та* нарх ўчирилди.", parse_mode="Markdown")
+    uname = f"@{username}" if username else "—"
+    await message.answer(
+        f"💎 *Премиум берилди!*\n\n👤 {full_name or '—'} ({uname})\n🆔 `{user_id}`",
+        parse_mode="Markdown"
+    )
 
-
-# ═══════════════════════════════════════
-# 8. /broadcast_users — Xabar tarqatish
-# ═══════════════════════════════════════
-
-@router.message(Command("broadcast_users"))
-async def broadcast_to_users(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        return
-
-    command_len = len("/broadcast_users")
-    broadcast_text = message.text[command_len:].strip()
-
-    if not broadcast_text:
-        await message.answer(
-            "⚠️ Илтимос, буйруқдан кейин тарқатиладиган матнни ёзинг.\n\n"
-            "Масалан:\n`/broadcast_users Салом ҳаммага`",
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            text="💎 *Табриклаймиз!*\n\nСизга *Премиум* аъзолик берилди!",
             parse_mode="Markdown"
         )
+    except Exception:
+        pass
+
+    await state.set_state(AdminStates.premium_menu)
+    await message.answer("💎 Давом этинг:", reply_markup=admin_premium_keyboard())
+
+
+@router.message(AdminStates.premium_menu, F.text == "❌ Премиум олиш")
+async def ask_premium_remove(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.premium_remove_id)
+    await message.answer("📋 USER_ID киритинг:", reply_markup=standard_step_keyboard())
+
+
+@router.message(AdminStates.premium_remove_id)
+async def do_premium_remove(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(AdminStates.premium_menu)
+        await message.answer("💎 Премиум бошқариши", reply_markup=admin_premium_keyboard())
+        return
+
+    try:
+        user_id = int(message.text.strip())
+    except ValueError:
+        await message.answer("⚠️ USER_ID рақам бўлиши керак!")
+        return
+
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if __import__('os').getenv("DATABASE_URL"):
+        cursor.execute(f"UPDATE users SET is_premium = FALSE WHERE user_id = {p}", (user_id,))
+    else:
+        cursor.execute(f"UPDATE users SET is_premium = 0 WHERE user_id = {p}", (user_id,))
+    conn.commit()
+    conn.close()
+
+    await message.answer(f"✅ `{user_id}` дан Премиум олиб ташланди.", parse_mode="Markdown")
+    await state.set_state(AdminStates.premium_menu)
+    await message.answer("💎 Давом этинг:", reply_markup=admin_premium_keyboard())
+
+
+@router.message(AdminStates.premium_menu, F.text == "💎 Премиум рўйхати")
+async def show_premium_list(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if __import__('os').getenv("DATABASE_URL"):
+        cursor.execute("SELECT user_id, full_name, username FROM users WHERE is_premium = TRUE ORDER BY user_id")
+    else:
+        cursor.execute("SELECT user_id, full_name, username FROM users WHERE is_premium = 1 ORDER BY user_id")
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        await message.answer("💎 Ҳозирча Премиум аъзолар йўқ.")
+        return
+
+    text = f"💎 *Премиум аъзолар ({len(rows)} та):*\n\n"
+    for uid, full_name, username in rows:
+        uname = f"@{username}" if username else "—"
+        text += f"👤 {full_name or '—'} ({uname}) — `{uid}`\n"
+
+    await message.answer(text, parse_mode="Markdown")
+
+
+# ═══════════════════════════════════════
+# 📢 ТАРҚАТИШ
+# ═══════════════════════════════════════
+
+@router.message(AdminStates.menu, F.text == "📢 Тарқатиш")
+async def ask_broadcast(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminStates.broadcast_text)
+    await message.answer(
+        "📢 Юбориладиган матнни ёзинг:",
+        reply_markup=standard_step_keyboard()
+    )
+
+
+@router.message(AdminStates.broadcast_text)
+async def do_broadcast(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.set_state(AdminStates.menu)
+        await message.answer("🔐 Админ панел", reply_markup=admin_menu_keyboard())
+        return
+
+    broadcast_text = message.text.strip()
+    if not broadcast_text:
+        await message.answer("⚠️ Матн бўш.")
         return
 
     p = get_placeholder()
@@ -510,15 +981,13 @@ async def broadcast_to_users(message: types.Message):
     conn.close()
 
     if not users:
-        await message.answer("Базада ҳозирча ҳеч қандай фойдаланувчи йўқ.")
+        await message.answer("Базада фойдаланувчилар йўқ.")
         return
 
     sent_count = 0
     failed_count = 0
 
-    status_message = await message.answer(
-        f"⏳ Хабар юбориш бошланди (Жами: {len(users)} та фойдаланувчи)..."
-    )
+    status_msg = await message.answer(f"⏳ Юборилмоқда... ({len(users)} та)")
 
     for user in users:
         uid = user[0]
@@ -527,35 +996,36 @@ async def broadcast_to_users(message: types.Message):
             sent_count += 1
         except Exception:
             try:
-                escaped = html.escape(broadcast_text)
-                await bot.send_message(chat_id=uid, text=escaped)
+                await bot.send_message(chat_id=uid, text=html.escape(broadcast_text))
                 sent_count += 1
             except Exception:
                 failed_count += 1
         await asyncio.sleep(0.05)
 
-    await status_message.edit_text(
-        f"📢 **Тарқатиш якунланди!**\n\n"
-        f"✅ Муваффақиятли: {sent_count} та\n"
-        f"❌ Юборилмади: {failed_count} та",
+    await status_msg.edit_text(
+        f"📢 *Тарқатиш якунланди!*\n\n"
+        f"✅ Муваффақиятли: {sent_count}\n"
+        f"❌ Юборилмади: {failed_count}",
         parse_mode="Markdown"
     )
 
+    await state.set_state(AdminStates.menu)
+    await message.answer("🔐 Давом этинг:", reply_markup=admin_menu_keyboard())
+
 
 # ═══════════════════════════════════════
-# 9. /stats — Bot statistikasi
+# 📊 СТАТИСТИКА
 # ═══════════════════════════════════════
 
-@router.message(Command("stats"))
-async def admin_stats(message: types.Message):
-    if message.from_user.id not in ADMINS:
+@router.message(AdminStates.menu, F.text == "📊 Статистика")
+async def admin_stats(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
         return
 
     stats = get_full_statistics()
 
     text = "📈 *БОТ СТАТИСТИКАСИ*\n"
     text += f"{'═' * 28}\n\n"
-
     text += f"📋 Жами эълонлар: *{stats['total_ads']}* та\n"
     text += f"✅ Фаол: *{stats['active_ads']}* та\n"
     text += f"🤝 Сотилган: *{stats['sold_ads']}* та\n"
@@ -584,11 +1054,7 @@ async def admin_stats(message: types.Message):
             "Қўчқор": "🐏", "Совлиқ": "🐑", "Қўзи": "🐑",
             "Эчки": "🐐", "От": "🐴", "Туя": "🐫", "Парранда": "🐓"
         }
-        sorted_prices = sorted(
-            stats["avg_prices"].items(),
-            key=lambda x: x[1]["avg"],
-            reverse=True
-        )
+        sorted_prices = sorted(stats["avg_prices"].items(), key=lambda x: x[1]["avg"], reverse=True)
         for a_type, pdata in sorted_prices:
             emoji = emoji_map.get(a_type, "🐾")
             text += (
@@ -601,615 +1067,30 @@ async def admin_stats(message: types.Message):
 
 
 # ═══════════════════════════════════════
-# 10. /adminhelp — Yordam
+# 🔍 НАРХ ТЕКШИРИШ
 # ═══════════════════════════════════════
 
-@router.message(Command("adminhelp"))
-async def admin_help(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
-        return
-
-    await message.answer(
-        "🔐 *ADMIN BUYRUQLARI:*\n\n"
-        
-        "📋 *Эълонлар:*\n"
-        "`/viewads` — эълонлар (ID билан)\n"
-        "`/delad 42` — ID бўйича битта эълон\n"
-        "`/deluserads 123456789` — фойдаланувчини барча эълонлари\n\n"
-       
-        "📝 *Нарх қўшиш:*\n"
-        "`/addprice Сигир Тошкент 15000000`\n"
-        "— битта нарх\n\n"
-       
-        "`/addmulti`\n"
-        "Сигир Тошкент 15000000\n"
-        "Қўй Самарқанд 3500000\n"
-        "— кўп нархни бир вақтда\n\n"
-       
-        "👀 *Нархларни кўриш:*\n"
-        "`/viewprices` — нархлар (ID билан)\n"
-        "`/checkprices — нархни умумий текшириш\n\n"
-        
-        "🗑 *Ўчириш-нарх:*\n"
-        "`/delprice 5` — ID бўйича битта\n"
-        "`/delanimal Сигир` — ҳайвон тури бўйича\n"
-        "`/delregion Тошкент` — вилоят бўйича\n"
-        "`/clearprices` — барчасини (тасдиқлаш билан)\n\n"
-
-        "📢 *Хабар:*\n"
-        "`/broadcast_users матн` — фойдаланувчиларга\n\n"
-               
-        "🚫 *Ёмон сўзлар:*\n"
-        "`/addbadword ўшасўз`\n"
-        "`/badwords` - Рўхат\n\n"
-
-        "🚫 *Блок бошқариш:*\n"
-        "`/blocked` — блокланганлар рўйхати\n"
-        "`/unblock USER_ID` — блокдан чиқариш\n\n"
-
-        "💎 *Премиум:*\n"
-        "`/premium USER_ID` — премиум бериш\n"
-        "`/unpremium USER_ID` — олиб ташлаш\n"
-        "`/premiumlist` — аъзолар рўйхати\n\n"
-        
-         "👥 *Статистика:*\n"
-        "`/stats` — бот статистикаси\n\n"
-        
-        "ℹ️ *Ёрдам:*\n"
-        "`/adminhelp` — шу хабар\n\n"
-
-        "⚠️ *Нарх киритишда ФАҚАТ КИРИЛЛ алифбосидан фойдаланинг!*",
-        parse_mode="Markdown"
-    )
-
-# ═══════════════════════════════════════
-# 11. /addbadword 
-# ═══════════════════════════════════════
-@router.message(Command("addbadword"))
-async def admin_add_badword(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        return
-
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2:
-        await message.answer(
-            "📋 *Формат:*\n"
-            "`/addbadword ўшасўз`\n\n"
-            "⚠️ 3 ҳарфли сўзлар — фақат алоҳида сўз сифатида текширилади\n"
-            "4+ ҳарфли сўзлар — сўз ичидан ҳам қидирилади",
-            parse_mode="Markdown"
-        )
-        return
-
-    word = parts[1].strip().lower()
-    normalized = normalize_word(word)
-
-    if not normalized:
-        await message.answer("⚠️ Сўз топилмади.")
-        return
-
-    if word in BAD_WORDS:
-        await message.answer("⚠️ Бу сўз аллақачон рўхатда бор.")
-        return
-
-    BAD_WORDS.append(word)
-
-    if len(normalized) <= 3:
-        note = "ℹ️ Қисқа сўз — фақат алоҳида сўз сифатида текширилади"
-    else:
-        note = "ℹ️ Узун сўз — сўз ичидан ҳам қидирилади"
-
-    await message.answer(
-        f"✅ *Қўшилди:* `{word}`\n\n{note}",
-        parse_mode="Markdown"
-    )
-
-@router.message(Command("badwords"))
-async def admin_badwords(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        return
-
-    text = f"🚫 *Ман этилган сўзлар ({len(BAD_WORDS)} та):*\n\n"
-    for i, word in enumerate(BAD_WORDS, 1):
-        text += f"{i}. `{word}`\n"
-
-    if len(text) > 4000:
-        await message.answer("Рўхат жуда узун. Базадан кўринг.")
-    else:
-        await message.answer(text, parse_mode="Markdown")
-
-# ═══════════════════════════════════════
-# 12. /viewads — Эълонларни кўриш
-# ═══════════════════════════════════════
-
-@router.message(Command("viewads"))
-async def admin_view_ads(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
-        return
-
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT id, animal_type, quantity, price,
-               region, district, status, user_id
-        FROM ads ORDER BY id DESC LIMIT 50
-    """)
-    rows = cursor.fetchall()
-    conn.close()
-
-    if not rows:
-        await message.answer("❌ Базада эълонлар йўқ.")
-        return
-
-    status_emoji = {
-        "active": "✅",
-        "sold": "🤝",
-        "deleted": "🗑"
-    }
-
-    text = f"📋 *Эълонлар ({len(rows)} та):*\n\n"
-    text += f"_Ўчириш учун: /delad ID рақами_\n\n"
-
-    for ad_id, a_type, qty, price, region, dist, status, uid in rows:
-        emoji = status_emoji.get(status, "❓")
-        text += (
-            f"{emoji} `#{ad_id}` — 🐾 *{a_type}* | "
-            f"🔢 {qty} | 💰 {price}\n"
-            f"   📍 {region}, {dist} | 👤 {uid}\n\n"
-        )
-
-    if len(text) > 4000:
-        parts = text.split("\n\n")
-        current = ""
-        for part in parts:
-            if len(current) + len(part) > 3800:
-                await message.answer(current, parse_mode="Markdown")
-                current = part + "\n\n"
-            else:
-                current += part + "\n\n"
-        if current:
-            await message.answer(current, parse_mode="Markdown")
-    else:
-        await message.answer(text, parse_mode="Markdown")
-
-
-# ═══════════════════════════════════════
-# 13. /delad — Битта эълонни ўчириш
-# ═══════════════════════════════════════
-
-@router.message(Command("delad"))
-async def admin_del_ad(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
-        return
-
-    parts = message.text.split()
-
-    if len(parts) < 2:
-        await message.answer(
-            "📋 *Формат:*\n"
-            "`/delad ID`\n\n"
-            "*Мисол:* `/delad 42`\n\n"
-            "ID ни билиш учун: /viewads",
-            parse_mode="Markdown"
-        )
-        return
-
-    try:
-        ad_id = int(parts[1])
-    except ValueError:
-        await message.answer("⚠️ ID рақам бўлиши керак!")
+@router.message(AdminStates.menu, F.text == "🔍 Нарх текшириш")
+async def check_prices(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
         return
 
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT id, animal_type, quantity, price, region, "
-        "district, msg_id FROM ads WHERE id = {p}",
-        (ad_id,)
-    )
-    row = cursor.fetchone()
-
-    if not row:
-        await message.answer(f"❌ ID={ad_id} топилмади.")
-        conn.close()
-        return
-
-    _, a_type, qty, price, region, dist, msg_ids_str = row
-
-    # Каналдан ўчириш
-    msg_ids = [int(mid) for mid in str(msg_ids_str).split(",")]
-    deleted_count = 0
-    for msg_id in msg_ids:
-        try:
-            await bot.delete_message(
-                chat_id=CHANNEL_ID, message_id=msg_id
-            )
-            deleted_count += 1
-        except Exception as e:
-            logging.error(f"Каналдан ўчириш хато: msg_id={msg_id}, error={e}")
-
-    # Базадан ўчириш
-    cursor.execute("DELETE FROM ads WHERE id = {p}", (ad_id,))
-    conn.commit()
-    conn.close()
-
-    await message.answer(
-        f"🗑 *Ўчирилди!*\n\n"
-        f"🆔 ID: {ad_id}\n"
-        f"🐾 {a_type}\n"
-        f"🔢 {qty}\n"
-        f"💰 {price}\n"
-        f"📍 {region}, {dist}\n"
-        f"📨 Каналдан: {deleted_count} та хабар ўчирилди",
-        parse_mode="Markdown"
-    )
-
-
-# ═══════════════════════════════════════
-# 13. /deluserads — Битта фойдаланувчини эълонларини ўчириш
-# ═══════════════════════════════════════
-
-@router.message(Command("deluserads"))
-async def admin_del_user_ads(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
-        return
-
-    parts = message.text.split()
-
-    if len(parts) < 2:
-        await message.answer(
-            "📋 *Формат:*\n"
-            "`/deluserads USER_ID`\n\n"
-            "*Мисол:* `/deluserads 123456789`\n\n"
-            "USER_ID ни билиш учун: /viewads",
-            parse_mode="Markdown"
-        )
-        return
-
-    try:
-        user_id = int(parts[1])
-    except ValueError:
-        await message.answer("⚠️ USER_ID рақам бўлиши керак!")
-        return
-
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT COUNT(*) FROM ads WHERE user_id = {p}",
-        (user_id,)
-    )
-    count = cursor.fetchone()[0]
-
-    if count == 0:
-        await message.answer(
-            f"❌ USER_ID={user_id} учун эълонлар топилмади."
-        )
-        conn.close()
-        return
-
-    # Каналдан ўчириш
-    cursor.execute(
-        "SELECT msg_id FROM ads WHERE user_id = {p}",
-        (user_id,)
-    )
-    all_msg_ids = cursor.fetchall()
-
-    deleted_count = 0
-    for (msg_ids_str,) in all_msg_ids:
-        msg_ids = [int(mid) for mid in str(msg_ids_str).split(",")]
-        for msg_id in msg_ids:
-            try:
-                await bot.delete_message(
-                    chat_id=CHANNEL_ID, message_id=msg_id
-                )
-                deleted_count += 1
-            except Exception:
-                    pass
-
-    # Базадан ўчириш
-    cursor.execute("DELETE FROM ads WHERE user_id = {p}", (user_id,))
-    conn.commit()
-    conn.close()
-
-    await message.answer(
-        f"🗑 USER_ID={user_id} — *{count} та* эълон ўчирилди.\n"
-        f"📨 Каналдан: {deleted_count} та хабар ўчирилди.",
-        parse_mode="Markdown"
-    )
-
-# ═══════════════════════════════════════
-# /blocked — Блокланганлар рўйхати
-# ═══════════════════════════════════════
-
-@router.message(Command("blocked"))
-async def show_blocked_users(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
-        return
-
-    blocked = get_blocked_users()
-
-    if not blocked:
-        await message.answer("✅ Ҳозирча блокланган фойдаланувчилар йўқ.")
-        return
-
-    text = f"🚫 *Блокланган фойдаланувчилар ({len(blocked)} та):*\n\n"
-
-    for user_id, full_name, username, count, blocked_at in blocked:
-        uname = f"@{username}" if username else "—"
-        text += (
-            f"👤 {full_name or '—'} ({uname})\n"
-            f"   ID: `{user_id}`\n"
-            f"   Рад: {count} марта\n"
-            f"   Унблок: /unblock {user_id}\n\n"
-        )
-
-    await message.answer(text, parse_mode="Markdown")
-
-
-# ═══════════════════════════════════════
-# 14. /unblock — Блокдан чиқариш
-# ═══════════════════════════════════════
-
-@router.message(Command("unblock"))
-async def unblock_user_cmd(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
-        return
-
-    parts = message.text.split()
-    if len(parts) < 2:
-        await message.answer(
-            "📋 *Формат:*\n"
-            "`/unblock USER_ID`\n\n"
-            "Блокланганлар рўйхати: /blocked",
-            parse_mode="Markdown"
-        )
-        return
-
-    try:
-        user_id = int(parts[1])
-    except ValueError:
-        await message.answer("⚠️ USER_ID рақам бўлиши керак!")
-        return
-
-    unblock_user(user_id)
-
-    await message.answer(
-        f"✅ Фойдаланувчи `{user_id}` блокдан чиқарилди.\n"
-        f"Энди эълон бера олади.",
-        parse_mode="Markdown"
-    )
-
-    # Фойдаланувчига хабар
-    try:
-        await bot.send_message(
-            chat_id=user_id,
-            text=(
-                "✅ *Блок олинди!*\n\n"
-                "Энди қайтадан эълон бера оласиз.\n"
-                "Илтимос, талабларга мос эълон беринг."
-            ),
-            parse_mode="Markdown"
-        )
-    except Exception:
-        pass
-
-# ═══════════════════════════════════════
-# /premium — Премиум бериш
-# ═══════════════════════════════════════
-
-@router.message(Command("premium"))
-async def give_premium(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
-        return
-
-    parts = message.text.split()
-    if len(parts) < 2:
-        await message.answer(
-            "📋 *Формат:*\n"
-            "`/premium USER_ID`\n\n"
-            "*Мисол:* `/premium 123456789`\n\n"
-            "Премиум олишларни кўриш: /premiumlist",
-            parse_mode="Markdown"
-        )
-        return
-
-    try:
-        user_id = int(parts[1])
-    except ValueError:
-        await message.answer("⚠️ USER_ID рақам бўлиши керак!")
-        return
-
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        f"SELECT full_name, username, is_premium FROM users WHERE user_id = {p}",
-        (user_id,)
-    )
-    row = cursor.fetchone()
-
-    if not row:
-        await message.answer(f"❌ USER_ID={user_id} базада топилмади.")
-        conn.close()
-        return
-
-    full_name, username, already_premium = row
-
-    if already_premium:
-        conn.close()
-        await message.answer(
-            f"ℹ️ `{user_id}` аллақачон Премиум аъзо.",
-            parse_mode="Markdown"
-        )
-        return
-
-    if __import__('os').getenv("DATABASE_URL"):
-        cursor.execute(
-            f"UPDATE users SET is_premium = TRUE WHERE user_id = {p}",
-            (user_id,)
-        )
-    else:
-        cursor.execute(
-            f"UPDATE users SET is_premium = 1 WHERE user_id = {p}",
-            (user_id,)
-        )
-    conn.commit()
-    conn.close()
-
-    uname = f"@{username}" if username else "—"
-    await message.answer(
-        f"💎 *Премиум берилди!*\n\n"
-        f"👤 {full_name or '—'} ({uname})\n"
-        f"🆔 `{user_id}`\n\n"
-        f"Олиш: /premiumlist",
-        parse_mode="Markdown"
-    )
-
-    try:
-        await bot.send_message(
-            chat_id=user_id,
-            text=(
-                "💎 *Табриклаймиз!*\n\n"
-                "Сизга *Премиум* аъзолик берилди!\n\n"                
-                "Эълонларингиз: /start → *Менинг эълонларим*"
-            ),
-            parse_mode="Markdown"
-        )
-    except Exception:
-        pass
-
-
-# ═══════════════════════════════════════
-# /unpremium — Премиумни олиб ташлаш
-# ═══════════════════════════════════════
-
-@router.message(Command("unpremium"))
-async def remove_premium(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
-        return
-
-    parts = message.text.split()
-    if len(parts) < 2:
-        await message.answer(
-            "📋 *Формат:*\n"
-            "`/unpremium USER_ID`\n\n"
-            "*Мисол:* `/unpremium 123456789`",
-            parse_mode="Markdown"
-        )
-        return
-
-    try:
-        user_id = int(parts[1])
-    except ValueError:
-        await message.answer("⚠️ USER_ID рақам бўлиши керак!")
-        return
-
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    if __import__('os').getenv("DATABASE_URL"):
-        cursor.execute(
-            f"UPDATE users SET is_premium = FALSE WHERE user_id = {p}",
-            (user_id,)
-        )
-    else:
-        cursor.execute(
-            f"UPDATE users SET is_premium = 0 WHERE user_id = {p}",
-            (user_id,)
-        )
-    conn.commit()
-    conn.close()
-
-    await message.answer(
-        f"✅ `{user_id}` дан Премиум олиб ташланди.",
-        parse_mode="Markdown"
-    )
-
-
-# ═══════════════════════════════════════
-# /premiumlist — Премиум аъзолар рўйхати
-# ═══════════════════════════════════════
-
-@router.message(Command("premiumlist"))
-async def premium_list(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        await message.answer("⛔ Сизга рухсат йўқ.")
-        return
-
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    if __import__('os').getenv("DATABASE_URL"):
-        cursor.execute(
-            "SELECT user_id, full_name, username FROM users WHERE is_premium = TRUE ORDER BY user_id"
-        )
-    else:
-        cursor.execute(
-            "SELECT user_id, full_name, username FROM users WHERE is_premium = 1 ORDER BY user_id"
-        )
-    rows = cursor.fetchall()
-    conn.close()
-
-    if not rows:
-        await message.answer("💎 Ҳозирча Премиум аъзолар йўқ.")
-        return
-
-    text = f"💎 *Премиум аъзолар ({len(rows)} та):*\n\n"
-    for uid, full_name, username in rows:
-        uname = f"@{username}" if username else "—"
-        text += f"👤 {full_name or '—'} ({uname}) — `{uid}` | /unpremium {uid}\n"
-
-    await message.answer(text, parse_mode="Markdown")
-
-
-@router.message(Command("checkprices"))
-async def check_prices(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        return
-
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    # ═══ ADS ЖАДВАЛИ ═══
     cursor.execute("SELECT id, animal_type, region, price FROM ads WHERE status = 'active'")
     ads = cursor.fetchall()
+    zero_ads = [f"🆔{r[0]} | {r[1]} | {r[2]} | `{r[3]}`" for r in ads if parse_price_text(str(r[3])) == 0]
 
-    zero_ads = []
-    for ad_id, a_type, region, price_text in ads:
-        parsed = parse_price_text(str(price_text))
-        if parsed == 0:
-            zero_ads.append(f"🆔{ad_id} | {a_type} | {region} | `{price_text}`")
-
-    # ═══ MARKET_PRICES ЖАДВАЛИ ═══
     cursor.execute("SELECT id, animal_type, region, price FROM market_prices")
     mp = cursor.fetchall()
-
-    zero_mp = []
-    for mp_id, a_type, region, price in mp:
-        if price is None or price == 0:
-            zero_mp.append(f"🆔{mp_id} | {a_type} | {region} | `{price}`")
+    zero_mp = [f"🆔{r[0]} | {r[1]} | {r[2]} | `{r[3]}`" for r in mp if r[3] is None or r[3] == 0]
 
     conn.close()
 
     text = f"🔍 *Нарх текшириш*\n\n"
-    text += f"📋 Ads: {len(ads)} та\n"
-    text += f"📋 Market_prices: {len(mp)} та\n\n"
+    text += f"📋 Ads: {len(ads)} та | Market_prices: {len(mp)} та\n\n"
 
     if zero_ads:
         text += f"❌ *Ads — нархсиз ({len(zero_ads)} та):*\n"
@@ -1218,13 +1099,27 @@ async def check_prices(message: types.Message):
     else:
         text += "✅ Ads — барчасида нарх бор\n"
 
-    text += "\n"
-
     if zero_mp:
-        text += f"❌ *Market_prices — нархсиз ({len(zero_mp)} та):*\n"
+        text += f"\n❌ *Market_prices — нархсиз ({len(zero_mp)} та):*\n"
         for line in zero_mp[:20]:
             text += f"  {line}\n"
     else:
-        text += "✅ Market_prices — барчасида нарх бор\n"
+        text += "\n✅ Market_prices — барчасида нарх бор\n"
 
     await message.answer(text, parse_mode="Markdown")
+
+
+# ═══════════════════════════════════════
+# ОРҚАГА / БОШ МЕНЮ
+# ═══════════════════════════════════════
+
+@router.message(AdminStates.menu, F.text == "🏠 Бош меню")
+@router.message(AdminStates.ads_menu, F.text == "🔙 Орқага")
+@router.message(AdminStates.prices_menu, F.text == "🔙 Орқага")
+@router.message(AdminStates.block_menu, F.text == "🔙 Орқага")
+@router.message(AdminStates.premium_menu, F.text == "🔙 Орқага")
+async def admin_back_to_menu(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.clear()
+    await message.answer("🏠 Бош меню", reply_markup=main_menu())
