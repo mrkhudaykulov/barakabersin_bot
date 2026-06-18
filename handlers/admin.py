@@ -7,7 +7,7 @@ from aiogram import Router, types
 from aiogram.filters import Command
 
 from config import bot, ADMINS, CHANNEL_ID
-from database import get_full_statistics, fmt_number, get_connection, get_placeholder, unblock_user, get_blocked_users, get_rejection_count, is_premium_user
+from database import get_full_statistics, fmt_number, get_connection, get_placeholder, unblock_user, get_blocked_users, get_rejection_count, is_premium_user, parse_price_text
 
 
 router = Router()
