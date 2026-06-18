@@ -235,6 +235,7 @@ def migrate_db():
             # ads жадвали
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()",
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP DEFAULT (NOW() + INTERVAL '7 days')",
+            "UPDATE ads SET created_at = NOW() WHERE created_at IS NULL"
             # users жадвали
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT",
@@ -269,6 +270,7 @@ def migrate_db():
         sqlite_migrations = [
             "ALTER TABLE ads ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
             "ALTER TABLE ads ADD COLUMN expires_at TIMESTAMP DEFAULT (datetime('now', '+10 days'))",
+            "UPDATE ads SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"
             "ALTER TABLE users ADD COLUMN phone TEXT",
             "ALTER TABLE users ADD COLUMN full_name TEXT",
             "ALTER TABLE users ADD COLUMN username TEXT",
