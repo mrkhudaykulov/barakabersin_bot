@@ -4,7 +4,11 @@ from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 import logging
 
-from database import search_all, fmt_number, fix_keyboard_text, get_connection, get_placeholder
+from database import (
+    get_connection, get_placeholder, parse_price_text, fmt_number,
+    get_full_statistics, MAX_PRICE, MIN_PRICE, fix_keyboard_text,
+    match_price_index, search_all, is_premium_user  # ← қўшилди
+)
 from states import SearchStates
 from keyboards import main_menu, search_animal_keyboard, regions_with_all_keyboard, notification_districts_keyboard
 
