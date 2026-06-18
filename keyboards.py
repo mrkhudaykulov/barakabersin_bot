@@ -263,3 +263,56 @@ def notification_districts_keyboard(region):
     builder.adjust(2)  # Har bir qatorda 2 tadan
     
     return builder.as_markup(resize_keyboard=True)
+
+
+#  Админ бошқариш панели
+
+def admin_menu_keyboard():
+    """Админ асосий менюси"""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="📋 Эълонлар"), KeyboardButton(text="💰 Нархлар")],
+        [KeyboardButton(text="🚫 Блок"), KeyboardButton(text="💎 Премиум")],
+        [KeyboardButton(text="📢 Тарқатиш"), KeyboardButton(text="📊 Статистика")],
+        [KeyboardButton(text="🔍 Нарх текшириш")],
+        [KeyboardButton(text="🏠 Бош меню")]
+    ], resize_keyboard=True)
+
+
+def admin_ads_keyboard():
+    """Эълонлар бошқариши"""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="👁 Эълонларни кўриш")],
+        [KeyboardButton(text="🗑 ID бўйича ўчириш")],
+        [KeyboardButton(text="🗑 Фойдаланувчи эълонларини ўчириш")],
+        [KeyboardButton(text="🔙 Орқага")]
+    ], resize_keyboard=True)
+
+
+def admin_prices_keyboard():
+    """Нархлар бошқариши"""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="➕ Нарх қўшиш"), KeyboardButton(text="➕ Кўп нарх қўшиш")],
+        [KeyboardButton(text="👁 Нархларни кўриш")],
+        [KeyboardButton(text="🗑 Нархни ўчириш ID"), KeyboardButton(text="🗑 Ҳайвон бўйича ўчириш")],
+        [KeyboardButton(text="🗑 Вилоят бўйича ўчириш"), KeyboardButton(text="🗑 Барчасини ўчириш")],
+        [KeyboardButton(text="🔙 Орқага")]
+    ], resize_keyboard=True)
+
+
+def admin_block_keyboard():
+    """Блок бошқариши"""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🚫 Блокланганлар рўйхати")],
+        [KeyboardButton(text="🔓 Блокдан чиқариш")],
+        [KeyboardButton(text="🔙 Орқага")]
+    ], resize_keyboard=True)
+
+
+def admin_premium_keyboard():
+    """Премиум бошқариши"""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="💎 Премиум бериш")],
+        [KeyboardButton(text="❌ Премиум олиш")],
+        [KeyboardButton(text="💎 Премиум рўйхати")],
+        [KeyboardButton(text="🔙 Орқага")]
+    ], resize_keyboard=True)
