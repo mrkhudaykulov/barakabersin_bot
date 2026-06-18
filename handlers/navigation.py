@@ -6,12 +6,13 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
 from keyboards import (
+    notify_menu_keyboard, notification_districts_keyboard,
     main_menu, calc_menu_keyboard, standard_step_keyboard,
     calc_qoramol_direction_keyboard, photo_confirm_keyboard,
     animal_types_keyboard, regions_keyboard, districts_keyboard,
     description_keyboard, search_animal_keyboard
 )
-from states import AdStates, CalcStates, SearchStates, PriceInputStates
+from states import AdStates, CalcStates, SearchStates, PriceInputStates, NotifyStates
 from database import get_connection
 
 router = Router()
@@ -300,3 +301,55 @@ async def global_back_handler(message: types.Message, state: FSMContext):
         )
         return
 
+
+# ═══ Хабарнома (Notify) ═══
+    elif current_state == NotifyStates.animal_type.state:
+        await state.clear()
+        await message.answer("🏠 Асосий меню", reply_markup=main_menu())
+        return
+
+    elif current_state == NotifyStates.region.state:
+        await state.set_state(NotifyStates.animal_type)
+        await message.answer(
+            "Қайси чорва ҳақида хабардор қилиш керак?",
+            reply_markup=search_animal_keyboard()
+        )
+        return
+
+    elif current_state == NotifyStates.district.state:
+        await state.set_state(NotifyStates.region)
+        await message.answer("Қайси вилоят бўйича?", reply_markup=regions_keyboard())
+        return
+
+    elif current_state == NotifyStates.min_price.state:
+        data = await state.get_data()
+        region = data.get("region", "Тошкент")
+        await state.set_state(NotifyStates.district)
+        await message.answer(
+            "🏘 Қайси туманда қидирилади?\n\nЁки, *📍 Барчаси* тугмасини танланг.",
+            parse_mode="Markdown",
+            reply_markup=notification_districts_keyboard(region)
+        )
+        return
+
+    elif current_state == NotifyStates.max_price.state:
+        await state.set_state(NotifyStates.min_price)
+        await message.answer(
+            "Минимал (энг паст) нархи қанча бўлсин?",
+            reply_markup=standard_step_keyboard()
+        )
+        return
+
+    elif current_state == NotifyStates.edit_min_price.state:
+        await state.clear()
+        await message.answer("❌ Таҳрирлаш бекор қилинди.", reply_markup=notify_menu_keyboard())
+        return
+
+    elif current_state == NotifyStates.edit_max_price.state:
+        await state.set_state(NotifyStates.edit_min_price)
+        await message.answer(
+            "✏️ Янги *минимал нархни* киритинг:",
+            parse_mode="Markdown",
+            reply_markup=standard_step_keyboard()
+        )
+        return
