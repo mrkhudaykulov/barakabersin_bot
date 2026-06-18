@@ -1122,4 +1122,4 @@ async def admin_back_to_menu(message: types.Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     await state.clear()
-    await message.answer("🏠 Бош меню", reply_markup=main_menu())
+    await message.answer("🏠 Бош меню", reply_markup=main_menu_admin())
