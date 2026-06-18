@@ -32,7 +32,7 @@ from database import (
 # ═══════════════════════════════════════
 # КУЗАТУВЛАР ЛИМИТИ
 # ═══════════════════════════════════════
-MAX_NOTIFICATIONS_PREMIUM = 20
+MAX_NOTIFICATIONS_PREMIUM = 10
 MAX_NOTIFICATIONS_REGULAR = 1
 
 
