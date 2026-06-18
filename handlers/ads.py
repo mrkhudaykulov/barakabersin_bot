@@ -1036,15 +1036,21 @@ async def my_ads(message: types.Message):
                 )
             except Exception:
                 pass
-
-        await message.answer(
-            f"📦 <b>#{html.escape(a_type)}</b> — {html.escape(price)}\n"
-            f"📅 {time_badge}"
-            f"{channel_link}",
-            parse_mode="HTML",
-            reply_markup=inline_kb
-        )
-
+            await message.answer(
+                f"📦 <b>#{html.escape(a_type)}</b> — {html.escape(price)}\n"
+                f"📅 {time_badge}",
+                parse_mode="HTML",
+                reply_markup=inline_kb
+            )
+        else:
+            await message.answer(
+                f"📦 <b>#{html.escape(a_type)}</b> — {html.escape(price)}\n"
+                f"📅 {time_badge}"
+                f"{channel_link}",
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+                reply_markup=inline_kb
+            )
 
 # ═══════════════════════════════════════
 # ИНЛАЙН CALLBACK — СОТИЛДИ / ЎЧИРИШ / УЗАЙТИРИШ
