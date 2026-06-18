@@ -12,6 +12,20 @@ from keyboards import (
 
 router = Router()
 
+ANIMAL_EMOJI = {
+    "🐂 Буқа": "Буқа",
+    "🐄 Сигир": "Сигир",
+    "🐮 Тана": "Тана",
+    "🐮 Бузоқ": "Бузоқ",
+    "🐏 Қўчқор": "Қўчқор",
+    "🐑 Совлиқ": "Совлиқ",
+    "🐑 Қўзи": "Қўзи",
+    "🐐 Эчки": "Эчки",
+    "🐐 Улоқ": "Улоқ",
+    "🐴 От": "От",
+    "🐫 Туя": "Туя",
+    "🐓 Парранда": "Парранда"
+}
 
 # ═══════════════════════════════════════
 # 📊 НАРХЛАР ИНДЕКСИ
@@ -29,71 +43,53 @@ async def price_index_start(message: types.Message, state: FSMContext):
     )
 
 
-@router.message(F.text.in_([
-    "🐄 Буқа/Сигир", "🐑 Қўй", "🐐 Эчки",
-    "🐴 От", "🐫 Туя", "🐓 Парранда"
-]))
+@router.message(F.text.in_(list(ANIMAL_EMOJI.keys())))
 async def price_index_show(message: types.Message, state: FSMContext):
     current = await state.get_state()
     if current is not None and current != CalcStates.menu.state:
         return
 
-    # ═══ БARCHA PLATFORMALAR УЧУН (Android, iOS, Desktop) ═══
-    matched_key = match_price_index(message.text)
-
-    animal_map = {
-        "🐄 Буқа/Сигир": ["Буқа", "Сигир", "Тана", "Бузоқ"],
-        "🐑 Қўй": ["Қўчқор", "Совлиқ", "Қўзи"],
-        "🐐 Эчки": ["Эчки", "Улоқ"],
-        "🐴 От": ["От"],
-        "🐫 Туя": ["Туя"],
-        "🐓 Парранда": ["Парранда"]
-    }
-
-    animal_types = animal_map.get(matched_key, [])
-
-    if not animal_types:
+    animal_type = ANIMAL_EMOJI.get(message.text)
+    if not animal_type:
         await message.answer(
             "⚠️ Тугмани қайта босинг.",
             reply_markup=price_index_keyboard()
         )
         return
 
-
-    p = get_placeholder()
-    placeholders = ','.join([p for _ in animal_types])
-
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    
+
+    # Эълонлардан
     cursor.execute(f"""
-        SELECT animal_type, region, price
+        SELECT region, price
         FROM ads
         WHERE status = 'active'
-          AND animal_type IN ({placeholders})
-    """, animal_types)
+          AND animal_type = {p}
+    """, (animal_type,))
     ad_rows = cursor.fetchall()
 
+    # Бозор нархларидан
     cursor.execute(f"""
-        SELECT animal_type, region, price
+        SELECT region, price
         FROM market_prices
-        WHERE animal_type IN ({placeholders})
-    """, animal_types)
+        WHERE animal_type = {p}
+    """, (animal_type,))
     mp_rows = cursor.fetchall()
 
     conn.close()
 
     region_data = {}
 
-    for a_type, region, price_text in ad_rows:
+    for region, price_text in ad_rows:
         price = parse_price_text(price_text)
         if MIN_PRICE <= price <= MAX_PRICE:
             if region not in region_data:
                 region_data[region] = []
             region_data[region].append(price)
 
-    for a_type, region, price in mp_rows:
+    for region, price in mp_rows:
         if MIN_PRICE <= price <= MAX_PRICE:
             if region not in region_data:
                 region_data[region] = []
@@ -101,14 +97,13 @@ async def price_index_show(message: types.Message, state: FSMContext):
 
     if not region_data:
         await message.answer(
-            f"❌ {message.text} учун маълумот йўқ.\n\n"
+            f"❌ *{animal_type}* учун маълумот йўқ.\n\n"
             f"💰 Нарх киритиш учун \"*💰 Нарх киритиш*\" "
             f"тугмасини босинг.",
             parse_mode="Markdown",
-            reply_markup=main_menu()    # ← Асосий менюга қайтади
+            reply_markup=price_index_keyboard()
         )
         return
-
 
     text = f"📊 *{message.text} — нархлар индекси*\n"
     text += f"{'─' * 30}\n\n"
@@ -152,7 +147,6 @@ async def price_index_show(message: types.Message, state: FSMContext):
         parse_mode="Markdown",
         reply_markup=price_index_keyboard()
     )
-
 
 @router.message(F.text == "📊 Барчаси")
 async def price_index_all(message: types.Message):
@@ -254,7 +248,6 @@ async def market_price_start(message: types.Message, state: FSMContext):
 
 
 def animal_types_keyboard_for_price():
-    """Нарх киритиш учун — Барчаси сиз"""
     from aiogram.utils.keyboard import ReplyKeyboardBuilder
     from aiogram.types import KeyboardButton
 
@@ -287,6 +280,7 @@ VALID_REGIONS = [
     "Қорақалпоғистон"
 ]
 
+
 @router.message(PriceInputStates.animal_type)
 async def market_price_animal(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
@@ -297,7 +291,7 @@ async def market_price_animal(message: types.Message, state: FSMContext):
         )
         return
     fixed = fix_keyboard_text(message.text)
-    
+
     if fixed not in VALID_ANIMALS:
         await message.answer(
             f"⚠️ `{fixed}` рўхатда йўқ. Тугмалардан танланг:",
@@ -305,7 +299,7 @@ async def market_price_animal(message: types.Message, state: FSMContext):
             reply_markup=animal_types_keyboard_for_price()
         )
         return
-        
+
     await state.update_data(mp_animal=fixed)
     await state.set_state(PriceInputStates.region)
     await message.answer(
@@ -317,7 +311,6 @@ async def market_price_animal(message: types.Message, state: FSMContext):
 @router.message(PriceInputStates.region)
 async def market_price_region(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
-        # ═══ НАРХЛАР ИНДЕКСИГА ҚАЙТИШ ═══
         await state.set_state(CalcStates.menu)
         await message.answer(
             "📊 Нархлар индексига қайтдингиз.",
@@ -333,13 +326,13 @@ async def market_price_region(message: types.Message, state: FSMContext):
             reply_markup=regions_keyboard()
         )
         return
-        
+
     await state.update_data(mp_region=fixed)
     await state.set_state(PriceInputStates.price)
 
     data = await state.get_data()
     animal = data.get("mp_animal", "")
-    
+
     await message.answer(
         f"🐾 {animal} | 📍 {fixed}\n\n"
         f"💰 Нархни киритинг (сўмда):\n_(масалан: 15000000 ёки 15 млн)_",
@@ -351,7 +344,6 @@ async def market_price_region(message: types.Message, state: FSMContext):
 @router.message(PriceInputStates.price)
 async def market_price_save(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
-        # ═══ НАРХЛАР ИНДЕКСИГА ҚАЙТИШ ═══
         await state.set_state(CalcStates.menu)
         await message.answer(
             "📊 Нархлар индексига қайтдингиз.",
@@ -380,7 +372,6 @@ async def market_price_save(message: types.Message, state: FSMContext):
         )
         return
 
-        
     data = await state.get_data()
     animal = data.get("mp_animal")
     region = data.get("mp_region")
@@ -408,7 +399,7 @@ async def market_price_save(message: types.Message, state: FSMContext):
         f"Рахмат! Сизнинг маълумотингиз бошқаларга ёрдам беради",
         parse_mode="Markdown"
     )
-    
+
     await state.set_state(CalcStates.menu)
     await message.answer(
         "📊 *Нархлар индексига қайтдингиз.*\n\n"
@@ -417,11 +408,10 @@ async def market_price_save(message: types.Message, state: FSMContext):
         reply_markup=price_index_keyboard()
     )
 
+
 @router.message(CalcStates.menu)
 async def price_index_fallback(message: types.Message, state: FSMContext):
-    """Нархлар индекси бўлимида нотўғри матн ёзилганда"""
     await message.answer(
         "⚠️ Тугмалардан бирини танланг:",
         reply_markup=price_index_keyboard()
-    )
-
+    )     
