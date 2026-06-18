@@ -69,21 +69,53 @@ async def start_ad(message: types.Message, state: FSMContext):
     )
 
 
+# БЎЛДИ (чегара билан):
 @router.message(AdStates.photo, F.photo | F.video)
 async def process_photo(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
     media_list = user_data.get("media_list", [])
-    if message.photo:
-        media_list.append({"type": "photo", "file_id": message.photo[-1].file_id})
-    elif message.video:
-        media_list.append({"type": "video", "file_id": message.video.file_id})
-    await state.update_data(media_list=media_list)
-    await message.answer(
-        f"✅ {len(media_list)}-медиа қабул қилинди. "
-        f"Яна юборишингиз мумкин. Тугатсангиз, пастки тугмани босинг:",
-        reply_markup=photo_confirm_keyboard()
-    )
 
+    if message.video:
+        media_list = [m for m in media_list if m["type"] == "video"]
+        if len(media_list) >= 4:
+            await message.answer(
+                "⚠️ Максимум 4 та видео юбориш мумкин.\n"
+                "Тасдиқлаш тугмасини босинг:",
+                reply_markup=photo_confirm_keyboard()
+            )
+            return
+        media_list.append({"type": "video", "file_id": message.video.file_id})
+        await state.update_data(media_list=media_list)
+        await message.answer(
+            f"🎥 {len(media_list)}-видео қабул қилинди.\n"
+            f"{'_Фотолар ўчирилди — фақат видео сақланади._' + chr(10) if any(m['type'] == 'photo' for m in user_data.get('media_list', [])) else ''}"
+            f"Яна юборишингиз мумкин (макс: 4 та). Тугатсангиз, пастки тугмани босинг:",
+            parse_mode="Markdown",
+            reply_markup=photo_confirm_keyboard()
+        )
+    elif message.photo:
+        if any(m["type"] == "video" for m in media_list):
+            await message.answer(
+                "⚠️ Видео аллақачон юборилган.\n"
+                "Фото ва видеони аралаштириб бўлмайди.\n\n"
+                "Фақат видео юборинг ёки тасдиқлаш тугмасини босинг:",
+                reply_markup=photo_confirm_keyboard()
+            )
+            return
+        if len(media_list) >= 5:
+            await message.answer(
+                "⚠️ Максимум 5 та расм юбориш мумкин.\n"
+                "Тасдиқлаш тугмасини босинг:",
+                reply_markup=photo_confirm_keyboard()
+            )
+            return
+        media_list.append({"type": "photo", "file_id": message.photo[-1].file_id})
+        await state.update_data(media_list=media_list)
+        await message.answer(
+            f"✅ {len(media_list)}-расм қабул қилинди. "
+            f"Яна юборишингиз мумкин (макс: 5 та). Тугатсангиз, пастки тугмани босинг:",
+            reply_markup=photo_confirm_keyboard()
+        )
 
 @router.message(AdStates.photo, F.text == "📥 Расмларни тасдиқлаш")
 async def confirm_photos(message: types.Message, state: FSMContext):
