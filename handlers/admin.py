@@ -1006,7 +1006,9 @@ async def do_broadcast(message: types.Message, state: FSMContext):
 async def admin_stats(message: types.Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-
+    
+    db_url = __import__('os').getenv("DATABASE_URL", "")
+    
     stats = get_full_statistics()
 
     p = get_placeholder()
