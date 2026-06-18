@@ -6,7 +6,7 @@ import logging
 
 from database import search_all, fmt_number, fix_keyboard_text, get_connection, get_placeholder
 from states import SearchStates
-from keyboards import main_menu, search_animal_keyboard, regions_with_all_keyboard
+from keyboards import main_menu, search_animal_keyboard, regions_with_all_keyboard, notification_districts_keyboard
 
 router = Router()
 
