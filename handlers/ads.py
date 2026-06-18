@@ -1119,12 +1119,14 @@ async def my_ads(message: types.Message):
                     await message.answer(
                         ad_text,
                         parse_mode="HTML",
+                        disable_web_page_preview=True,
                         reply_markup=inline_kb
                     )
             except Exception:
                 await message.answer(
                     ad_text,
                     parse_mode="HTML",
+                    disable_web_page_preview=True,
                     reply_markup=inline_kb
                 )
         else:
