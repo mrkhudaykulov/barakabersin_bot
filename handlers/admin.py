@@ -125,17 +125,17 @@ async def admin_view_ads(message: types.Message, state: FSMContext):
         return
 
     status_map = {
-        "active": "✅ Фаол",
-        "sold": "🤝 Сотилган",
-        "deleted": "🗑 Ўчирилган",
-        "pending": "⏳ Кутилмоқда"
+        "active": "✅",
+        "sold": "🤝",
+        "deleted": "🗑",
+        "pending": "⏳"
     }    
 
     text = f"📋 *Эълонлар ({len(rows)} та):*\n\n"
     for ad_id, a_type, qty, price, region, dist, status, uid in rows:
-        status_text = status_map.get(status, f"❓ {status}")
+        status_emoji = status_map.get(status, "❓")
         text += (
-            f"🆔 `#{ad_id}` — *{a_type}* | "
+            f"{status_emoji} `#{ad_id}` — *{a_type}* | "
             f" {qty} | 💰 {price}\n"
             f"    {region}, {dist}\n"
             f"   👤 [Фойдаланувчи](tg://user?id={uid}) | "
