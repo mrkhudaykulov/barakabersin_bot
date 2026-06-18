@@ -1296,3 +1296,38 @@ def is_premium_user(user_id: int) -> bool:
     if not row:
         return False
     return bool(row[0])
+
+# ═══════════════════════════════════════
+# ОЙЛИК ЭЪЛОН ЛИМИТИ
+# ═══════════════════════════════════════
+
+MAX_ADS_PER_MONTH_REGULAR = 7
+MAX_ADS_PER_MONTH_PREMIUM = 50
+
+
+def get_monthly_ad_count(user_id: int) -> int:
+    """
+    Жорий ойда фойдаланувчи яратган эълонлар сони.
+    Статусидан қатий назар (active, sold, deleted, rejected)
+    Барчаси саналади — ўчириш лимитни тикламайди.
+    """
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if DATABASE_URL:
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM ads
+            WHERE user_id = {p}
+              AND created_at >= DATE_TRUNC('month', NOW())
+        """, (user_id,))
+    else:
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM ads
+            WHERE user_id = {p}
+              AND created_at >= DATE('now', 'start of month')
+        """, (user_id,))
+
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
