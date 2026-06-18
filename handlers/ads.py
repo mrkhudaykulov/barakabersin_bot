@@ -1031,7 +1031,6 @@ async def my_ads(message: types.Message):
         )
 
         if first_msg_id and is_premium_user(message.from_user.id):
-            # Медиаларни базадан олиш
             conn2 = get_connection()
             cur2 = conn2.cursor()
             cur2.execute(
@@ -1061,17 +1060,16 @@ async def my_ads(message: types.Message):
                             reply_markup=inline_kb
                         )
                 else:
+                    # Расм йўқ — ҳавола preview билан
                     await message.answer(
                         ad_text,
                         parse_mode="HTML",
-                        disable_web_page_preview=True,
                         reply_markup=inline_kb
                     )
             except Exception:
                 await message.answer(
                     ad_text,
                     parse_mode="HTML",
-                    disable_web_page_preview=True,
                     reply_markup=inline_kb
                 )
         else:
