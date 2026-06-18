@@ -211,11 +211,7 @@ async def notify_district(message: types.Message, state: FSMContext):
 # ═══════════════════════════════════════
 
 @router.message(NotifyStates.min_price)
-async def notify_min_price(message: types.Message, state: FSMContext):
-    if is_cancel(message.text):
-        await state.clear()
-        await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
-        return
+async def notify_min_price(message: types.Message, state: FSMContext):    
 
     if is_back(message.text):
         data = await state.get_data()
@@ -228,7 +224,12 @@ async def notify_min_price(message: types.Message, state: FSMContext):
             reply_markup=notification_districts_keyboard(region)
         )
         return
-
+        
+    if is_cancel(message.text):
+        await state.clear()
+        await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
+        return
+        
     price = parse_price_text(message.text)
     if price <= 0:
         await message.answer(
