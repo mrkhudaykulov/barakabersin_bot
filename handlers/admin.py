@@ -1016,7 +1016,7 @@ async def admin_stats(message: types.Message, state: FSMContext):
     cursor.execute(f"SELECT COUNT(*) FROM users")
     total_users = cursor.fetchone()[0]
 
-    if "postgresql" in str(conn):
+    if db_url:
         cursor.execute(f"SELECT COUNT(*) FROM users WHERE is_premium = TRUE")
     else:
         cursor.execute(f"SELECT COUNT(*) FROM users WHERE is_premium = 1")
