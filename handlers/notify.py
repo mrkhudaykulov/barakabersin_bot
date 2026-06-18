@@ -25,8 +25,16 @@ from database import (
     fix_keyboard_text,
     get_user_notifications,
     fmt_number,
-    delete_notification
+    delete_notification,
+    is_premium_user
 )
+
+# ═══════════════════════════════════════
+# КУЗАТУВЛАР ЛИМИТИ
+# ═══════════════════════════════════════
+MAX_NOTIFICATIONS_PREMIUM = 20
+MAX_NOTIFICATIONS_REGULAR = 1
+
 
 router = Router()
 
@@ -82,9 +90,32 @@ async def notify_start(message: types.Message, state: FSMContext):
 @router.message(F.text == "➕ Янги кузатув")
 async def create_notification(message: types.Message, state: FSMContext):
     await state.clear()
+
+    # ── Лимит текшируви ──
+    user_id = message.from_user.id
+    is_premium = is_premium_user(user_id)
+    limit = MAX_NOTIFICATIONS_PREMIUM if is_premium else MAX_NOTIFICATIONS_REGULAR
+
+    notifications = get_user_notifications(user_id)
+    current_count = len(notifications)
+
+    if current_count >= limit:
+        status_text = "Премиум" if is_premium else "оддий"
+        await message.answer(
+            f"⚠️ Сиз {status_text} фойдаланувчисиз. "
+            f"Сизда {limit} та кузатув лимити бор.\n\n"
+            f"Ҳозирги кузатувлар: {current_count}/{limit}\n\n"
+            f"Янги кузатув яратиш учун аввал мавжудини ўчиринг:\n"
+            f"📌 Менинг кузатувларим",
+            reply_markup=notify_menu_keyboard()
+        )
+        return
+
     await state.set_state(NotifyStates.animal_type)
     await message.answer(
-        "Қайси чорва ҳақида хабардор қилиш керак?",
+        f"Қайси чорва ҳақида хабардор қилиш керак?\n"
+        f"_Кузатувлар: {current_count}/{limit}_",
+        parse_mode="Markdown",
         reply_markup=search_animal_keyboard()
     )
 
@@ -245,7 +276,23 @@ async def notify_max_price(message: types.Message, state: FSMContext):
             reply_markup=standard_step_keyboard()
         )
         return
+    
+    # ── Лимитни қайта текшириш (сафегард) ──
+    notifications = get_user_notifications(message.from_user.id)
+    is_premium = is_premium_user(message.from_user.id)
+    limit = MAX_NOTIFICATIONS_PREMIUM if is_premium else MAX_NOTIFICATIONS_REGULAR
 
+    if len(notifications) >= limit:
+        await state.clear()
+        status_text = "Премиум" if is_premium else "оддий"
+        await message.answer(
+            f"⚠️ Кузатувлар лимити ({limit} та) тугади.\n"
+            f"Аввал мавжуд кузатувлардан бирини ўчиринг.",
+            reply_markup=main_menu()
+        )
+        return
+
+   
     # Такрорий текшириш
     p = get_placeholder()
     conn = get_connection()
