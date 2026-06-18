@@ -26,12 +26,12 @@ logger = logging.getLogger(__name__)
 # ЭСЛАТМА ХАБАРЛАРИ
 # ═══════════════════════════════════════
 
-def extend_keyboard(ad_id: int) -> InlineKeyboardMarkup:
-    """Эслатма хабарига инлайн тугма — муддатни узайтириш"""
+def repost_keyboard(ad_id: int) -> InlineKeyboardMarkup:
+    """Фақат 2 кун қолганда кўринади — премиум текшириш ads.py да"""
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
-            text="🔄 10 кунга узайтириш",
-            callback_data=f"extend_{ad_id}"
+            text="🔄 Каналга қайта жойлаш",
+            callback_data=f"repost_{ad_id}"
         ),
         InlineKeyboardButton(
             text="❌ Ўчириш",
@@ -67,14 +67,14 @@ async def send_expiry_reminder(bot: Bot, days_left: int):
                 f"{emoji} <b>Эълон муддати {urgency} {days_left} кун қолди!</b>\n\n"
                 f"📦 <b>{animal_type}</b> — {quantity}\n"
                 f"💰 <b>Нарх:</b> {price}\n\n"
-                f"Эълонни узайтириш ёки ўчириш учун тугмани босинг:{extra}"
+                f"💎 <b>Премиум</b> аъзолар эълонни каналга қайта жойлашлари мумкин.{extra}"
             )
 
             await bot.send_message(
                 chat_id=user_id,
                 text=text,
                 parse_mode="HTML",
-                reply_markup=extend_keyboard(ad_id)
+                reply_markup=repost_keyboard(ad_id)
             )
             # Spam-ga tushmaslik uchun kichik kutish
             await asyncio.sleep(0.1)
@@ -157,15 +157,6 @@ async def seconds_until(hour: int, minute: int = 0) -> float:
 # ═══════════════════════════════════════
 # АСОСИЙ SCHEDULER LOOP
 # ═══════════════════════════════════════
-
-async def task_7day_reminder(bot: Bot):
-    """Ҳар куни соат 09:00 да 7 кун қолган эълонларга эслатма"""
-    while True:
-        wait = await seconds_until(hour=9, minute=0)
-        logger.info(f"[Scheduler] 7-кун эслатмаси {wait/3600:.1f} соатдан кейин.")
-        await asyncio.sleep(wait)
-        await send_expiry_reminder(bot, days_left=7)
-
 
 async def task_2day_reminder(bot: Bot):
     """Ҳар куни соат 10:00 да 2 кун қолган эълонларга огоҳлантириш"""
