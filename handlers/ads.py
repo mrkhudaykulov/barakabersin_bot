@@ -16,12 +16,18 @@ from keyboards import (
     standard_step_keyboard, description_keyboard, phone_keyboard
 )
 from database import (
-    contains_bad_word, parse_price_text, MIN_PRICE, MAX_PRICE,
-    fmt_number, fix_keyboard_text, get_connection, get_placeholder,
-    save_user, get_user_phone, extend_ad, archive_ad, AD_EXPIRE_DAYS,
-    get_notification_users, is_user_blocked, approve_ad, reject_ad,
-    get_pending_ad, increment_rejection, MAX_REJECTIONS,
-    save_admin_review_message, get_admin_review_messages, delete_admin_review_messages
+    contains_bad_word, parse_price_text, 
+    MIN_PRICE, MAX_PRICE,
+    fmt_number, fix_keyboard_text,
+    get_connection, get_placeholder,
+    save_user, get_user_phone, 
+    repost_ad, is_premium_user, 
+    archive_ad, AD_EXPIRE_DAYS,
+    get_notification_users, is_user_blocked, 
+    approve_ad, reject_ad,
+    get_pending_ad, increment_rejection, 
+    MAX_REJECTIONS, save_admin_review_message, 
+    get_admin_review_messages, delete_admin_review_messages
 )
 
 router = Router()
@@ -998,15 +1004,23 @@ async def my_ads(message: types.Message):
         else:
             time_badge = f"🟢 {days_left} кун қолди" if days_left else "🟢 Актив"
 
-        inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+        buttons = [
             [
                 InlineKeyboardButton(text="🤝 Сотилди", callback_data=f"sold_{ad_id}"),
                 InlineKeyboardButton(text="❌ Ўчириш", callback_data=f"del_{ad_id}")
-            ],
-            [
-                InlineKeyboardButton(text="🔄 10 кунга узайтириш", callback_data=f"extend_{ad_id}")
             ]
-        ])
+        ]
+        # Фақат 2 кун қолганда ВА премиум фойдаланувчига кўринади
+        if days_left is not None and days_left <= 2:
+            if is_premium_user(message.from_user.id):
+                buttons.append([
+                    InlineKeyboardButton(
+                        text="🔄 Каналга қайта жойлаш",
+                        callback_data=f"repost_{ad_id}"
+                    )
+                ])
+        inline_kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+        
 
         # Канал ҳаволаси
         channel_link = ""
@@ -1028,7 +1042,7 @@ async def my_ads(message: types.Message):
 # ═══════════════════════════════════════
 
 @router.callback_query(
-    (F.data.startswith("sold_") | F.data.startswith("del_") | F.data.startswith("extend_"))
+    (F.data.startswith("sold_") | F.data.startswith("del_") | F.data.startswith("repost_"))
     & ~F.data.startswith("del_notif_")
     & ~F.data.startswith("edit_notif_")
 )
@@ -1110,16 +1124,86 @@ async def handle_ad_action(callback: types.CallbackQuery):
             "❌ Эълон каналдан бутунлай ўчирилди."
         )
 
-    elif action == "extend":
-        conn.close()
-        extend_ad(int(ad_id), days=10)
-        await callback.message.edit_text(
-            f"✅ <b>{html.escape(a_type)}</b> эълони яна <b>10 кунга</b> узайтирилди!\n\n"
-            f"Эълон яна актив бўлди.",
-            parse_mode="HTML"
-        )
-        await callback.answer("Муддат узайтирилди!")
-        return
+    # БЎЛДИ:
+    elif action == "repost":
+        # Премиум текшириш
+        if not is_premium_user(callback.from_user.id):
+            await callback.answer("⛔ Бу функция фақат Премиум эгалари учун!", show_alert=True)
+            conn.close()
+            return
 
-    conn.close()
-    await callback.answer()
+        conn.close()
+
+        # Каналга қайта юбориш
+        media_list_db = []
+        conn2 = get_connection()
+        cur2 = conn2.cursor()
+        cur2.execute(
+            f"SELECT media_type, file_id FROM ad_media WHERE ad_id = {get_placeholder()} ORDER BY id",
+            (int(ad_id),)
+        )
+        media_list_db = cur2.fetchall()
+        conn2.close()
+
+        new_caption = (
+            f"#️⃣ <b>#{html.escape(a_type)}</b>\n"
+            f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
+            f"💰 <b>Нархи:</b> {html.escape(price)}\n"
+            f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т, {html.escape(mfy)} МФЙ\n"
+            f"📞 {html.escape(phone)}"
+        )
+
+        new_msg_ids = []
+        try:
+            if media_list_db:
+                if len(media_list_db) == 1:
+                    m_type, f_id = media_list_db[0]
+                    if m_type == "photo":
+                        sent = await bot.send_photo(CHANNEL_ID, photo=f_id, caption=new_caption, parse_mode="HTML")
+                    else:
+                        sent = await bot.send_video(CHANNEL_ID, video=f_id, caption=new_caption, parse_mode="HTML")
+                    new_msg_ids.append(str(sent.message_id))
+                else:
+                    media_group = []
+                    for i, (m_type, f_id) in enumerate(media_list_db):
+                        cap = new_caption if i == 0 else None
+                        if m_type == "photo":
+                            media_group.append(InputMediaPhoto(media=f_id, caption=cap, parse_mode="HTML"))
+                        else:
+                            media_group.append(InputMediaVideo(media=f_id, caption=cap, parse_mode="HTML"))
+                    sent_msgs = await bot.send_media_group(CHANNEL_ID, media=media_group)
+                    new_msg_ids = [str(m.message_id) for m in sent_msgs]
+            else:
+                sent = await bot.send_message(CHANNEL_ID, text=new_caption, parse_mode="HTML")
+                new_msg_ids.append(str(sent.message_id))
+
+            # Эски постларни ўчириш
+            for old_msg_id in msg_ids:
+                try:
+                    await bot.delete_message(chat_id=CHANNEL_ID, message_id=old_msg_id)
+                except Exception:
+                    pass
+
+            # Базани янгилаш
+            new_msg_str = ",".join(new_msg_ids)
+            repost_ad(int(ad_id))
+            conn3 = get_connection()
+            cur3 = conn3.cursor()
+            cur3.execute(
+                f"UPDATE ads SET msg_id = {get_placeholder()} WHERE id = {get_placeholder()}",
+                (new_msg_str, int(ad_id))
+            )
+            conn3.commit()
+            conn3.close()
+
+            await callback.message.edit_text(
+                f"✅ <b>{html.escape(a_type)}</b> эълони каналга қайта жойланди!\n\n"
+                f"📅 Яна <b>7 кун</b> актив бўлади.",
+                parse_mode="HTML"
+            )
+            await callback.answer("Қайта жойланди! ✅")
+
+        except Exception as e:
+            logging.error(f"Repost xato: {e}")
+            await callback.answer("Хатолик юз берди.", show_alert=True)
+        return
