@@ -124,15 +124,22 @@ async def admin_view_ads(message: types.Message, state: FSMContext):
         await message.answer("❌ Базада эълонлар йўқ.")
         return
 
-    status_emoji = {"active": "✅", "sold": "🤝", "deleted": "🗑", "pending": "⏳"}
+    status_map = {
+        "active": "✅ Фаол",
+        "sold": "🤝 Сотилган",
+        "deleted": "🗑 Ўчирилган",
+        "pending": "⏳ Кутилмоқда"
+    }    
 
     text = f"📋 *Эълонлар ({len(rows)} та):*\n\n"
     for ad_id, a_type, qty, price, region, dist, status, uid in rows:
-        emoji = status_emoji.get(status, "❓")
+        status_text = status_map.get(status, f"❓ {status}")
         text += (
-            f"{emoji} `#{ad_id}` — 🐾 *{a_type}* | "
-            f"🔢 {qty} | 💰 {price}\n"
-            f"   📍 {region}, {dist} | 👤 {uid}\n\n"
+            f"🆔 `#{ad_id}` — *{a_type}* | "
+            f" {qty} | 💰 {price}\n"
+            f"    {region}, {dist}\n"
+            f"   👤 [Фойдаланувчи](tg://user?id={uid}) | "
+            f"📌 {status_text}\n\n"
         )
 
     if len(text) > 4000:
