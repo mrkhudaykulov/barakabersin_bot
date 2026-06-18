@@ -628,7 +628,8 @@ async def admin_help(message: types.Message):
         "— кўп нархни бир вақтда\n\n"
        
         "👀 *Нархларни кўриш:*\n"
-        "`/viewprices` — нархлар (ID билан)\n\n"
+        "`/viewprices` — нархлар (ID билан)\n"
+        "`/checkprices — нархни умумий текшириш\n\n"
         
         "🗑 *Ўчириш-нарх:*\n"
         "`/delprice 5` — ID бўйича битта\n"
