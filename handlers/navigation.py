@@ -11,7 +11,8 @@ from keyboards import (
     main_menu, calc_menu_keyboard, standard_step_keyboard,
     calc_qoramol_direction_keyboard, photo_confirm_keyboard,
     animal_types_keyboard, regions_keyboard, districts_keyboard,
-    description_keyboard, search_animal_keyboard
+    description_keyboard, search_animal_keyboard,
+    admin_menu_keyboard
 )
 from states import AdStates, CalcStates, SearchStates, PriceInputStates, NotifyStates
 from database import get_connection
@@ -60,8 +61,11 @@ async def start_cmd(message: types.Message):
 @router.message(F.text == "🏠 Бош меню")
 async def home_menu(message: types.Message, state: FSMContext):
     await state.clear()
-    await message.answer("🏠 Асосий меню", reply_markup=main_menu())
-
+    if message.from_user.id in ADMINS:
+        from keyboards import main_menu_admin
+        await message.answer("🏠 Асосий меню", reply_markup=main_menu_admin())
+    else:
+        await message.answer("🏠 Асосий меню", reply_markup=main_menu())
 
 # ═══════════════════════════════════════
 # 🎛 МАРКАЗЛАШТИРИЛГАН НАВИГАЦИЯ
@@ -102,10 +106,12 @@ async def global_cancel_handler(message: types.Message, state: FSMContext):
         await message.answer("❌ Нарх киритиш бекор қилинди.", reply_markup=main_menu())
         return
 
-    # Қолган ҳолатлар (эълон бериш ва бошқалар)
     await state.clear()
-    await message.answer("❌ Жараён бекор қилинди.", reply_markup=main_menu())
-
+    if message.from_user.id in ADMINS:
+        from keyboards import main_menu_admin
+        await message.answer("❌ Жараён бекор қилинди.", reply_markup=main_menu_admin())
+    else:
+        await message.answer("❌ Жараён бекор қилинди.", reply_markup=main_menu())
 
 @router.message(F.text == "🔙 Орқага")
 async def global_back_handler(message: types.Message, state: FSMContext):
