@@ -246,16 +246,18 @@ def notification_districts_keyboard(region):
     """Хабардорлик учун туманлар — вилоят бўйича + Барчаси"""
     builder = ReplyKeyboardBuilder()
 
-    # Аввал "Барчаси" тугмаси
-    builder.add(KeyboardButton(text="📍 Барчаси"))
-
     # Туманлар
     list_d = DISTRICTS.get(region, [])
     for d in list_d:
         builder.add(KeyboardButton(text=d))
+    
+    # "Барчаси" tugmasi
+    builder.add(KeyboardButton(text="📍 Барчаси"))
+    
+    # Orqaga va Bekor qilish tugmalari
+    builder.add(KeyboardButton(text="🔙 Орқага"))
+    builder.add(KeyboardButton(text="❌ Бекор қилиш"))
 
-    builder.adjust(3)
-    builder.row(KeyboardButton(text="🔙 Орқага"))
-
+    builder.adjust(2)  # Har bir qatorda 2 tadan
+    
     return builder.as_markup(resize_keyboard=True)
-
