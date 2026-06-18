@@ -674,7 +674,7 @@ def get_market_prices_index():
     return result
 
 
-def search_ads_db(animal_type=None, region=None, max_price=None, limit=10):
+def search_ads_db(animal_type=None, region=None, district=None, max_price=None, limit=10):
     """Эълонларни қидириш"""
     p = get_placeholder()
     conn = get_connection()
@@ -694,6 +694,9 @@ def search_ads_db(animal_type=None, region=None, max_price=None, limit=10):
     if region:
         query += f" AND region = {p}"
         params.append(region)
+    if district:
+        query += f" AND district = {p}"
+        params.append(district)
 
     query += f" ORDER BY id DESC LIMIT {p}"
     params.append(limit)
@@ -717,7 +720,7 @@ def search_ads_db(animal_type=None, region=None, max_price=None, limit=10):
 # ҚИДИРИШ (3 МАНБА)
 # ═══════════════════════════════════════
 
-def search_all(animal_type=None, region=None):
+def search_all(animal_type=None, region=None, district=None, limit=10):
     """3 манбадан қидириш"""
     p = get_placeholder()
     conn = get_connection()
@@ -739,7 +742,11 @@ def search_all(animal_type=None, region=None):
     if region:
         query_ads += f" AND region = {p}"
         params_ads.append(region)
-    query_ads += " ORDER BY id DESC LIMIT 50"
+    if district:
+        query_ads += f" AND district = {p}"
+        params_ads.append(district)
+    query_ads += f" ORDER BY id DESC LIMIT {p}"
+    params_ads.append(limit)
     cursor.execute(query_ads, params_ads)
     result["ads"] = cursor.fetchall()
 
