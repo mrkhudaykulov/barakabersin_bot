@@ -239,6 +239,13 @@ async def search_district(message: types.Message, state: FSMContext):
                 except Exception:
                     pass
 
+    else:
+        await message.answer(
+            "📭 *Эълонлар ҳозирда мавжуд эмас.*\n\n"
+            "Кейинроқ қайта уриниб кўринг ёки бошқа параметрлар билан қидиринг.",
+            parse_mode="Markdown"
+        )
+
     # Оддий фойдаланувчига премиум таклифи
     if not is_premium_user(message.from_user.id) and len(results["ads"]) >= 5:
         await message.answer(
