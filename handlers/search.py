@@ -37,24 +37,62 @@ async def search_animal(message: types.Message, state: FSMContext):
         reply_markup=regions_with_all_keyboard()
     )
 
-
 @router.message(SearchStates.region)
 async def search_region(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         return
 
     fixed = fix_keyboard_text(message.text)
-    search_region_val = None if fixed == "Барчаси" else fixed
+    await state.update_data(region=fixed)
+    await state.set_state(SearchStates.district)
+    await message.answer(
+        "🏘 Қайси туманда қидирилади?\n\n"
+        "_Ёки *📍 Барчаси* тугмасини танланг._",
+        parse_mode="Markdown",
+        reply_markup=notification_districts_keyboard(fixed)
+    )
+
+
+@router.message(SearchStates.district)
+async def search_district(message: types.Message, state: FSMContext):
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.clear()
+        await message.answer("❌ Бекор қилинди.", reply_markup=main_menu())
+        return
+
     data = await state.get_data()
     search_animal = data.get("search_animal")
+    region = data.get("region")
+
+    # Туман аниқлаш
+    if is_all_districts(message.text):
+        search_district_val = None
+        district_text = "Барча туманлар"
+    else:
+        search_district_val = fix_keyboard_text(message.text)
+        district_text = search_district_val
+
+    # ═══ ЛИМИТ ═══
+    user_id = message.from_user.id
+    if is_premium_user(user_id):
+        search_limit = 50
+        user_label = "Премиум"
+    else:
+        search_limit = 5
+        user_label = "Оддий"
+
+    search_region_val = None if region == "Барчаси" else region
 
     logging.info(
-        f"Searching: animal='{search_animal}', region='{search_region_val}'"
+        f"Searching: animal='{search_animal}', region='{search_region_val}', "
+        f"district='{search_district_val}', limit={search_limit}"
     )
 
     results = search_all(
         animal_type=search_animal,
-        region=search_region_val
+        region=search_region_val,
+        district=search_district_val,
+        limit=search_limit
     )
 
     logging.info(
@@ -68,7 +106,8 @@ async def search_region(message: types.Message, state: FSMContext):
 
     # ═══ 1. УМИЙ МАЪЛУМОТ ═══
     summary = f"🔍 *Қидириш натижалари*\n"
-    summary += f"🐾 {animal_text} | 📍 {region_text}\n"
+    summary += f"🐾 {animal_text} | 📍 {region_text}, {district_text}\n"
+    summary += f"👤 {user_label} лимит: {search_limit} та\n"
     summary += f"{'─' * 30}\n\n"
 
     has_stats = bool(results["stats"])
@@ -95,9 +134,9 @@ async def search_region(message: types.Message, state: FSMContext):
             by_region.items(),
             key=lambda x: sum(x[1]) / len(x[1])
         )
-        for region, prices in sorted_regions:
+        for rgn, prices in sorted_regions:
             avg = sum(prices) / len(prices)
-            summary += f"  📍 *{region}*: {fmt_number(avg)} сўм"
+            summary += f"  📍 *{rgn}*: {fmt_number(avg)} сўм"
             summary += f" ({len(prices)} та)\n"
         summary += "\n"
         has_stats = True
@@ -109,7 +148,7 @@ async def search_region(message: types.Message, state: FSMContext):
             "❌ *Маълумот топилмади.*\n\n"
             "💡 *Тавсия:*\n"
             "• Бошқа ҳайвон турини синаб кўринг\n"
-            '• "Барчаси", Вилоятини танланг\n'
+            "• Бошқа туманни танланг\n"
             "• Ўзингиз нарх киритинг"
         )
     elif not has_stats and has_ads:
@@ -137,23 +176,22 @@ async def search_region(message: types.Message, state: FSMContext):
             parse_mode="Markdown"
         )
 
-        for i, ad in enumerate(results["ads"][:10], 1):
+        for i, ad in enumerate(results["ads"][:search_limit], 1):
             try:
                 ad_id = ad[0]
                 a_type = str(ad[1]) if ad[1] else ""
-                region = str(ad[2]) if ad[2] else ""
+                rgn = str(ad[2]) if ad[2] else ""
                 price = str(ad[3]) if ad[3] else ""
                 district = str(ad[4]) if ad[4] else ""
                 desc = str(ad[5]) if ad[5] else ""
                 qty = str(ad[6]) if ad[6] else ""
-                user_id = ad[7] if len(ad) > 7 else None
+                user_id_ad = ad[7] if len(ad) > 7 else None
                 msg_id_str = str(ad[8]) if len(ad) > 8 and ad[8] else ""
 
-                # HTML хавфли белгилардан тозалаш
                 safe_type = html_module.escape(a_type)
                 safe_qty = html_module.escape(qty)
                 safe_price = html_module.escape(price)
-                safe_region = html_module.escape(region)
+                safe_region = html_module.escape(rgn)
                 safe_dist = html_module.escape(district)
                 safe_desc = html_module.escape(desc)
 
@@ -166,16 +204,11 @@ async def search_region(message: types.Message, state: FSMContext):
                 if safe_desc and safe_desc != "Киритилмаган":
                     text += f"\n   📝 {safe_desc}"
 
-                # ═══ КАНАЛДАГИ ЭЪЛОНГА ҲАВОЛА ═══
                 if msg_id_str:
-                    # Биринчи msg_id ни оламиз (album бўлиши мумкин)
                     first_msg_id = msg_id_str.split(",")[0].strip()
                     channel_username = "internetmolbozor"
                     ad_link = f"https://t.me/{channel_username}/{first_msg_id}"
-                    text += (
-                        f'   <a href="{ad_link}">'
-                        f"👁кўриш</a>"
-                    )
+                    text += f'   <a href="{ad_link}">👁кўриш</a>'
 
                 await message.answer(
                     text,
@@ -185,7 +218,6 @@ async def search_region(message: types.Message, state: FSMContext):
 
             except Exception as e:
                 logging.error(f"Эълон #{i} хато: {e}")
-                # Хато бўлса Markdown билан юбориш
                 try:
                     safe_text = (
                         f"{i}. {ad[1]} — {ad[6]}\n"
@@ -195,6 +227,14 @@ async def search_region(message: types.Message, state: FSMContext):
                     await message.answer(safe_text)
                 except Exception:
                     pass
+
+    # Оддий фойдаланувчига премиум таклифи
+    if not is_premium_user(message.from_user.id) and len(results["ads"]) >= 5:
+        await message.answer(
+            "💎 *Кўпроқ натижа кўриш учун Премиум аъзо бўлинг!*\n\n"
+            "Оддий: 5 та | Премиум: 50 та натижа",
+            parse_mode="Markdown"
+        )
 
     await state.clear()
 
@@ -214,4 +254,14 @@ async def search_region_fallback(message: types.Message, state: FSMContext):
     await message.answer(
         "⚠️ Тугмалардан бирини танланг:",
         reply_markup=regions_with_all_keyboard()
+    )
+
+@router.message(SearchStates.district)
+async def search_district_fallback(message: types.Message, state: FSMContext):
+    """Qidiruv — tumanda noto'g'ri matn"""
+    data = await state.get_data()
+    region = data.get("region", "")
+    await message.answer(
+        "⚠️ Тугмалардан бирини танланг:",
+        reply_markup=notification_districts_keyboard(region)
     )
