@@ -617,13 +617,28 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         f"Эълон жойланг: @{bot_info.username}"
     )
     
-    # ═══ АДМИН ХАБАРИДАН МЕДИАНИ АНИҚЛАШ ═══
+        
+        # ═══ БАЗАДАН БАРЧА МЕДИАЛАРНИ ОЛИШ ═══
     media_list = []
-    if callback.message.photo:
-        media_list.append({"type": "photo", "file_id": callback.message.photo[-1].file_id})
-    elif callback.message.video:
-        media_list.append({"type": "video", "file_id": callback.message.video.file_id})
+    cursor.execute(
+        f"SELECT media_type, file_id FROM ad_media WHERE ad_id = {p}",
+        (ad_id,)
+    )
+    db_media = cursor.fetchall()
+    conn.close()
 
+    for m_type, m_file_id in db_media:
+        media_list.append({"type": m_type, "file_id": m_file_id})
+
+    # Фоллбэк — базада медиа бўлмаса админ хабаридан уриниб кўрамиз
+    if not media_list:
+        if callback.message.photo:
+            media_list.append({"type": "photo", "file_id": callback.message.photo[-1].file_id})
+        elif callback.message.video:
+            media_list.append({"type": "video", "file_id": callback.message.video.file_id})
+    
+    
+    
     # ═══ КАНАЛГА ЮБОРИШ (АЛЬБОМ ЁКИ ОДДИЙ) ═══
     sent_msg_ids = []
     try:
