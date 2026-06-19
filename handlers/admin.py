@@ -1024,11 +1024,11 @@ async def admin_stats(message: types.Message, state: FSMContext):
         cursor.execute(f"SELECT COUNT(*) FROM users WHERE is_premium = 1")
     premium_users = cursor.fetchone()[0]
 
-    try:
-        cursor.execute("SELECT COUNT(*) FROM blocked_users")
-        blocked = cursor.fetchone()[0]
-    except Exception:
-        blocked = 0
+    if db_url:
+        cursor.execute(f"SELECT COUNT(*) FROM users WHERE is_blocked = TRUE")
+    else:
+        cursor.execute(f"SELECT COUNT(*) FROM users WHERE is_blocked = 1")
+    blocked = cursor.fetchone()[0]
         
     conn.close()
 
