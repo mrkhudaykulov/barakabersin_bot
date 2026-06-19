@@ -8,7 +8,7 @@ from aiogram.types import (
     InputMediaPhoto, InputMediaVideo
 )
 
-from config import bot, CHANNEL_ID
+from config import bot, CHANNEL_ID, REVIEW_ADMINS
 from states import AdStates
 from keyboards import (
     main_menu, cancel_keyboard, photo_confirm_keyboard,
@@ -432,8 +432,11 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         f"{html.escape(data['district'])} т, "
         f"{html.escape(data['mfy'])} МФЙ\n\n"
         f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
-        f"💬 <b>Телеграм:</b> {username_text}\n\n"
-        f"Канал: @internetmolbozor\n"
+    )
+    if user.id not in REVIEW_ADMINS:
+        caption += f"💬 <b>Телеграм:</b> {username_text}\n"
+    caption += (
+        f"\nКанал: @internetmolbozor\n"
         f"Эълон жойланг: @{bot_info.username}"
     )
 
@@ -531,7 +534,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
 
 async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
     """Эълонни барча админларга тасдиқлаш учун юбориш ва хабар ID ларини сақлаш."""
-    from config import REVIEW_ADMINS
+    from config import REVIEW_S
  
     review_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -607,8 +610,7 @@ async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
 
 @router.callback_query(F.data.startswith("approve_"))
 async def approve_ad_callback(callback: types.CallbackQuery):
-    from config import REVIEW_ADMINS
-
+    
     if callback.from_user.id not in REVIEW_ADMINS:
         await callback.answer("⛔ Сиз админ эмассиз!")
         return
@@ -650,8 +652,11 @@ async def approve_ad_callback(callback: types.CallbackQuery):
             f"{html.escape(dist)} т, "
             f"{html.escape(mfy)} МФЙ\n\n"
             f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
-            f"💬 <b>Телеграм:</b> {username}\n\n"
-            f"Канал: @internetmolbozor\n"
+        )
+        if user_id not in REVIEW_ADMINS:
+            caption += f"💬 <b>Телеграм:</b> {username}\n"
+        caption += (
+            f"\nКанал: @internetmolbozor\n"
             f"Эълон жойланг: @{bot_info.username}"
         )
         
