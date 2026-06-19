@@ -16,7 +16,7 @@ from keyboards import (
     admin_prices_keyboard, admin_block_keyboard, admin_premium_keyboard
 )
 from states import AdStates, CalcStates, SearchStates, PriceInputStates, NotifyStates, AdminStates
-from database import get_connection, get_placeholder
+from database import get_connection, get_placeholder, save_user
 from config import ADMINS
 
 router = Router()
