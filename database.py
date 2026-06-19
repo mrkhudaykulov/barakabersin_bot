@@ -563,8 +563,27 @@ def parse_price_text(text):
             except ValueError:
                 continue
 
+    text_clean = text.replace(',', '.').strip()
+
+    if '.' in text_clean:
+        parts = text_clean.split('.')
+        digits_only = all(p.strip().isdigit() for p in parts if p.strip())
+        if digits_only and len(parts) == 2:
+            try:
+                num = float(text_clean)
+                if num < 50:
+                    return int(num * 1_000_000)
+            except ValueError:
+                pass
+
     cleaned = ''.join(c for c in text if c.isdigit())
-    return int(cleaned) if cleaned else 0
+    if not cleaned:
+        return 0
+    result = int(cleaned)
+    if result < 50:
+        result *= 1_000_000
+    return result
+
 
 
 def fmt_number(n):
