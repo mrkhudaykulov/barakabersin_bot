@@ -28,7 +28,7 @@ from database import (
     get_pending_ad, increment_rejection, 
     MAX_REJECTIONS, save_admin_review_message, 
     get_admin_review_messages, delete_admin_review_messages,
-    get_monthly_ad_count,
+    get_monthly_ad_count, parse_price_with_type,
     MAX_ADS_PER_MONTH_REGULAR,
     MAX_ADS_PER_MONTH_PREMIUM
 )
@@ -248,17 +248,17 @@ async def process_price(message: types.Message, state: FSMContext):
         return
     if not any(char.isdigit() for char in message.text):
         await message.answer(
-            "⚠️ Илтимос, нархни рақамларда киритинг (масалан: 12 000 000 сўм):",
+            "⚠️ Илтимос, нархни рақамларда киритинг:",
             reply_markup=standard_step_keyboard()
         )
         return
 
-    price_value = parse_price_text(message.text)
+    price_value, price_type = parse_price_with_type(message.text)
 
     if price_value == 0:
         await message.answer(
             "⚠️ Нарх топилмади. Илтимос, рақамда ёзинг:\n"
-            "Масалан: `15000000` ёки `15 млн` ёки `15000 минг`",
+            "Масалан: `3500000` ёки `3.5 млн дан`",
             parse_mode="Markdown",
             reply_markup=standard_step_keyboard()
         )
@@ -266,9 +266,7 @@ async def process_price(message: types.Message, state: FSMContext):
 
     if price_value < MIN_PRICE:
         await message.answer(
-            f"⚠️ Нарх жуда кичик!\n\n"
-            f"Камида *{fmt_number(MIN_PRICE)} сўм* бўлгани маъқул.\n"
-            f"Қайтадан киритинг:",
+            f"⚠️ Нарх жуда кичик! Камида *{fmt_number(MIN_PRICE)} сўм*",
             parse_mode="Markdown",
             reply_markup=standard_step_keyboard()
         )
@@ -276,20 +274,17 @@ async def process_price(message: types.Message, state: FSMContext):
 
     if price_value > MAX_PRICE:
         await message.answer(
-            f"⚠️ Нарх жуда катта!\n\n"
-            f"Энг кўпи *{fmt_number(MAX_PRICE)} сўм* бўлиши мумкин.\n"
-            f"Агар нарх тўғри бўлса, қисмларда ёзинг ёки "
-            f"админ билан боғланинг.\n\n"
-            f"Қайтадан киритинг:",
+            f"⚠️ Нарх жуда катта! Энг кўпи *{fmt_number(MAX_PRICE)} сўм*",
             parse_mode="Markdown",
             reply_markup=standard_step_keyboard()
         )
         return
 
-    await state.update_data(price=message.text)
+    # "дан" бўлса ҳам, аниқ бўлса ҳам — сақлаймиз
+    await state.update_data(price=message.text, price_type=price_type)
     await state.set_state(AdStates.description)
     await message.answer(
-        "Қўшимча изоҳ қолдирасизми? Агар зарур бўлмаса, пастки тугмани босинг:",
+        "Қўшимча изоҳ қолдирасизми?",
         reply_markup=description_keyboard()
     )
 
@@ -423,10 +418,21 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         )
 
     bot_info = await bot.get_me()
+
+    price_raw, price_type = parse_price_with_type(data['price'])
+
+    if price_raw > 0:
+        if price_type == "дан":
+            price_display = f"{fmt_number(price_raw)} сўмдан"
+        else:
+            price_display = f"{fmt_number(price_raw)} сўм"
+    else:
+        price_display = html.escape(data['price'])
+        
     caption = (
         f"#️⃣ #{html.escape(data['animal_type'])}\n"
         f"🔢 <b>Сони:</b> {html.escape(data['quantity'])}\n"
-        f"💰 <b>Нархи:</b> {html.escape(data['price'])}\n"
+        f"💰 <b>Нархи:</b> {price_display} (бош)\n"
         f"📝 <b>Изоҳ:</b> {html.escape(data['description'])}\n"
         f"📍 <b>Манзил:</b> {html.escape(data['region'])} в, "
         f"{html.escape(data['district'])} т, "
@@ -643,10 +649,21 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         user_id, a_type, qty, price, desc, region, dist, mfy, phone, username = ad
 
         bot_info = await bot.get_me()
+
+        price_raw, price_type = parse_price_with_type(price)
+
+        if price_raw > 0:
+            if price_type == "дан":
+                price_display = f"{fmt_number(price_raw)} сўмдан"
+            else:
+                price_display = f"{fmt_number(price_raw)} сўм"
+        else:
+            price_display = html.escape(price)
+        
         caption = (
             f"#️⃣ #{html.escape(a_type)}\n"
             f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
-            f"💰 <b>Нархи:</b> {html.escape(price)}\n"
+            f"💰 <b>Нархи:</b> {price_display} (бош)\n"
             f"📝 <b>Изоҳ:</b> {html.escape(desc)}\n"
             f"📍 <b>Манзил:</b> {html.escape(region)} в, "
             f"{html.escape(dist)} т, "
