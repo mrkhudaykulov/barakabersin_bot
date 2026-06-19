@@ -24,27 +24,11 @@ router = Router()
 
 @router.message(Command("start"))
 async def start_cmd(message: types.Message):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        
-        p = get_placeholder()
-        
-        if "postgresql" in str(conn):
-            cursor.execute(
-                f"INSERT INTO users (user_id) VALUES ({p}) ON CONFLICT DO NOTHING",
-                (message.from_user.id,)
-            )
-        else:
-            cursor.execute(
-                f"INSERT OR IGNORE INTO users (user_id) VALUES ({p})",
-                (message.from_user.id,)
-            )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logging.error(f"Базага ёзишда хатолик: {e}")
-
+    save_user(
+        user_id=message.from_user.id,
+        full_name=message.from_user.full_name,
+        username=message.from_user.username
+    )
     # ═══ АДМИН ТЕКШИРИШ ═══
     if message.from_user.id in ADMINS:
         kb = ReplyKeyboardMarkup(keyboard=[
