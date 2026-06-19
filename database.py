@@ -572,31 +572,27 @@ def fmt_number(n):
     return f"{n:,.0f}".replace(",", " ")
 
 def parse_price_with_type(text):
-    """
-    Нархни таҳлил қилиш:
-    - "3.5 млн сўмдан" → (3500000, "дан")
-    - "3500000"         → (3500000, "аниқ")
-    """
     if not text:
         return 0, "аниқ"
 
     clean = str(text).lower().strip()
 
-    dan_variants = ["дан", "dan"]
-    is_dan = False
+    per_unit_variants = [
+        "дан", "dan",
+        "доная", "доноси", "донадан",
+        "ҳар бири", "хар бири", "харбир",
+        "тарадан",
+    ]
 
-    for variant in dan_variants:
-        if clean.endswith(variant):
-            is_dan = True
-            clean = clean[:-len(variant)].strip()
-            break
-        elif f" {variant} " in f" {clean} ":
-            is_dan = True
+    is_per_unit = False
+    for variant in per_unit_variants:
+        if variant in clean:
+            is_per_unit = True
             clean = clean.replace(variant, "").strip()
             break
 
-    price = parse_price_text(clean)  # мавжуд функцияни чақиради
-    price_type = "дан" if is_dan else "аниқ"
+    price = parse_price_text(clean)
+    price_type = "дан" if is_per_unit else "аниқ"
 
     return price, price_type
 
