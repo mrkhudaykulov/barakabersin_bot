@@ -280,13 +280,48 @@ async def process_price(message: types.Message, state: FSMContext):
         )
         return
 
-    # "дан" бўлса ҳам, аниқ бўлса ҳам — сақлаймиз
-    await state.update_data(price=message.text, price_type=price_type)
-    await state.set_state(AdStates.description)
-    await message.answer(
-        "Қўшимча изоҳ қолдирасизми?",
-        reply_markup=description_keyboard()
+    # ═══ СОННИ ОЛИШ ═══
+    data = await state.get_data()
+    quantity_text = data.get("quantity", "1")
+    import re
+    nums = re.findall(r'\d+', quantity_text)
+    qty_num = int(nums[0]) if nums else 1
+
+    # ═══ ЛОГИКА ═══
+    if price_type == "дан":
+        # "дан" ёки "донаси" ёзилган — бир дона нархи
+        per_unit_price = price_value
+    elif qty_num > 1:
+        # Сон > 1 ва "дан" йўқ — умумий нарх деб ҳисоблайди
+        per_unit_price = price_value // qty_num
+    else:
+        # Сон = 1 — ўша нарх
+        per_unit_price = price_value
+
+    # ═══ САҚЛАШ (доим бир дона нархи) ═══
+    await state.update_data(
+        price=str(per_unit_price),
+        price_type="дан"
     )
+
+    # ═══ ХАБАР ═══
+    if price_type == "дан" or qty_num <= 1:
+        # "дан" ёзилган ёки 1 та
+        await state.set_state(AdStates.description)
+        await message.answer(
+            "Қўшимча изоҳ қолдирасизми?",
+            reply_markup=description_keyboard()
+        )
+    else:
+        # Умумий нархдан ҳисобланди
+        await state.set_state(AdStates.description)
+        await message.answer(
+            f"✅ Бир дона нарх: *{fmt_number(per_unit_price)} сўм*\n"
+            f"_(Умумий {fmt_number(price_value)} сўм ÷ {qty_num} та)_\n\n"
+            f"Қўшимча изоҳ қолдирасизми?",
+            parse_mode="Markdown",
+            reply_markup=description_keyboard()
+        )
 
 
 @router.message(AdStates.description)
