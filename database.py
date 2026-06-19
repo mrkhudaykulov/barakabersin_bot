@@ -571,6 +571,35 @@ def fmt_number(n):
     """Рақамни форматда кўрсатиш: 15 000 000"""
     return f"{n:,.0f}".replace(",", " ")
 
+def parse_price_with_type(text):
+    """
+    Нархни таҳлил қилиш:
+    - "3.5 млн сўмдан" → (3500000, "дан")
+    - "3500000"         → (3500000, "аниқ")
+    """
+    if not text:
+        return 0, "аниқ"
+
+    clean = str(text).lower().strip()
+
+    dan_variants = ["дан", "dan"]
+    is_dan = False
+
+    for variant in dan_variants:
+        if clean.endswith(variant):
+            is_dan = True
+            clean = clean[:-len(variant)].strip()
+            break
+        elif f" {variant} " in f" {clean} ":
+            is_dan = True
+            clean = clean.replace(variant, "").strip()
+            break
+
+    price = parse_price_text(clean)  # мавжуд функцияни чақиради
+    price_type = "дан" if is_dan else "аниқ"
+
+    return price, price_type
+
 
 # ═══════════════════════════════════════
 # НАРХ ИНДЕКСИ
