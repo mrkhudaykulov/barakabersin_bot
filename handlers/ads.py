@@ -539,8 +539,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
 
 
 async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
-    """Эълонни барча админларга тасдиқлаш учун юбориш ва хабар ID ларини сақлаш."""
-    from config import REVIEW_S
+    """Эълонни барча админларга тасдиқлаш учун юбориш ва хабар ID ларини сақлаш."""   
  
     review_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
