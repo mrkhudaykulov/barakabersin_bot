@@ -541,8 +541,8 @@ def parse_price_text(text):
     text = text.strip()
 
     million_words = [
-        'млн', 'миллиoн', 'миллион', 'милион',
-        'млион', 'милон', 'million', 'milion', 'mln'
+        'млн', 'миллиoн', 'миллион', 'милион', 'милйон', 'милиён', 'милийон',
+        'млён', 'млион', 'милон', 'million', 'milion', 'milyon', 'mln'
     ]
     for word in million_words:
         if word in text:
