@@ -1377,3 +1377,11 @@ def get_monthly_ad_count(user_id: int) -> int:
     count = cursor.fetchone()[0]
     conn.close()
     return count
+# Телефон рақамини тозалаш
+def clean_phone(phone: str) -> str:
+    """Телефон рақамдан ортиқча белгиларни тозалаш"""
+    if not phone:
+        return phone
+    import re
+    cleaned = re.sub(r'[\s\-\.\,\(\)\[\]\/]', '', phone)
+    return cleaned
