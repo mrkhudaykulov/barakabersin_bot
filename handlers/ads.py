@@ -30,7 +30,8 @@ from database import (
     get_admin_review_messages, delete_admin_review_messages,
     get_monthly_ad_count, parse_price_with_type,
     MAX_ADS_PER_MONTH_REGULAR,
-    MAX_ADS_PER_MONTH_PREMIUM
+    MAX_ADS_PER_MONTH_PREMIUM,
+    clean_phone
 )
 
 router = Router()
@@ -403,6 +404,7 @@ async def process_phone(message: types.Message, state: FSMContext):
         return
 
     phone = message.contact.phone_number if message.contact else message.text
+    phone = clean_phone(phone)
 
     # Телефонни базага сақлаш (кейинги эълонда тез рўйхатга олиш учун)
     save_user(
@@ -449,7 +451,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
     else:
         username_text = (
             f"<a href='tg://user?id={user.id}'>"
-            f"{user.full_name}</a> (Ник йўқ)"
+            f"Хабар ёзиш</a>"
         )
 
     bot_info = await bot.get_me()
@@ -484,11 +486,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
     media_list = data.get("media_list", [])
 
     try:
-        db_username = (
-            f"@{user.username}"
-            if user.username
-            else f"ID: {user.id}"
-        )
+        db_username = f"@{user.username}" if user.username else ""
 
         # ═══ БАЗАГА САҚЛАШ — status = 'pending' ═══
         p = get_placeholder()
@@ -705,7 +703,13 @@ async def approve_ad_callback(callback: types.CallbackQuery):
             f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
         )
         if user_id not in REVIEW_ADMINS:
-            caption += f"💬 <b>Телеграм:</b> {username}\n"
+            if username and username.startswith("@"):
+                caption += f"💬 <b>Телеграм:</b> {username}\n"
+            else:
+                caption += (
+                    f"💬 <b>Телеграм:</b> "
+                    f"<a href='tg://user?id={user_id}'>Хабар ёзиш</a>\n"
+                )
         caption += (
             f"\nКанал: @internetmolbozor\n"
             f"Эълон жойланг: @{bot_info.username}"
