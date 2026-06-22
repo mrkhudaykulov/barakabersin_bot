@@ -31,7 +31,7 @@ from database import (
     get_monthly_ad_count, parse_price_with_type,
     MAX_ADS_PER_MONTH_REGULAR,
     MAX_ADS_PER_MONTH_PREMIUM,
-    clean_phone
+    clean_phone, get_price_range
 )
 
 router = Router()
@@ -293,12 +293,20 @@ async def process_price(message: types.Message, state: FSMContext):
         # "дан" ёки "донаси" ёзилган — бир дона нархи
         per_unit_price = price_value
     elif qty_num > 1:
-        # Сон > 1 ва "дан" йўқ — умумий нарх деб ҳисоблайди
-        per_unit_price = price_value // qty_num
+        # Сон > 1 — базадаги ўртача нарх билан текшириш
+        animal = data.get("animal_type", "")
+        avg_price = get_price_range(animal)
+        if avg_price and price_value < avg_price:
+            # Нарх ўртачадан кичик — бир дона учун деб қабул қилиш
+            per_unit_price = price_value
+        else:
+            # Умумий нарх — бўлиш керак
+            per_unit_price = price_value // qty_num
     else:
         # Сон = 1 — ўша нарх
         per_unit_price = price_value
 
+    
     # ═══ САҚЛАШ (доим бир дона нархи) ═══
     await state.update_data(
         price=str(per_unit_price),
