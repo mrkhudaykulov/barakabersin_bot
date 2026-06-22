@@ -88,7 +88,7 @@ async def start_ad(message: types.Message, state: FSMContext):
     await state.set_state(AdStates.photo)
     await state.update_data(media_list=[])
     await message.answer(
-        f"Илтимос, ҳайвоннинг расмларини ёки видеосини юборинг "
+        f"Илтимос, чорванинг расмларини ёки видеосини юборинг "
         f"(Бир нечта юборишингиз мумкин).\n\n"
         f"📊 Ойлик лимит: *{monthly_count + 1}/{limit}* "
         f"(қолди: {remaining} та)\n\n"
@@ -154,7 +154,7 @@ async def confirm_photos(message: types.Message, state: FSMContext):
         return
     await state.set_state(AdStates.animal_type)
     await message.answer(
-        "Ҳайвон турини танланг:",
+        "Чорва турини танланг:",
         reply_markup=animal_types_keyboard()
     )
 
@@ -367,7 +367,7 @@ async def process_description(message: types.Message, state: FSMContext):
         await message.answer(
             "Алоқа учун телефон рақамингизни юборинг:\n"
             "⚠️ Диққат! Сизга харидорлар шу рақам орқали телефон қилиши учун, "
-            "ТЕЛЕФОН рақамингиз ва фойдаланувчи номи эълонда кўринади!",
+            "ТЕЛЕФОН рақамингиз ва фойдаланувчи номи эълонда, @internetmolbozor каналида кўринади!",
             reply_markup=phone_keyboard()
         )
 
@@ -439,7 +439,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             await message.answer(
                 "🚫 *Эълонингизда ножўя матн аниқланди!*\n\n"
                 "Илтимос, тоза матн билан ёзинг.\n"
-                "Ҳайвон сотиш бўлимида илтимос одобли бўлинг.",
+                "Чорва сотиш бўлимида илтимос одобли бўлинг.",
                 parse_mode="Markdown",
                 reply_markup=main_menu()
             )
@@ -540,7 +540,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         await message.answer(
             f"📩 *Эълонингиз қабул қилинди!*\n\n"
             f"Эълонингиз қисқача кўриб чиқилади.\n"
-            f"Тасдиқлангандан кейин автомат каналга жойланади.\n\n"
+            f"Тасдиқлангандан кейин @internetmolbozor каналга автомат жойланади.\n\n"
             f"⏳ Одатда бир неча дақиқа ичида жавоб оласиз.",
             parse_mode="Markdown",
             reply_markup=main_menu()
