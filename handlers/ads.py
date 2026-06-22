@@ -302,7 +302,8 @@ async def process_price(message: types.Message, state: FSMContext):
     # ═══ САҚЛАШ (доим бир дона нархи) ═══
     await state.update_data(
         price=str(per_unit_price),
-        price_type="дан"
+        price_type="дан",
+        price_display=message.text.strip()
     )
 
     # ═══ ХАБАР ═══
@@ -456,15 +457,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
 
     bot_info = await bot.get_me()
 
-    price_raw, price_type = parse_price_with_type(data['price'])
-
-    if price_raw > 0:
-        if price_type == "дан":
-            price_display = f"{fmt_number(price_raw)} сўмдан"
-        else:
-            price_display = f"{fmt_number(price_raw)} сўм"
-    else:
-        price_display = html.escape(data['price'])
+    price_display = html.escape(data.get('price_display', data['price']))
         
     caption = (
         f"#️⃣ #{html.escape(data['animal_type'])}\n"
@@ -497,14 +490,15 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             cursor.execute(f"""
                 INSERT INTO ads
                 (user_id, msg_id, animal_type, quantity, price,
-                 description, region, district, mfy, phone, username,
+                 price_display, description, region, district, mfy, phone, username,
                  status, expires_at)
-                VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
+                VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
                         {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
                 RETURNING id
             """, (
                 user.id, '',
                 data['animal_type'], data['quantity'], data['price'],
+                data.get('price_display', data['price']),
                 data['description'], data['region'], data['district'],
                 data['mfy'], phone, db_username, 'pending'
             ))
@@ -512,14 +506,15 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             cursor.execute(f"""
                 INSERT INTO ads
                 (user_id, msg_id, animal_type, quantity, price,
-                 description, region, district, mfy, phone, username,
+                 price_display, description, region, district, mfy, phone, username,
                  status, expires_at)
-                VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
+                VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
                         {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
                 RETURNING id
             """, (
                 user.id, '',
                 data['animal_type'], data['quantity'], data['price'],
+                data.get('price_display', data['price']),
                 data['description'], data['region'], data['district'],
                 data['mfy'], phone, db_username, 'pending'
             ))
@@ -669,7 +664,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
     try:
         cursor.execute(f"""
             SELECT user_id, animal_type, quantity, price,
-                   description, region, district, mfy, phone, username
+                   price_display, description, region, district, mfy, phone, username
             FROM ads WHERE id = {p}
         """, (ad_id,))
         ad = cursor.fetchone()
@@ -678,19 +673,11 @@ async def approve_ad_callback(callback: types.CallbackQuery):
             await callback.answer("❌ Эълон топилмади.")
             return
 
-        user_id, a_type, qty, price, desc, region, dist, mfy, phone, username = ad
+        user_id, a_type, qty, price, price_disp, desc, region, dist, mfy, phone, username = ad
 
         bot_info = await bot.get_me()
 
-        price_raw, price_type = parse_price_with_type(price)
-
-        if price_raw > 0:
-            if price_type == "дан":
-                price_display = f"{fmt_number(price_raw)} сўмдан"
-            else:
-                price_display = f"{fmt_number(price_raw)} сўм"
-        else:
-            price_display = html.escape(price)
+        price_display = html.escape(price_disp or price)
         
         caption = (
             f"#️⃣ #{html.escape(a_type)}\n"
