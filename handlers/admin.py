@@ -846,9 +846,10 @@ async def do_premium_give(message: types.Message, state: FSMContext):
     conn.close()
 
     uname = f"@{username}" if username else "—"
+    safe_name = html.escape(full_name or '—')
     await message.answer(
-        f"💎 *Премиум берилди!*\n\n👤 {full_name or '—'} ({uname})\n🆔 `{user_id}`",
-        parse_mode="Markdown"
+        f"💎 <b>Премиум берилди!</b>\n\n👤 {safe_name} ({uname})\n🆔 <code>{user_id}</code>",
+        parse_mode="HTML"
     )
 
     try:
@@ -921,12 +922,12 @@ async def show_premium_list(message: types.Message, state: FSMContext):
         await message.answer("💎 Ҳозирча Премиум аъзолар йўқ.")
         return
 
-    text = f"💎 *Премиум аъзолар ({len(rows)} та):*\n\n"
+    text = f"💎 <b>Премиум аъзолар ({len(rows)} та):</b>\n\n"
     for uid, full_name, username in rows:
         uname = f"@{username}" if username else "—"
-        text += f"👤 {full_name or '—'} ({uname}) — `{uid}`\n"
-
-    await message.answer(text, parse_mode="Markdown")
+        safe_name = html.escape(full_name or '—')
+        text += f"👤 {safe_name} ({uname}) — <code>{uid}</code>\n"
+    await message.answer(text, parse_mode="HTML")
 
 
 # ═══════════════════════════════════════
