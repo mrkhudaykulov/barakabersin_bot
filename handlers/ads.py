@@ -464,8 +464,9 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
     if user.id not in REVIEW_ADMINS:
         caption += f"💬 <b>Телеграм:</b> {username_text}\n"
     caption += (
-        f"\nКанал: @internetmolbozor\n"
-        f"Эълон жойланг: @{bot_info.username}"
+        f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
+        f" | "
+        f"<a href='https://t.me/{bot_info.username}'>Бошқариш</a>"
     )
 
     media_list = data.get("media_list", [])
@@ -690,8 +691,9 @@ async def approve_ad_callback(callback: types.CallbackQuery):
                     f"<a href='tg://user?id={user_id}'>Хабар ёзиш</a>\n"
                 )
         caption += (
-            f"\nКанал: @internetmolbozor\n"
-            f"Эълон жойланг: @{bot_info.username}"
+            f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
+            f" | "
+            f"<a href='https://t.me/{bot_info.username}'>Бошқариш</a>"
         )
         
         # Медиаларни олиш (Энди база очиқ пайтда ишлайди)
