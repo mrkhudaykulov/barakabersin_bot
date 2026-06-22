@@ -1387,3 +1387,35 @@ def clean_phone(phone: str) -> str:
     import re
     cleaned = re.sub(r'[\s\-\.\,\(\)\[\]\/]', '', phone)
     return cleaned
+
+def get_price_range(animal_type):
+    """Ҳайвон тури учун ўртача нарх"""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    prices = []
+
+    cursor.execute(f"""
+        SELECT price::bigint FROM ads
+        WHERE animal_type = {p} AND status = 'active'
+          AND price ~ '^\d+$'
+    """, (animal_type,))
+    for r in cursor.fetchall():
+        if r[0] and int(r[0]) > 0:
+            prices.append(int(r[0]))
+
+    cursor.execute(f"""
+        SELECT price FROM market_prices
+        WHERE animal_type = {p}
+    """, (animal_type,))
+    for r in cursor.fetchall():
+        if r[0] and r[0] > 0:
+            prices.append(r[0])
+
+    conn.close()
+
+    if not prices:
+        return 0
+
+    return sum(prices) // len(prices)
