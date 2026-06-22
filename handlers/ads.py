@@ -288,50 +288,34 @@ async def process_price(message: types.Message, state: FSMContext):
     nums = re.findall(r'\d+', quantity_text)
     qty_num = int(nums[0]) if nums else 1
 
-    # ═══ ЛОГИКА ═══
+        # ═══ ЛОГИКА ═══
     if price_type == "дан":
-        # "дан" ёки "донаси" ёзилган — бир дона нархи
         per_unit_price = price_value
     elif qty_num > 1:
-        # Сон > 1 — базадаги ўртача нарх билан текшириш
         animal = data.get("animal_type", "")
         avg_price = get_price_range(animal)
-        if avg_price and price_value < avg_price:
-            # Нарх ўртачадан кичик — бир дона учун деб қабул қилиш
+        divided_price = price_value // qty_num
+        if avg_price and divided_price < avg_price * 0.5:
+            # Бўлинган нарх ўртачадан 60% дан паст — бир дона учун
             per_unit_price = price_value
         else:
-            # Умумий нарх — бўлиш керак
-            per_unit_price = price_value // qty_num
-    else:
-        # Сон = 1 — ўша нарх
-        per_unit_price = price_value
+            per_unit_price = divided_price
 
-    
-    # ═══ САҚЛАШ (доим бир дона нархи) ═══
+    # ═══ САҚЛАШ ═══
     await state.update_data(
         price=str(per_unit_price),
         price_type="дан",
         price_display=message.text.strip()
     )
 
-    # ═══ ХАБАР ═══
-    if price_type == "дан" or qty_num <= 1:
-        # "дан" ёзилган ёки 1 та
-        await state.set_state(AdStates.description)
-        await message.answer(
-            "Қўшимча изоҳ қолдирасизми?",
-            reply_markup=description_keyboard()
-        )
-    else:
-        # Умумий нархдан ҳисобланди
-        await state.set_state(AdStates.description)
-        await message.answer(
-            f"✅ Бир дона нарх: *{fmt_number(per_unit_price)} сўм*\n"
-            f"_(Умумий {fmt_number(price_value)} сўм ÷ {qty_num} та)_\n\n"
-            f"Қўшимча изоҳ қолдирасизми?",
-            parse_mode="Markdown",
-            reply_markup=description_keyboard()
-        )
+    # ═══ ХАБАР — изоҳсиз ═══
+    await state.set_state(AdStates.description)
+    await message.answer(
+        "Қўшимча изоҳ қолдирасизми?",
+        reply_markup=description_keyboard()
+    )
+
+
 
 
 @router.message(AdStates.description)
