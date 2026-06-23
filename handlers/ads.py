@@ -288,18 +288,21 @@ async def process_price(message: types.Message, state: FSMContext):
     nums = re.findall(r'\d+', quantity_text)
     qty_num = int(nums[0]) if nums else 1
 
-        # ═══ ЛОГИКА ═══
+    # ═══ ЛОГИКА ═══
+    per_unit_price = price_value
+
     if price_type == "дан":
         per_unit_price = price_value
     elif qty_num > 1:
         animal = data.get("animal_type", "")
         avg_price = get_price_range(animal)
         divided_price = price_value // qty_num
-        if avg_price and divided_price < avg_price * 0.5:
-            # Бўлинган нарх ўртачадан 60% дан паст — бир дона учун
+        if avg_price and divided_price < avg_price * 0.6:
             per_unit_price = price_value
         else:
             per_unit_price = divided_price
+    else:
+        per_unit_price = price_value
 
     # ═══ САҚЛАШ ═══
     await state.update_data(
