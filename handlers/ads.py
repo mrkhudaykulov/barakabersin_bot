@@ -1268,7 +1268,10 @@ async def handle_ad_action(callback: types.CallbackQuery):
                 f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
                 f"💰 <b>Нархи:</b> {html.escape(price)}\n"
                 f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т, {html.escape(mfy)} МФЙ\n"
-                f"📞 {html.escape(phone)}"
+                f"\n📞 {html.escape(phone)}\n"
+                f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
+                f" | "
+                f"<a href='https://t.me/{bot_info.username}'>Бошқариш</a>"
             )
 
             new_msg_ids = []
