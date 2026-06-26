@@ -11,12 +11,12 @@ scheduler.py — Фонда ишлайдиган вазифалар
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from database import get_expiring_ads, get_expired_ads, archive_ad, contains_bad_word
+from database import get_expiring_ads, get_expired_ads, archive_ad, contains_bad_word, AD_EXPIRE_DAYS
 from config import CHANNEL_ID
 
 logger = logging.getLogger(__name__)
@@ -44,30 +44,24 @@ async def send_expiry_reminder(bot: Bot, days_left: int):
     """
     Муддати days_left кун қолган эълон эгаларига хабар юбориш.
     """
-    ads = get_expiring_ads(days_left)
+    ads = get_expiring_ads(2)
     if not ads:
-        logger.info(f"[Scheduler] {days_left} кун қолган эълон йўқ.")
+        logger.info(f"[Scheduler] 2 кун қолган эълон йўқ.")
         return
 
-    logger.info(f"[Scheduler] {days_left} кун қолган {len(ads)} та эълон учун эслатма юборилмоқда...")
+    logger.info(f"[Scheduler] 2 кун қолган {len(ads)} та эълон учун эслатма юборилмоқда...")
 
     for ad in ads:
         ad_id, user_id, animal_type, quantity, price, msg_id = ad
         try:
-            if days_left == 2:
-                emoji = "🔴"
-                urgency = "ОХИРГИ"
-                extra = "\n\n⚠️ Муддат ўтса эълон каналдан архивланади!"
-            else:
-                emoji = "🟡"
-                urgency = ""
-                extra = ""
-
             text = (
-                f"{emoji} <b>Эълон муддати {urgency} {days_left} кун қолди!</b>\n\n"
+                f"🔴 <b>Эълон муддати ОХИРГИ 2 кун қолди!</b>\n\n"
                 f"📦 <b>{animal_type}</b> — {quantity}\n"
                 f"💰 <b>Нарх:</b> {price}\n\n"
-                f"💎 <b>Премиум</b> аъзолар эълонни каналга қайта жойлашлари мумкин.{extra}"
+                f"💎 <b>Премиум</b> аъзолар эълонни "
+                f"каналга қайта жойлашлари мумкин."
+                f"\n\n⚠️ Муддат ўтса эълон "
+                f"каналдан архивланади!"
             )
 
             await bot.send_message(
@@ -148,10 +142,8 @@ async def seconds_until(hour: int, minute: int = 0) -> float:
     now = datetime.now()
     target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if target <= now:
-        # Эртага
-        target = target.replace(day=target.day + 1)
-    delta = (target - now).total_seconds()
-    return delta
+        target = target + timedelta(days=1)
+    return (target - now).total_seconds()
 
 
 # ═══════════════════════════════════════
@@ -164,13 +156,13 @@ async def task_2day_reminder(bot: Bot):
         wait = await seconds_until(hour=10, minute=0)
         logger.info(f"[Scheduler] 2-кун эслатмаси {wait/3600:.1f} соатдан кейин.")
         await asyncio.sleep(wait)
-        await send_expiry_reminder(bot, days_left=2)
+        await send_expiry_reminder(bot)
 
 
 async def task_archive_expired(bot: Bot):
     """Ҳар куни муддати ўтган эълонларни архивлаш"""
     while True:
-        await asyncio.sleep(86400)  # 1 kun
+        await asyncio.sleep(7200)  # 2 соат
         await archive_expired_ads(bot)
 
 
@@ -187,7 +179,6 @@ async def start_scheduler(bot: Bot):
 
     # Параллел вазифалар
     await asyncio.gather(
-        task_7day_reminder(bot),
         task_2day_reminder(bot),
         task_archive_expired(bot),
     )
