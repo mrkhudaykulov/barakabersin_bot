@@ -37,6 +37,15 @@ from database import (
 router = Router()
 
 
+def _get_keyboard_texts(keyboard) -> set:
+    """ReplyKeyboardMarkup дан барча тугма матнларини олиш"""
+    texts = set()
+    if keyboard and hasattr(keyboard, 'keyboard'):
+        for row in keyboard.keyboard:
+            for button in row:
+                texts.add(button.text)
+    return texts
+
 # ═══════════════════════════════════════
 # ➕ ЭЪЛОН БЕРИШ
 # ═══════════════════════════════════════
@@ -179,18 +188,35 @@ async def process_photo_invalid(message: types.Message, state: FSMContext):
 
 @router.message(AdStates.animal_type)
 async def process_type(message: types.Message, state: FSMContext):
-    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+    kb = animal_types_keyboard()
+    valid = _get_keyboard_texts(kb)
+    if message.text not in valid:
+        await message.answer(
+            "⚠️ Илтимос, пастдаги тугмалардан танланг!",
+            reply_markup=kb
+        )
         return
+        
     fixed = fix_keyboard_text(message.text)
     await state.update_data(animal_type=fixed)
     await state.set_state(AdStates.region)
-    await message.answer("Вилоятни танланг:", reply_markup=regions_keyboard())
+    await message.answer(
+        "Вилоятни танланг:",
+        reply_markup=regions_keyboard()
+    )
 
 
 @router.message(AdStates.region)
 async def process_region(message: types.Message, state: FSMContext):
-    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+    kb = regions_keyboard()
+    valid = _get_keyboard_texts(kb)
+    if message.text not in valid:
+        await message.answer(
+            "⚠️ Илтимос, пастдаги тугмалардан танланг!",
+            reply_markup=kb
+        )
         return
+        
     fixed = fix_keyboard_text(message.text)
     await state.update_data(region=fixed)
     await state.set_state(AdStates.district)
@@ -202,8 +228,17 @@ async def process_region(message: types.Message, state: FSMContext):
 
 @router.message(AdStates.district)
 async def process_district(message: types.Message, state: FSMContext):
-    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+    data = await state.get_data()
+    region_text = data.get("region", "")
+    kb = districts_keyboard(region_text)
+    valid = _get_keyboard_texts(kb)
+    if message.text not in valid:
+        await message.answer(
+            "⚠️ Илтимос, пастдаги тугмалардан танланг!",
+            reply_markup=kb
+        )
         return
+        
     fixed = fix_keyboard_text(message.text)
     await state.update_data(district=fixed)
     await state.set_state(AdStates.mfy)
