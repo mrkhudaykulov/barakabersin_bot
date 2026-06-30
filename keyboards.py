@@ -73,7 +73,7 @@ def main_menu():
     buttons = [
         [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
         [KeyboardButton(text="📊 Бозор таҳлили"), KeyboardButton(text="🗂 Менинг эълонларим")],
-        [KeyboardButton(text="🔔 Хабардор қил"), KeyboardButton(text="🩺 Ветеринария")],
+        [KeyboardButton(text="🩺 Ветеринария"), KeyboardButton(text="🔔 Хабардор қил")],
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
     
