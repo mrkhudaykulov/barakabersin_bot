@@ -1,6 +1,6 @@
 from aiogram import Dispatcher
 
-from handlers import navigation, ads, search, prices, admin, calculators, notify
+from handlers import navigation, ads, search, prices, admin, calculators, notify, vet, vet_admin
 
 
 def register_all_handlers(dp: Dispatcher):
@@ -12,6 +12,8 @@ def register_all_handlers(dp: Dispatcher):
     dp.include_router(navigation.router)
     dp.include_router(calculators.router)
     dp.include_router(prices.router)
+    dp.include_router(vet.router)
+    dp.include_router(vet_admin.router)
     dp.include_router(search.router)
     dp.include_router(ads.router)
     dp.include_router(admin.router)
