@@ -15,7 +15,7 @@ from keyboards import (
 from database import (
     fix_keyboard_text, add_vet_suggestion, get_approved_vet_override
 )
-from vet_contacts_data import VET_REGIONS, VET_DISTRICTS
+from handlers.vet_contacts_data import VET_REGIONS, VET_DISTRICTS
 
 router = Router()
 
