@@ -287,7 +287,7 @@ def main_menu_admin():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
         [KeyboardButton(text="📊 Бозор таҳлили"), KeyboardButton(text="🗂 Менинг эълонларим")],
-        [KeyboardButton(text="🔔 Хабардор қил"), KeyboardButton(text="🩺 Ветеринария")],
+        [KeyboardButton(text="🩺 Ветеринария"), KeyboardButton(text="🔔 Хабардор қил")],
         [KeyboardButton(text="🔐 Админ панел")]
     ], resize_keyboard=True)
     
