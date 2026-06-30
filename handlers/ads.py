@@ -492,7 +492,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
     caption = (
         f"#️⃣ #{html.escape(data['animal_type'])}\n"
         f"🔢 <b>Сони:</b> {html.escape(data['quantity'])}\n"
-        f"💰 <b>Нархи:</b> {price_display} (бош)\n"
+        f"💰 <b>Нархи:</b> {price_display}\n"
         f"📝 <b>Изоҳ:</b> {html.escape(data['description'])}\n"
         f"📍 <b>Манзил:</b> {html.escape(data['region'])} в, "
         f"{html.escape(data['district'])} т, "
@@ -713,7 +713,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         caption = (
             f"#️⃣ #{html.escape(a_type)}\n"
             f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
-            f"💰 <b>Нархи:</b> {price_display} (бош)\n"
+            f"💰 <b>Нархи:</b> {price_display}\n"
             f"📝 <b>Изоҳ:</b> {html.escape(desc)}\n"
             f"📍 <b>Манзил:</b> {html.escape(region)} в, "
             f"{html.escape(dist)} т, "
