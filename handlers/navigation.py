@@ -13,9 +13,14 @@ from keyboards import (
     animal_types_keyboard, regions_keyboard, districts_keyboard,
     description_keyboard, search_animal_keyboard,
     admin_menu_keyboard, admin_ads_keyboard,
-    admin_prices_keyboard, admin_block_keyboard, admin_premium_keyboard
+    admin_prices_keyboard, admin_block_keyboard, admin_premium_keyboard,
+    vet_contact_result_keyboard, vet_action_type_keyboard, vet_role_type_keyboard,
+    vet_comment_keyboard, market_analysis_menu, price_index_keyboard
 )
-from states import AdStates, CalcStates, SearchStates, PriceInputStates, NotifyStates, AdminStates
+from states import (
+    AdStates, CalcStates, SearchStates, PriceInputStates, NotifyStates,
+    AdminStates, VetStates, VetSuggestStates, MarketStates, PriceIndexStates
+)
 from database import get_connection, get_placeholder, save_user
 from config import ADMINS
 
@@ -35,6 +40,7 @@ async def start_cmd(message: types.Message):
             [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
             [KeyboardButton(text="📊 Нархлар индекси"), KeyboardButton(text="🗂 Менинг эълонларим")],
             [KeyboardButton(text="🧮 Ферма калькулятори"), KeyboardButton(text="🔔 Хабардор қил")],
+            [KeyboardButton(text="🩺 Ветеринария")],
             [KeyboardButton(text="🔐 Админ панел")]
         ], resize_keyboard=True)
     else:
@@ -54,6 +60,18 @@ async def home_menu(message: types.Message, state: FSMContext):
         await message.answer("🏠 Асосий меню", reply_markup=main_menu_admin())
     else:
         await message.answer("🏠 Асосий меню", reply_markup=main_menu())
+
+
+@router.message(F.text == "📊 Бозор таҳлили")
+async def market_analysis_start(message: types.Message, state: FSMContext):
+    await state.set_state(MarketStates.menu)
+    await message.answer(
+        "📊 *Бозор таҳлили*\n\n"
+        "Нархлар индексини кўриш ёки фермер калькуляторидан "
+        "фойдаланиш мумкин:",
+        parse_mode="Markdown",
+        reply_markup=market_analysis_menu()
+    )
 
 # ═══════════════════════════════════════
 # 🎛 МАРКАЗЛАШТИРИЛГАН НАВИГАЦИЯ
@@ -203,6 +221,23 @@ async def global_back_handler(message: types.Message, state: FSMContext):
         await message.answer(
             "🔙 Вилоятни қайта танланг:",
             reply_markup=regions_keyboard()
+        )
+        return
+
+    # ═══ Бозор таҳлили субменюси ═══
+    elif current_state == CalcStates.menu.state:
+        await state.set_state(MarketStates.menu)
+        await message.answer(
+            "📊 Бозор таҳлили бўлимига қайтдингиз:",
+            reply_markup=market_analysis_menu()
+        )
+        return
+
+    elif current_state == PriceIndexStates.menu.state:
+        await state.set_state(MarketStates.menu)
+        await message.answer(
+            "📊 Бозор таҳлили бўлимига қайтдингиз:",
+            reply_markup=market_analysis_menu()
         )
         return
 
@@ -420,5 +455,79 @@ async def global_back_handler(message: types.Message, state: FSMContext):
             "✏️ Янги *минимал нархни* киритинг:",
             parse_mode="Markdown",
             reply_markup=standard_step_keyboard()
+        )
+        return
+
+    # ═══ Ветеринария ═══
+    elif current_state == VetStates.region.state:
+        await state.clear()
+        if message.from_user.id in ADMINS:
+            await message.answer("🏠 Асосий меню", reply_markup=main_menu_admin())
+        else:
+            await message.answer("🏠 Асосий меню", reply_markup=main_menu())
+        return
+
+    elif current_state == VetStates.district.state:
+        await state.set_state(VetStates.region)
+        await message.answer(
+            "🔙 Вилоятни қайта танланг:",
+            reply_markup=regions_keyboard()
+        )
+        return
+
+    # ═══ Ветеринария таклифи ═══
+    elif current_state == VetSuggestStates.action_type.state:
+        await state.set_state(VetStates.district)
+        await message.answer(
+            "🔙 Контакт маълумотига қайтдингиз:",
+            reply_markup=vet_contact_result_keyboard()
+        )
+        return
+
+    elif current_state == VetSuggestStates.role_type.state:
+        await state.set_state(VetSuggestStates.action_type)
+        await message.answer(
+            "🔙 Амал турини қайта танланг:",
+            reply_markup=vet_action_type_keyboard()
+        )
+        return
+
+    elif current_state == VetSuggestStates.fish.state:
+        await state.set_state(VetSuggestStates.role_type)
+        await message.answer(
+            "🔙 Лавозим турини қайта танланг:",
+            reply_markup=vet_role_type_keyboard()
+        )
+        return
+
+    elif current_state == VetSuggestStates.lavozim.state:
+        await state.set_state(VetSuggestStates.fish)
+        await message.answer(
+            "🔙 Ф.И.Ш ни қайта киритинг:",
+            reply_markup=standard_step_keyboard()
+        )
+        return
+
+    elif current_state == VetSuggestStates.tel.state:
+        await state.set_state(VetSuggestStates.lavozim)
+        await message.answer(
+            "🔙 Лавозим номини қайта киритинг:",
+            reply_markup=standard_step_keyboard()
+        )
+        return
+
+    elif current_state == VetSuggestStates.comment.state:
+        await state.set_state(VetSuggestStates.tel)
+        await message.answer(
+            "🔙 Телефон рақамини қайта киритинг:",
+            reply_markup=standard_step_keyboard()
+        )
+        return
+
+    elif current_state == VetSuggestStates.confirm.state:
+        await state.set_state(VetSuggestStates.comment)
+        await message.answer(
+            "🔙 Изоҳни қайта киритинг:",
+            reply_markup=vet_comment_keyboard()
         )
         return
