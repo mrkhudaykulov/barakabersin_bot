@@ -123,6 +123,27 @@ def init_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vet_suggestions (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                username TEXT,
+                action_type TEXT NOT NULL,
+                region TEXT NOT NULL,
+                district TEXT NOT NULL,
+                role_type TEXT NOT NULL,
+                fish TEXT,
+                lavozim TEXT,
+                tel TEXT,
+                comment TEXT,
+                status TEXT DEFAULT 'pending',
+                admin_id BIGINT,
+                admin_comment TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                reviewed_at TIMESTAMP
+            )
+        """)
+
     
 
     else:
@@ -207,6 +228,27 @@ def init_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vet_suggestions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                username TEXT,
+                action_type TEXT NOT NULL,
+                region TEXT NOT NULL,
+                district TEXT NOT NULL,
+                role_type TEXT NOT NULL,
+                fish TEXT,
+                lavozim TEXT,
+                tel TEXT,
+                comment TEXT,
+                status TEXT DEFAULT 'pending',
+                admin_id INTEGER,
+                admin_comment TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at TIMESTAMP
+            )
+        """)
+
     conn.commit()
     conn.close()
 
@@ -255,6 +297,24 @@ def migrate_db():
                 ad_id INTEGER NOT NULL, admin_id BIGINT NOT NULL,
                 message_id BIGINT NOT NULL, chat_id BIGINT NOT NULL,
                 PRIMARY KEY (ad_id, admin_id)
+            )""",
+            """CREATE TABLE IF NOT EXISTS vet_suggestions (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                username TEXT,
+                action_type TEXT NOT NULL,
+                region TEXT NOT NULL,
+                district TEXT NOT NULL,
+                role_type TEXT NOT NULL,
+                fish TEXT,
+                lavozim TEXT,
+                tel TEXT,
+                comment TEXT,
+                status TEXT DEFAULT 'pending',
+                admin_id BIGINT,
+                admin_comment TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                reviewed_at TIMESTAMP
             )"""
             
         ]
@@ -287,6 +347,24 @@ def migrate_db():
                 ad_id INTEGER NOT NULL, admin_id INTEGER NOT NULL,
                 message_id INTEGER NOT NULL, chat_id INTEGER NOT NULL,
                 PRIMARY KEY (ad_id, admin_id)
+            )""",
+            """CREATE TABLE IF NOT EXISTS vet_suggestions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                username TEXT,
+                action_type TEXT NOT NULL,
+                region TEXT NOT NULL,
+                district TEXT NOT NULL,
+                role_type TEXT NOT NULL,
+                fish TEXT,
+                lavozim TEXT,
+                tel TEXT,
+                comment TEXT,
+                status TEXT DEFAULT 'pending',
+                admin_id INTEGER,
+                admin_comment TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at TIMESTAMP
             )"""
         ]
         for sql in sqlite_migrations:
@@ -1419,3 +1497,136 @@ def get_price_range(animal_type):
         return 0
 
     return sum(prices) // len(prices)
+
+
+# ═══════════════════════════════════════
+# ВЕТЕРИНАРИЯ ХОДИМЛАРИ — ФОЙДАЛАНУВЧИ ТАКЛИФЛАРИ
+# ═══════════════════════════════════════
+
+def add_vet_suggestion(user_id, username, action_type, region, district,
+                        role_type, fish=None, lavozim=None, tel=None, comment=None):
+    """
+    Фойдаланувчи таклифини 'pending' статусда базага сақлайди.
+    action_type: 'yangi' | 'ozgartirish'
+    role_type:   'bolim_boshligi' | 'lab_mudiri'
+    Қайтаради: янги ёзувнинг ID си.
+    """
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        INSERT INTO vet_suggestions
+        (user_id, username, action_type, region, district, role_type,
+         fish, lavozim, tel, comment, status)
+        VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'pending')
+    """, (user_id, username, action_type, region, district, role_type,
+          fish, lavozim, tel, comment))
+    conn.commit()
+
+    if DATABASE_URL:
+        cursor.execute("SELECT lastval()")
+    else:
+        cursor.execute("SELECT last_insert_rowid()")
+    new_id = cursor.fetchone()[0]
+    conn.close()
+    return new_id
+
+
+def get_pending_vet_suggestions(limit=20):
+    """Кутилаётган (pending) барча таклифлар рўйхати, эскидан янгигa."""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        SELECT id, user_id, username, action_type, region, district,
+               role_type, fish, lavozim, tel, comment, created_at
+        FROM vet_suggestions
+        WHERE status = {p}
+        ORDER BY id ASC
+        LIMIT {p}
+    """, ("pending", limit))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def get_vet_suggestion_by_id(suggestion_id):
+    """Битта таклифни ID бўйича олиш."""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        SELECT id, user_id, username, action_type, region, district,
+               role_type, fish, lavozim, tel, comment, status,
+               admin_id, admin_comment, created_at
+        FROM vet_suggestions
+        WHERE id = {p}
+    """, (suggestion_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row
+
+
+def count_pending_vet_suggestions():
+    """Кутилаётган таклифлар сони (админ менюсида кўрсатиш учун)."""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"SELECT COUNT(*) FROM vet_suggestions WHERE status = {p}", ("pending",))
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+
+def review_vet_suggestion(suggestion_id, admin_id, approve: bool, admin_comment=None):
+    """
+    Админ таклифни тасдиқлайди ёки рад этади.
+    approve=True  -> status='approved'
+    approve=False -> status='rejected'
+    """
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    new_status = "approved" if approve else "rejected"
+
+    if DATABASE_URL:
+        cursor.execute(f"""
+            UPDATE vet_suggestions
+            SET status = {p}, admin_id = {p}, admin_comment = {p}, reviewed_at = NOW()
+            WHERE id = {p}
+        """, (new_status, admin_id, admin_comment, suggestion_id))
+    else:
+        cursor.execute(f"""
+            UPDATE vet_suggestions
+            SET status = {p}, admin_id = {p}, admin_comment = {p}, reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = {p}
+        """, (new_status, admin_id, admin_comment, suggestion_id))
+
+    conn.commit()
+    conn.close()
+
+
+def get_approved_vet_override(region, district, role_type):
+    """
+    Берилган (вилоят, туман, лавозим тури) учун ОХИРГИ тасдиқланган
+    таклифни қайтаради — бу runtime'да vet_contacts_data.py'даги
+    статик маълумотдан устун қўйилади.
+    Топилмаса None қайтаради.
+    """
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        SELECT fish, lavozim, tel
+        FROM vet_suggestions
+        WHERE status = {p} AND region = {p} AND district = {p} AND role_type = {p}
+        ORDER BY id DESC
+        LIMIT 1
+    """, ("approved", region, district, role_type))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    fish, lavozim, tel = row
+    return {"fish": fish, "lavozim": lavozim, "tel": tel}
