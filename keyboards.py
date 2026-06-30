@@ -72,17 +72,29 @@ DISTRICTS = {
 def main_menu():
     buttons = [
         [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
-        [KeyboardButton(text="📊 Нархлар индекси"), KeyboardButton(text="🗂 Менинг эълонларим")],
-        [KeyboardButton(text="🧮 Ферма калькулятори"), KeyboardButton(text="🔔 Хабардор қил")],
+        [KeyboardButton(text="📊 Бозор таҳлили"), KeyboardButton(text="🗂 Менинг эълонларим")],
+        [KeyboardButton(text="🔔 Хабардор қил"), KeyboardButton(text="🩺 Ветеринария")],
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
     
 
 
+def market_analysis_menu():
+    """
+    Бирлаштирилган '📊 Бозор таҳлили' бўлими:
+    Нархлар индекси + Ферма калькулятори
+    """
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="📊 Нархлар индекси")],
+        [KeyboardButton(text="🧮 Ферма калькулятори")],
+        [KeyboardButton(text="🏠 Бош меню")]
+    ], resize_keyboard=True)
+
+
 def calc_menu_keyboard():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="🐑 Қўй калькулятори"), KeyboardButton(text="🐄 Қорамол калькулятори")],
-        [KeyboardButton(text="🏠 Бош меню")]
+        [KeyboardButton(text="🔙 Орқага"), KeyboardButton(text="🏠 Бош меню")]
     ], resize_keyboard=True)
 
 
@@ -196,7 +208,10 @@ def price_index_keyboard():
         KeyboardButton(text="📊 Барчаси"),
         KeyboardButton(text="💰 Нарх киритиш")
     )
-    builder.row(KeyboardButton(text="🏠 Бош меню"))
+    builder.row(
+        KeyboardButton(text="🔙 Орқага"),
+        KeyboardButton(text="🏠 Бош меню")
+    )
     return builder.as_markup(resize_keyboard=True)
 
 
@@ -271,8 +286,8 @@ def main_menu_admin():
     """Админ учун бош меню"""
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
-        [KeyboardButton(text="📊 Нархлар индекси"), KeyboardButton(text="🗂 Менинг эълонларим")],
-        [KeyboardButton(text="🧮 Ферма калькулятори"), KeyboardButton(text="🔔 Хабардор қил")],
+        [KeyboardButton(text="📊 Бозор таҳлили"), KeyboardButton(text="🗂 Менинг эълонларим")],
+        [KeyboardButton(text="🔔 Хабардор қил"), KeyboardButton(text="🩺 Ветеринария")],
         [KeyboardButton(text="🔐 Админ панел")]
     ], resize_keyboard=True)
     
@@ -324,4 +339,55 @@ def admin_premium_keyboard():
         [KeyboardButton(text="❌ Премиум олиш")],
         [KeyboardButton(text="💎 Премиум рўйхати")],
         [KeyboardButton(text="🔙 Орқага")]
+    ], resize_keyboard=True)
+
+
+# ═══════════════════════════════════════
+# ВЕТЕРИНАРИЯ ТАКЛИФ КЕЙБОАРДЛАРИ
+# ═══════════════════════════════════════
+
+def vet_contact_result_keyboard():
+    """Контакт кўрсатилгандан кейинги тугмалар — таклиф қилиш имкони."""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="📝 Маълумотга таклиф киритиш")],
+        [KeyboardButton(text="🔙 Орқага"), KeyboardButton(text="🏠 Бош меню")]
+    ], resize_keyboard=True)
+
+
+def vet_action_type_keyboard():
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🆕 Янги ходим қўшиш")],
+        [KeyboardButton(text="✏️ Мавжудини ўзгартириш")],
+        step_navigation()
+    ], resize_keyboard=True)
+
+
+def vet_role_type_keyboard():
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🏢 Бўлим бошлиғи")],
+        [KeyboardButton(text="🔬 Лаборатория мудири")],
+        step_navigation()
+    ], resize_keyboard=True)
+
+
+def vet_comment_keyboard():
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="⏭ Изоҳсиз ўтказиб юбориш")],
+        step_navigation()
+    ], resize_keyboard=True)
+
+
+def vet_confirm_keyboard():
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="✅ Таклифни юбориш")],
+        step_navigation()
+    ], resize_keyboard=True)
+
+
+def vet_admin_review_keyboard():
+    """Админ кутилаётган таклифни кўриб чиқишда ишлатадиган тугмалар."""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="✅ Тасдиқлаш"), KeyboardButton(text="❌ Рад этиш")],
+        [KeyboardButton(text="⏭ Кейингисига ўтиш")],
+        [KeyboardButton(text="🏠 Бош меню")]
     ], resize_keyboard=True)
