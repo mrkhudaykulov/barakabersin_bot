@@ -120,14 +120,13 @@ async def vet_district(message: types.Message, state: FSMContext):
 
         if info["lab_mudiri_list"]:
             text += "\n🔬 <b>Бозор лаборатория мудирлари:</b>\n"
-            for item in info["lab_mudiri_list"][:15]:
+            for item in info["lab_mudiri_list"]:
+                joy = item.get("joy") or item.get("bozor_nomi") or "Бозор"
                 text += (
-                    f"   🏪 {html_module.escape(item['bozor_nomi'])}: "
+                    f"   🏪 {html_module.escape(joy)}: "
                     f"{html_module.escape(item['fish'] or '—')} "
                     f"— 📞 {html_module.escape(item['tel'] or '—')}\n"
                 )
-            if len(info["lab_mudiri_list"]) > 15:
-                text += f"   ... ва яна {len(info['lab_mudiri_list']) - 15} та бозор\n"
 
         text += (
             f"\n{'─' * 25}\n"
@@ -139,14 +138,13 @@ async def vet_district(message: types.Message, state: FSMContext):
         await state.clear()
         return
 
-    # ═══ Оддий туман — биттадан маълумот ═══
+    # ═══ Оддий туман — маълумот кўрсатиш ═══
     # Тасдиқланган фойдаланувчи таклифлари мавжуд бўлса, статик
     # маълумот ўрнига ўшани кўрсатамиз (энг сўнгги тасдиқланган)
     bolim_override = get_approved_vet_override(region, fixed_district, "bolim_boshligi")
-    lab_override = get_approved_vet_override(region, fixed_district, "lab_mudiri")
 
     bolim = bolim_override or info.get("bolim_boshligi")
-    lab = lab_override or info.get("lab_mudiri")
+    lab_list = info.get("lab_mudiri_list", [])
 
     text = (
         f"🩺 <b>Ветеринария хизмати</b>\n"
@@ -162,14 +160,26 @@ async def vet_district(message: types.Message, state: FSMContext):
             f"   📞 {html_module.escape(bolim['tel'] or '—')}\n\n"
         )
 
-    if lab:
-        text += (
-            f"🔬 <b>Бозор ветеринария-санитария лабораторияси мудири:</b>\n"
-            f"   👤 {html_module.escape(lab['fish'] or '—')}\n"
-            f"   📞 {html_module.escape(lab['tel'] or '—')}\n\n"
-        )
+    if lab_list:
+        if len(lab_list) == 1:
+            lab = lab_list[0]
+            text += (
+                f"🔬 <b>Бозор ветеринария-санитария лабораторияси мудири:</b>\n"
+                f"   👤 {html_module.escape(lab['fish'] or '—')}\n"
+                f"   📞 {html_module.escape(lab['tel'] or '—')}\n\n"
+            )
+        else:
+            text += f"🔬 <b>Бозор лаборатория мудирлари ({len(lab_list)} та):</b>\n"
+            for lab in lab_list:
+                joy = lab.get("joy") or "Дехқон бозори"
+                text += (
+                    f"   🏪 <i>{html_module.escape(joy)}</i>\n"
+                    f"      👤 {html_module.escape(lab['fish'] or '—')} "
+                    f"— 📞 {html_module.escape(lab['tel'] or '—')}\n"
+                )
+            text += "\n"
 
-    if not bolim and not lab:
+    if not bolim and not lab_list:
         text += "❌ Маълумот мавжуд эмас.\n\n"
 
     if region_info:
