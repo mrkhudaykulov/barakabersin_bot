@@ -9,11 +9,11 @@ def register_all_handlers(dp: Dispatcher):
     Тартиб МУҲИМ — navigation энг аввал бўлиши шарт
     (cancel/back handlerлари бошқа handlerлардан олдин ишлаши керак).
     """
+    dp.include_router(vet_admin.router)
     dp.include_router(navigation.router)
     dp.include_router(calculators.router)
     dp.include_router(prices.router)
     dp.include_router(vet.router)
-    dp.include_router(vet_admin.router)
     dp.include_router(search.router)
     dp.include_router(ads.router)
     dp.include_router(admin.router)
