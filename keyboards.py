@@ -297,7 +297,7 @@ def admin_menu_keyboard():
         [KeyboardButton(text="📋 Эълонлар"), KeyboardButton(text="💰 Нархлар")],
         [KeyboardButton(text="🚫 Блок"), KeyboardButton(text="💎 Премиум")],
         [KeyboardButton(text="📢 Тарқатиш"), KeyboardButton(text="📊 Статистика")],
-        [KeyboardButton(text="🔍 Нарх текшириш")],
+        [KeyboardButton(text="🔍 Нарх текшириш"), KeyboardButton(text="🩺 Вет таклифлар")],
         [KeyboardButton(text="🏠 Бош меню")]
     ], resize_keyboard=True)
 
@@ -388,6 +388,23 @@ def vet_admin_review_keyboard():
     """Админ кутилаётган таклифни кўриб чиқишда ишлатадиган тугмалар."""
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="✅ Тасдиқлаш"), KeyboardButton(text="❌ Рад этиш")],
-        [KeyboardButton(text="⏭ Кейингисига ўтиш")],
+        [KeyboardButton(text="✏️ Таҳрирлаш"), KeyboardButton(text="⏭ Кейингисига ўтиш")],
         [KeyboardButton(text="🏠 Бош меню")]
+    ], resize_keyboard=True)
+
+
+def vet_admin_edit_keyboard():
+    """Таҳрирлаш вақтида — қайси майдонни ўзгартириш."""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="👤 Ф.И.Ш"), KeyboardButton(text="💼 Лавозим")],
+        [KeyboardButton(text="📞 Телефон")],
+        [KeyboardButton(text="✅ Таҳрирни сақлаш")],
+        [KeyboardButton(text="🔙 Орқага")]
+    ], resize_keyboard=True)
+
+
+def vet_admin_edit_field_keyboard():
+    """Битта майдонни киритиш вақтидаги тугма."""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🔙 Орқага")]
     ], resize_keyboard=True)
