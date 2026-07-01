@@ -1630,3 +1630,37 @@ def get_approved_vet_override(region, district, role_type):
         return None
     fish, lavozim, tel = row
     return {"fish": fish, "lavozim": lavozim, "tel": tel}
+
+
+def update_vet_suggestion_fields(suggestion_id, fish=None, lavozim=None, tel=None):
+    """
+    Админ таклифни тасдиқлашдан олдин таҳрирлаши учун —
+    берилган майдонларни янгилайди (None бўлмаган майдонлар).
+    """
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    sets = []
+    params = []
+    if fish is not None:
+        sets.append(f"fish = {p}")
+        params.append(fish)
+    if lavozim is not None:
+        sets.append(f"lavozim = {p}")
+        params.append(lavozim)
+    if tel is not None:
+        sets.append(f"tel = {p}")
+        params.append(tel)
+
+    if not sets:
+        conn.close()
+        return
+
+    params.append(suggestion_id)
+    cursor.execute(
+        f"UPDATE vet_suggestions SET {', '.join(sets)} WHERE id = {p}",
+        tuple(params)
+    )
+    conn.commit()
+    conn.close()
