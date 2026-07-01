@@ -121,7 +121,10 @@ class VetSuggestStates(StatesGroup):
 class VetAdminStates(StatesGroup):
     """
     Админ учун — кутилаётган ветеринария таклифларини
-    бирма-бир кўриб чиқиш ва тасдиқлаш/рад этиш.
+    бирма-бир кўриб чиқиш, таҳрирлаш ва тасдиқлаш/рад этиш.
     """
     reviewing = State()
     reject_comment = State()
+    edit_fish = State()
+    edit_lavozim = State()
+    edit_tel = State()
