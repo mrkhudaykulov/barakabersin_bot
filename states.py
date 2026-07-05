@@ -11,6 +11,7 @@ class AdStates(StatesGroup):
     price = State()
     description = State()
     phone = State()
+    profile_confirm = State()
 
 
 class CalcStates(StatesGroup):
@@ -128,3 +129,10 @@ class VetAdminStates(StatesGroup):
     edit_fish = State()
     edit_lavozim = State()
     edit_tel = State()
+
+class OnboardingStates(StatesGroup):
+    """Бот биринчи марта ишга туширилганда маълумот сўраш учун."""
+    region = State()
+    district = State()
+    mfy = State()
+    phone = State()
