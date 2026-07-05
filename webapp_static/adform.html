@@ -9,21 +9,24 @@
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&family=PT+Mono&display=swap" rel="stylesheet">
 <style>
   :root{
-    --paper:#F5F1E4;
-    --paper-soft:#EFEAD9;
-    --card:#FFFFFF;
-    --line:#E1DAC4;
-    --ink:#2B2A22;
-    --ink-soft:#6B6656;
-    --pasture:#2E4A34;
-    --pasture-deep:#213A2A;
-    --pasture-mist:#DCE6DA;
-    --tag:#F0A93B;
-    --tag-deep:#C4801E;
-    --tag-ink:#4A2E0A;
-    --clay:#B24A2F;
+    /* Telegram темасидан олинади (dark/light режимга avtomatik moslashadi),
+       Telegram tashqarisida ochilganda fallback ranglar ishlatiladi */
+    --paper: var(--tg-theme-bg-color, #F5F1E4);
+    --paper-soft: var(--tg-theme-secondary-bg-color, #EFEAD9);
+    --card: var(--tg-theme-section-bg-color, #FFFFFF);
+    --line: var(--tg-theme-section-separator-color, #E1DAC4);
+    --ink: var(--tg-theme-text-color, #2B2A22);
+    --ink-soft: var(--tg-theme-hint-color, #6B6656);
+    --pasture: var(--tg-theme-button-color, #2E4A34);
+    --pasture-deep: var(--tg-theme-accent-text-color, #213A2A);
+    --pasture-mist: var(--tg-theme-secondary-bg-color, #DCE6DA);
+    --pasture-on: var(--tg-theme-button-text-color, #FFFFFF);
+    --tag: var(--tg-theme-link-color, #F0A93B);
+    --tag-deep: var(--tg-theme-accent-text-color, #C4801E);
+    --tag-ink: #FFFFFF;
+    --clay: var(--tg-theme-destructive-text-color, #B24A2F);
 
-    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+    --sp-1:3px; --sp-2:6px; --sp-3:9px; --sp-4:13px; --sp-5:16px; --sp-6:22px;
     --radius-s:10px; --radius-m:16px; --radius-l:22px;
 
     --font-display:'Unbounded', sans-serif;
@@ -36,7 +39,7 @@
   body{
     font-family:var(--font-body);
     color:var(--ink);
-    background:var(--pasture-deep);
+    background:var(--paper);
     min-height:100vh;
     min-height:100dvh;
   }
@@ -55,7 +58,7 @@
 
   /* ===== Топбар ===== */
   .topbar{
-    padding:14px var(--sp-4) var(--sp-3);
+    padding:10px var(--sp-4) var(--sp-2);
     background:var(--paper);
     border-bottom:1px solid var(--line);
     flex-shrink:0;
@@ -133,7 +136,7 @@
   .photo-thumb{
     position:relative;
     flex:0 0 auto;
-    width:78px; height:78px;
+    width:68px; height:68px;
     border-radius:var(--radius-s);
     overflow:hidden;
     background:var(--paper-soft);
@@ -163,7 +166,7 @@
   }
   .photo-add{
     flex:0 0 auto;
-    width:78px; height:78px;
+    width:68px; height:68px;
     border-radius:var(--radius-s);
     border:1.5px dashed var(--line);
     background:var(--paper-soft);
@@ -183,7 +186,7 @@
     font-family:var(--font-body);
     font-weight:600;
     font-size:13px;
-    padding:9px 14px;
+    padding:7px 12px;
     border-radius:99px;
     background:var(--card);
     border:1.5px solid var(--line);
@@ -196,7 +199,7 @@
   .chip.selected{
     background:var(--pasture);
     border-color:var(--pasture);
-    color:#fff;
+    color:var(--pasture-on);
   }
 
   /* ===== Инпутлар ===== */
@@ -218,7 +221,7 @@
     background:var(--card);
     border:1.5px solid var(--line);
     border-radius:var(--radius-s);
-    padding:11px 13px;
+    padding:9px 12px;
     outline:none;
     transition:border-color .15s ease, box-shadow .15s ease;
     appearance:none;
@@ -235,7 +238,7 @@
     padding-right:32px;
   }
   select:disabled{color:var(--ink-soft); background-color:var(--paper-soft); cursor:not-allowed;}
-  textarea{resize:none; min-height:64px; font-size:14px; line-height:1.4;}
+  textarea{resize:none; min-height:50px; font-size:14px; line-height:1.4;}
   .char-count{
     text-align:right; font-family:var(--font-mono); font-size:10px;
     color:var(--ink-soft); margin-top:4px;
@@ -274,7 +277,7 @@
   }
   .tag-photo-area{
     position:relative;
-    height:150px;
+    height:118px;
     background:linear-gradient(135deg, var(--pasture-mist) 0%, #EFE7CE 100%);
     display:flex; align-items:center; justify-content:center;
     overflow:hidden;
@@ -311,11 +314,13 @@
     display:flex; align-items:center; gap:5px;
     font-family:var(--font-body);
     font-size:11.5px; font-weight:700;
-    color:var(--tag-ink);
-    background:var(--tag);
+    color:#fff;
+    background:rgba(20,22,15,.4);
+    backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px);
     padding:5px 11px 5px 8px;
     border-radius:99px;
-    box-shadow:0 3px 8px -2px rgba(196,128,30,.5);
+    border:1px solid rgba(255,255,255,.18);
   }
   .tag-animal-badge .emoji{font-size:13px;}
   .tag-loc-overlay{
@@ -362,7 +367,7 @@
     flex-shrink:0;
     background:var(--card);
     border-top:1px solid var(--line);
-    padding:12px var(--sp-4) 16px;
+    padding:9px var(--sp-4) 11px;
     box-shadow:0 -8px 20px -14px rgba(0,0,0,.25);
   }
   .bottom-fraction{
@@ -370,18 +375,18 @@
     font-family:var(--font-mono);
     font-size:10.5px;
     color:var(--ink-soft);
-    margin-bottom:9px;
+    margin-bottom:6px;
   }
   .submit-btn{
     width:100%;
     border:none;
     border-radius:var(--radius-m);
-    padding:14px;
+    padding:12px;
     font-family:var(--font-display);
     font-weight:700;
     font-size:14.5px;
-    color:#fff;
-    background:linear-gradient(135deg, var(--pasture) 0%, var(--pasture-deep) 100%);
+    color:var(--pasture-on);
+    background:var(--pasture);
     cursor:pointer;
     transition:opacity .2s ease, transform .1s ease;
     display:flex; align-items:center; justify-content:center; gap:8px;
@@ -447,10 +452,6 @@
     </div>
     <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
     <div class="progress-text" id="progressText">0 / 6 майдон тўлдирилди</div>
-  </div>
-
-  <div id="debugPanel" style="background:#FFF3CD; border:1px solid #E0A800; color:#5C4500; font-family:monospace; font-size:11px; padding:10px 14px; line-height:1.6; white-space:pre-wrap; word-break:break-all;">
-    Диагностика юкланмоқда...
   </div>
 
   <div class="content">
@@ -533,7 +534,7 @@
 
     <!-- ЖОНЛИ PREVIEW — ЭЪЛОН КАРТОЧКАСИ -->
     <div class="section tag-wrap">
-      <div class="section-label">Эълонингиз шундай кўринади</div>
+      <div class="section-label">Эълонингиз шундай кўринади (расм каналда тўлиқ кўринади)</div>
       <div class="tag-card">
         <div class="tag-photo-area" id="tagPhotoArea">
           <span class="tag-photo-placeholder" id="tagPhotoPlaceholder">🐾</span>
@@ -618,22 +619,6 @@
   const initData = tg ? tg.initData : "";
   const tgUser = (tg && tg.initDataUnsafe) ? tg.initDataUnsafe.user : null;
   let botUsername = null; // /api/profile'дан келади
-
-  // ═══ ВАҚТИНЧАЛИК ДИАГНОСТИКА — муаммо топилгач олиб ташланади ═══
-  (function showDebug(){
-    const panel = document.getElementById('debugPanel');
-    const lines = [
-      `window.Telegram mavjud: ${!!window.Telegram}`,
-      `tg (WebApp) mavjud: ${!!tg}`,
-      `tg.platform: ${tg ? tg.platform : '—'}`,
-      `tg.version: ${tg ? tg.version : '—'}`,
-      `initData uzunligi: ${initData.length}`,
-      `initData (birinchi 60 belgi): ${initData ? initData.slice(0,60) : "(BO'SH)"}`,
-      `initDataUnsafe.user: ${tgUser ? JSON.stringify(tgUser) : "(YO'Q)"}`,
-      `URL: ${window.location.href}`,
-    ];
-    panel.textContent = lines.join('\n');
-  })();
 
   document.getElementById('topbarClose').addEventListener('click', () => {
     if (tg) tg.close();
