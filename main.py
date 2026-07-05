@@ -25,7 +25,7 @@ async def main_loop():
     register_all_handlers(dp)
 
     # Веб-сервер (Render портини банд қилиш учун + Mini App backend)
-    app = web.Application(client_max_size=60 * 1024 * 1024)  # 60MB — фото/видео учун
+    app = web.Application(client_max_size=250 * 1024 * 1024)  # 250MB — бир нечта 50MB'лик видео учун жой
     app.router.add_get("/", handle_render_health_check)
     register_webapp_routes(app)  # /adform, /api/profile, /api/ads/submit
 
