@@ -272,7 +272,7 @@ async def api_submit_ad(request: web.Request):
             content_type = part.headers.get("Content-Type", "")
             is_video = content_type.startswith("video/")
             file_bytes = await part.read(decode=False)
-            if len(file_bytes) > 20 * 1024 * 1024:  # 20 MB — Bot API limiti
+            if len(file_bytes) > 50 * 1024 * 1024:  # 50 MB — Bot API'нинг бот-юклаш лимити
                 oversized_files.append(part.filename or "файл")
                 continue
             media_files.append({
@@ -290,7 +290,7 @@ async def api_submit_ad(request: web.Request):
 
     if oversized_files:
         return web.json_response(
-            {"ok": False, "error": f"Файл ҳажми жуда катта (20MB дан ошди): {', '.join(oversized_files)}"},
+            {"ok": False, "error": f"Файл ҳажми жуда катта (50MB дан ошди): {', '.join(oversized_files)}"},
             status=400
         )
 
