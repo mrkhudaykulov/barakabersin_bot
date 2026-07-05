@@ -534,7 +534,7 @@
 
     <!-- ЖОНЛИ PREVIEW — ЭЪЛОН КАРТОЧКАСИ -->
     <div class="section tag-wrap">
-      <div class="section-label">Эълонингиз шундай кўринади (расм каналда тўлиқ кўринади)</div>
+      <div class="section-label">Эълон кўриши (расмлар каналда тўлиқ кўрсатилади)</div>
       <div class="tag-card">
         <div class="tag-photo-area" id="tagPhotoArea">
           <span class="tag-photo-placeholder" id="tagPhotoPlaceholder">🐾</span>
@@ -780,14 +780,14 @@
 
   photoInput.addEventListener('change', e => {
     const files = Array.from(e.target.files || []);
-    const MAX_SIZE = 20 * 1024 * 1024; // 20MB — Bot API limiti
+    const MAX_SIZE = 50 * 1024 * 1024; // 50MB — Bot API'нинг бот-юклаш лимити
 
     files.forEach(file => {
       if (file.size > MAX_SIZE){
         if (tg && tg.showAlert){
-          tg.showAlert(`"${file.name}" файли жуда катта (20MB дан ошди). Илтимос, кичикроқ файл танланг.`);
+          tg.showAlert(`"${file.name}" файли жуда катта (50MB дан ошди). Илтимос, кичикроқ файл танланг.`);
         } else {
-          alert(`"${file.name}" файли жуда катта (20MB дан ошди).`);
+          alert(`"${file.name}" файли жуда катта (50MB дан ошди).`);
         }
         return;
       }
