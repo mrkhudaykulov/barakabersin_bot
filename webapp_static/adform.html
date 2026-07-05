@@ -327,50 +327,6 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     max-width:calc(100% - 24px);
   }
-  .tag-content{
-    padding:13px 15px 15px;
-    display:flex; align-items:flex-end; justify-content:space-between;
-    gap:10px;
-  }
-  .tag-price-block{min-width:0;}
-  .tag-price-label{
-    font-family:var(--font-mono);
-    font-size:9.5px;
-    color:var(--ink-soft);
-    text-transform:uppercase;
-    letter-spacing:.08em;
-    margin-bottom:2px;
-  }
-  .tag-price{
-    font-family:var(--font-display);
-    font-weight:700;
-    font-size:18px;
-    color:var(--pasture-deep);
-    letter-spacing:-.01em;
-    white-space:nowrap;
-  }
-  .tag-price .cur{
-    font-size:12px;
-    font-weight:600;
-    color:var(--ink-soft);
-    margin-left:3px;
-  }
-  .tag-status-dot{
-    flex-shrink:0;
-    display:flex; align-items:center; gap:6px;
-    font-family:var(--font-mono);
-    font-size:9.5px;
-    color:var(--pasture);
-    background:var(--pasture-mist);
-    padding:5px 10px;
-    border-radius:99px;
-    white-space:nowrap;
-  }
-  .tag-status-dot .dot{
-    width:6px; height:6px; border-radius:50%;
-    background:var(--pasture);
-    box-shadow:0 0 0 3px rgba(46,74,52,.15);
-  }
   .tag-hint{
     text-align:center;
     font-family:var(--font-mono);
@@ -380,37 +336,23 @@
     letter-spacing:.02em;
   }
 
-  /* ===== Тўлиқ каналдаги кўриниш ===== */
-  .full-preview{
-    margin-top:10px;
-    background:var(--card);
-    border:1px solid var(--line);
-    border-radius:14px;
-    padding:13px 14px 12px;
-  }
-  .full-preview-label{
-    font-family:var(--font-mono);
-    font-size:9.5px;
-    text-transform:uppercase;
-    letter-spacing:.07em;
-    color:var(--ink-soft);
-    margin-bottom:8px;
-    display:flex; align-items:center; gap:5px;
-  }
-  .full-preview-body{
+  /* ===== Карточка ичидаги тўлиқ матн (расмдан кейин) ===== */
+  .tag-full-text{
+    padding:14px 15px 14px;
     font-size:12.5px;
     line-height:1.65;
     color:var(--ink);
     white-space:pre-wrap;
     word-break:break-word;
   }
-  .full-preview-body b{color:var(--pasture-deep);}
-  .full-preview-footer{
-    margin-top:9px;
+  .tag-full-text b{color:var(--pasture-deep);}
+  .tag-full-text a{color:var(--pasture); font-weight:600;}
+  .tag-footer{
+    margin-top:10px;
     padding-top:9px;
     border-top:1px dashed var(--line);
     font-family:var(--font-mono);
-    font-size:10px;
+    font-size:10.5px;
     color:var(--ink-soft);
     line-height:1.7;
   }
@@ -597,24 +539,9 @@
           </span>
           <span class="tag-loc-overlay" id="tagLoc">📍 Ҳудуд танланмаган</span>
         </div>
-        <div class="tag-content">
-          <div class="tag-price-block">
-            <div class="tag-price-label">Нархи</div>
-            <div class="tag-price" id="tagPrice">— <span class="cur">сўм</span></div>
-          </div>
-          <div class="tag-status-dot"><span class="dot"></span>Қораламa</div>
-        </div>
+        <div class="tag-full-text" id="fullPreviewBody">—</div>
       </div>
       <div class="tag-hint">тўлдирган сайин янгиланади</div>
-
-      <div class="full-preview">
-        <div class="full-preview-label">📄 Каналдаги тўлиқ матн</div>
-        <div class="full-preview-body" id="fullPreviewBody">—</div>
-        <div class="full-preview-footer">
-          Админсиз эълон жойлаш: @chorva_bozor_bot<br>
-          Канал: @internetmolbozor
-        </div>
-      </div>
     </div>
 
   </div>
@@ -685,6 +612,8 @@
     tg.expand();
   }
   const initData = tg ? tg.initData : "";
+  const tgUser = (tg && tg.initDataUnsafe) ? tg.initDataUnsafe.user : null;
+  let botUsername = null; // /api/profile'дан келади
 
   document.getElementById('topbarClose').addEventListener('click', () => {
     if (tg) tg.close();
@@ -699,7 +628,11 @@
     try {
       const res = await fetch('/api/profile?initData=' + encodeURIComponent(initData));
       const data = await res.json();
-      if (!data.ok || !data.profile) return;
+      if (!data.ok) return;
+
+      botUsername = data.bot_username || null;
+
+      if (!data.profile) { renderFullPreview(); return; }
 
       const p = data.profile;
       if (p.region){
@@ -906,12 +839,6 @@
       : "Ҳудуд танланмаган";
     document.getElementById('tagLoc').textContent = "📍 " + locText;
 
-    // Нарх
-    const priceEl = document.getElementById('tagPrice');
-    priceEl.innerHTML = state.price
-      ? formatPrice(state.price) + ' <span class="cur">сўм</span>'
-      : '— <span class="cur">сўм</span>';
-
     // Расм/видео ёки placeholder
     const photoArea = document.getElementById('tagPhotoArea');
     const placeholder = document.getElementById('tagPhotoPlaceholder');
@@ -1041,13 +968,36 @@
     const mfy = state.mfy && state.mfy.trim() ? state.mfy.trim() : 'Кўрсатилмаган';
     const phone = state.phone.trim() || '—';
 
-    el.innerHTML =
+    // 💬 Телеграм қатори — ads.py'даги username_text мантиғи билан бир хил
+    let usernameLine;
+    if (tgUser && tgUser.username){
+      usernameLine = '@' + escapeHtml(tgUser.username);
+    } else if (tgUser){
+      usernameLine = `<a href="tg://user?id=${tgUser.id}">Хабар ёзиш</a>`;
+    } else {
+      usernameLine = '—';
+    }
+
+    let body =
       `#️⃣ #${escapeHtml(animalName)}\n` +
       `🔢 <b>Сони:</b> ${escapeHtml(qty)}\n` +
       `💰 <b>Нархи:</b> ${escapeHtml(price)}\n` +
       `📝 <b>Изоҳ:</b> ${escapeHtml(desc)}\n` +
       `📍 <b>Манзил:</b> ${escapeHtml(region)} в, ${escapeHtml(district)} т, ${escapeHtml(mfy)} МФЙ\n\n` +
-      `📞 <b>Алоқа:</b> ${escapeHtml(phone)}`;
+      `📞 <b>Алоқа:</b> ${escapeHtml(phone)}\n` +
+      `💬 <b>Телеграм:</b> ${usernameLine}`;
+
+    // Канал/Бошқариш ҳаволалари — ads.py'даги caption'нинг охирги қисми билан бир хил
+    const botLink = botUsername
+      ? `https://t.me/${botUsername}`
+      : '#';
+    body += `<div class="tag-footer">` +
+      `<a href="https://t.me/internetmolbozor" target="_blank">Channel</a>` +
+      ` | ` +
+      `<a href="${botLink}" target="_blank">Бошқариш</a>` +
+      `</div>`;
+
+    el.innerHTML = body;
   }
 
   function escapeHtml(s){
