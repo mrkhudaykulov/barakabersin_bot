@@ -142,35 +142,27 @@ async def onboarding_phone(message: types.Message, state: FSMContext):
 
 
 @router.message(Command("start"))
-async def start_cmd(message: types., state: FSMContext):
+async def start_cmd(message: types.Message, state: FSMContext):
     save_user(
         user_id=message.from_user.id,
         full_name=message.from_user.full_name,
         username=message.from_user.username
     )
-    # ═══ АДМИН ТЕКШИРИШ ═══
-    if message.from_user.id in ADMINS:
-        kb = ReplyKeyboardMarkup(keyboard=[
-            [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
-            [KeyboardButton(text="📊 Нархлар индекси"), KeyboardButton(text="🗂 Менинг эълонларим")],
-            [KeyboardButton(text="🧮 Ферма калькулятори"), KeyboardButton(text="🔔 Хабардор қил")],
-            [KeyboardButton(text="🩺 Ветеринария")],
-            [KeyboardButton(text="🔐 Админ панел")]
-        ], resize_keyboard=True)
-    else:
-        kb = main_menu()
 
     await message.answer(
-        "Ассалому алайкум! Чорва бозор ботига хуш келибсиз. Керакли бўлимни менюдаги тугмаларда танланг!",
-        reply_markup=kb
+        "Ассалому алайкум! Чорва бозор ботига хуш келибсиз!"
     )
-    
-    profile = get_user_profile(message.from_user.id)               # ← yangi
+
+    # ═══ ПРОФИЛ ТЎЛИҚМИ? Бўлмаса — онбординг ═══
+    profile = get_user_profile(message.from_user.id)
     if not (profile.get("region") and profile.get("district") and profile.get("phone")):
-        await _ask_next_onboarding_step(message, state)             # ← onboarding boshlanadi
+        await _ask_next_onboarding_step(message, state)
         return
 
-    await message.answer("Керакли бўлимни танланг!", reply_markup=_get_home_kb(...))
+    await message.answer(
+        "Керакли бўлимни менюдаги тугмаларда танланг!",
+        reply_markup=_get_home_kb(message.from_user.id)
+    )
 
 
 @router.message(F.text == "🏠 Бош меню")
