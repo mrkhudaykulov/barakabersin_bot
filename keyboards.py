@@ -1,5 +1,6 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
+from config import WEBAPP_URL
 
 DISTRICTS = {
     "Фарғона": [
@@ -72,6 +73,10 @@ DISTRICTS = {
 def main_menu():
     buttons = [
         [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
+        [KeyboardButton(
+            text="🌐 Тез эълон бериш (янги!)",
+            web_app=WebAppInfo(url=f"{WEBAPP_URL}/adform")
+        )],
         [KeyboardButton(text="📊 Бозор таҳлили"), KeyboardButton(text="🗂 Менинг эълонларим")],
         [KeyboardButton(text="🩺 Ветеринария"), KeyboardButton(text="🔔 Хабардор қил")],
     ]
@@ -286,6 +291,10 @@ def main_menu_admin():
     """Админ учун бош меню"""
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
+        [KeyboardButton(
+            text="🌐 Тез эълон бериш (янги!)",
+            web_app=WebAppInfo(url=f"{WEBAPP_URL}/adform")
+        )],
         [KeyboardButton(text="📊 Бозор таҳлили"), KeyboardButton(text="🗂 Менинг эълонларим")],
         [KeyboardButton(text="🩺 Ветеринария"), KeyboardButton(text="🔔 Хабардор қил")],
         [KeyboardButton(text="🔐 Админ панел")]
