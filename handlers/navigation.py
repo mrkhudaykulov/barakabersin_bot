@@ -15,20 +15,134 @@ from keyboards import (
     admin_menu_keyboard, admin_ads_keyboard,
     admin_prices_keyboard, admin_block_keyboard, admin_premium_keyboard,
     vet_contact_result_keyboard, vet_action_type_keyboard, vet_role_type_keyboard,
-    vet_comment_keyboard, market_analysis_menu, price_index_keyboard
+    vet_comment_keyboard, market_analysis_menu, price_index_keyboard,
+    phone_keyboard
 )
 from states import (
     AdStates, CalcStates, SearchStates, PriceInputStates, NotifyStates,
-    AdminStates, VetStates, VetSuggestStates, MarketStates, PriceIndexStates
+    AdminStates, VetStates, VetSuggestStates, MarketStates, PriceIndexStates,
+    OnboardingStates
 )
-from database import get_connection, get_placeholder, save_user
+from database import get_connection, get_placeholder, save_user, get_user_profile, fix_keyboard_text
 from config import ADMINS
 
 router = Router()
 
+def _get_home_kb(user_id: int):
+    """Фойдаланувчи турига мос бош меню клавиатураси."""
+    return main_menu_admin() if user_id in ADMINS else main_menu()
+
+def _get_ads_show_profile_summary():
+    """Айланма импортни олдини олиш учун lazy import."""
+    from ads import _show_profile_summary
+    return _show_profile_summary
+
+async def _ask_next_onboarding_step(message: types.Message, state: FSMContext):
+    """
+    Профилда етишмаган биринчи майдонни сўрайди.
+    Ҳаммаси тўлдирилган бўлса — онбординг тугайди, бош меню кўрсатилади.
+    """
+    profile = get_user_profile(message.from_user.id)
+ 
+    if not profile.get("region"):
+        await state.set_state(OnboardingStates.region)
+        await message.answer(
+            "📍 Аввал бир марта қисқа маълумот сўраймиз — бу кейинги "
+            "эълонларингизда автоматик тўлдирилади.\n\n"
+            "Вилоятингизни танланг:",
+            reply_markup=regions_keyboard()
+        )
+        return
+ 
+    if not profile.get("district"):
+        await state.set_state(OnboardingStates.district)
+        await message.answer(
+            "🏘 Туманингизни танланг:",
+            reply_markup=districts_keyboard(profile["region"])
+        )
+        return
+ 
+    if not profile.get("mfy"):
+        await state.set_state(OnboardingStates.mfy)
+        await message.answer(
+            "🏡 МФЙ номингизни ёзинг (матн кўринишида):",
+            reply_markup=standard_step_keyboard()
+        )
+        return
+ 
+    if not profile.get("phone"):
+        await state.set_state(OnboardingStates.phone)
+        await message.answer(
+            "📞 Алоқа учун телефон рақамингизни юборинг:",
+            reply_markup=phone_keyboard()
+        )
+        return
+ 
+    # Ҳаммаси тўлиқ — онбординг тугади
+    await state.clear()
+    await message.answer(
+        "✅ Раҳмат! Маълумотларингиз сақланди — энди эълон беришда "
+        "автоматик тўлдирилади.",
+        reply_markup=_get_home_kb(message.from_user.id)
+    )
+ 
+ 
+@router.message(OnboardingStates.region)
+async def onboarding_region(message: types.Message, state: FSMContext):
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.clear()
+        await message.answer("Асосий менюга ўтдингиз. Маълумотингизни "
+                              "истаган вақтда эълон беришда тўлдиришингиз мумкин.",
+                              reply_markup=_get_home_kb(message.from_user.id))
+        return
+    fixed = fix_keyboard_text(message.text)
+    save_user(user_id=message.from_user.id, region=fixed)
+    await _ask_next_onboarding_step(message, state)
+ 
+ 
+@router.message(OnboardingStates.district)
+async def onboarding_district(message: types.Message, state: FSMContext):
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.clear()
+        await message.answer("Асосий менюга ўтдингиз.",
+                              reply_markup=_get_home_kb(message.from_user.id))
+        return
+    fixed = fix_keyboard_text(message.text)
+    save_user(user_id=message.from_user.id, district=fixed)
+    await _ask_next_onboarding_step(message, state)
+ 
+ 
+@router.message(OnboardingStates.mfy)
+async def onboarding_mfy(message: types.Message, state: FSMContext):
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.clear()
+        await message.answer("Асосий менюга ўтдингиз.",
+                              reply_markup=_get_home_kb(message.from_user.id))
+        return
+    save_user(user_id=message.from_user.id, mfy=message.text.strip())
+    await _ask_next_onboarding_step(message, state)
+ 
+ 
+@router.message(OnboardingStates.phone, F.contact | F.text)
+async def onboarding_phone(message: types.Message, state: FSMContext):
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        await state.clear()
+        await message.answer("Асосий менюга ўтдингиз.",
+                              reply_markup=_get_home_kb(message.from_user.id))
+        return
+ 
+    phone = message.contact.phone_number if message.contact else message.text
+    if not any(ch.isdigit() for ch in phone):
+        await message.answer("⚠️ Илтимос, телефон рақамини тўғри форматда юборинг.")
+        return
+ 
+    save_user(user_id=message.from_user.id, phone=phone)
+    await _ask_next_onboarding_step(message, state)
+ 
+
 
 @router.message(Command("start"))
-async def start_cmd(message: types.Message):
+async def start_cmd(message: types., state: FSMContext):
     save_user(
         user_id=message.from_user.id,
         full_name=message.from_user.full_name,
@@ -50,6 +164,13 @@ async def start_cmd(message: types.Message):
         "Ассалому алайкум! Чорва бозор ботига хуш келибсиз. Керакли бўлимни менюдаги тугмаларда танланг!",
         reply_markup=kb
     )
+    
+    profile = get_user_profile(message.from_user.id)               # ← yangi
+    if not (profile.get("region") and profile.get("district") and profile.get("phone")):
+        await _ask_next_onboarding_step(message, state)             # ← onboarding boshlanadi
+        return
+
+    await message.answer("Керакли бўлимни танланг!", reply_markup=_get_home_kb(...))
 
 
 @router.message(F.text == "🏠 Бош меню")
@@ -349,6 +470,12 @@ async def global_back_handler(message: types.Message, state: FSMContext):
         return
 
     elif current_state == AdStates.region.state:
+        data = await state.get_data()
+        if data.get("editing_profile"):
+            await state.update_data(editing_profile=False)
+            show_summary = _get_ads_show_profile_summary()
+            await show_summary(message, state)
+            return
         await state.set_state(AdStates.animal_type)
         await message.answer(
             "🔙 Ҳайвон турини қайта танланг:",
@@ -366,6 +493,11 @@ async def global_back_handler(message: types.Message, state: FSMContext):
 
     elif current_state == AdStates.mfy.state:
         data = await state.get_data()
+        if data.get("editing_profile"):
+            await state.update_data(editing_profile=False)
+            show_summary = _get_ads_show_profile_summary()
+            await show_summary(message, state)
+            return
         await state.set_state(AdStates.district)
         await message.answer(
             "🔙 Туманни қайта танланг:",
@@ -398,11 +530,24 @@ async def global_back_handler(message: types.Message, state: FSMContext):
         return
 
     elif current_state == AdStates.phone.state:
+        data = await state.get_data()
+        if data.get("editing_profile"):
+            await state.update_data(editing_profile=False)
+            show_summary = _get_ads_show_profile_summary()
+            await show_summary(message, state)
+            return
         await state.set_state(AdStates.description)
         await message.answer(
             "🔙 Изоҳ бўлимига қайтилди:",
             reply_markup=description_keyboard()
         )
+        return
+
+    elif current_state == AdStates.profile_confirm.state:
+        # Бу экранда амаллар inline тугмалар орқали бажарилади;
+        # эски reply-keyboard'дан келган матн бўлса, summary'ни қайта кўрсатамиз.
+        show_summary = _get_ads_show_profile_summary()
+        await show_summary(message, state)
         return
 
 
