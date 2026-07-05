@@ -71,6 +71,9 @@ def init_db():
                 phone TEXT,
                 full_name TEXT,
                 username TEXT,
+                region TEXT,
+                district TEXT,
+                mfy TEXT,
                 rejection_count INTEGER DEFAULT 0,
                 is_blocked BOOLEAN DEFAULT FALSE,
                 blocked_at TIMESTAMP,
@@ -175,6 +178,9 @@ def init_db():
                 phone TEXT,
                 full_name TEXT,
                 username TEXT,
+                region TEXT,
+                district TEXT,
+                mfy TEXT,
                 rejection_count INTEGER DEFAULT 0,
                 is_blocked INTEGER DEFAULT 0,
                 blocked_at TIMESTAMP,
@@ -291,6 +297,9 @@ def migrate_db():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS region TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS district TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS mfy TEXT",
             "ALTER TABLE ads ALTER COLUMN expires_at SET DEFAULT (NOW() + INTERVAL '7 days')",            
             "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS district TEXT DEFAULT 'Барчаси'",
             """CREATE TABLE IF NOT EXISTS admin_review_messages (
@@ -342,6 +351,9 @@ def migrate_db():
             "ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN blocked_at TIMESTAMP",
             "ALTER TABLE users ADD COLUMN is_premium INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN region TEXT",
+            "ALTER TABLE users ADD COLUMN district TEXT",
+            "ALTER TABLE users ADD COLUMN mfy TEXT",
             "ALTER TABLE notifications ADD COLUMN district TEXT DEFAULT 'Барчаси'",
             """CREATE TABLE IF NOT EXISTS admin_review_messages (
                 ad_id INTEGER NOT NULL, admin_id INTEGER NOT NULL,
@@ -432,7 +444,8 @@ def save_ad_with_media(user_id: int, data: dict, media_list: list) -> int | None
 # ФОЙДАЛАНУВЧИ — ТЕЛЕФОН САҚЛАШ
 # ═══════════════════════════════════════
 
-def save_user(user_id: int, full_name: str = None, username: str = None, phone: str = None):
+def save_user(user_id: int, full_name: str = None, username: str = None, phone: str = None,
+              region: str = None, district: str = None, mfy: str = None):
     """Фойдаланувчини базага сақлаш ёки янгилаш"""
     p = get_placeholder()
     conn = get_connection()
@@ -440,18 +453,21 @@ def save_user(user_id: int, full_name: str = None, username: str = None, phone: 
 
     if DATABASE_URL:
         cursor.execute(f"""
-            INSERT INTO users (user_id, full_name, username, phone)
-            VALUES ({p}, {p}, {p}, {p})
+            INSERT INTO users (user_id, full_name, username, phone, region, district, mfy)
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p})
             ON CONFLICT (user_id) DO UPDATE SET
                 full_name = COALESCE(EXCLUDED.full_name, users.full_name),
                 username  = COALESCE(EXCLUDED.username, users.username),
-                phone     = COALESCE(EXCLUDED.phone, users.phone)
-        """, (user_id, full_name, username, phone))
+                phone     = COALESCE(EXCLUDED.phone, users.phone),
+                region    = COALESCE(EXCLUDED.region, users.region),
+                district  = COALESCE(EXCLUDED.district, users.district),
+                mfy       = COALESCE(EXCLUDED.mfy, users.mfy)
+        """, (user_id, full_name, username, phone, region, district, mfy))
     else:
         cursor.execute(f"""
-            INSERT OR IGNORE INTO users (user_id, full_name, username, phone)
-            VALUES ({p}, {p}, {p}, {p})
-        """, (user_id, full_name, username, phone))
+            INSERT OR IGNORE INTO users (user_id, full_name, username, phone, region, district, mfy)
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p})
+        """, (user_id, full_name, username, phone, region, district, mfy))
 
         # Мавжуд фойдаланувчини янгилаш
         if full_name:
@@ -460,9 +476,36 @@ def save_user(user_id: int, full_name: str = None, username: str = None, phone: 
             cursor.execute(f"UPDATE users SET username = {p} WHERE user_id = {p}", (username, user_id))
         if phone:
             cursor.execute(f"UPDATE users SET phone = {p} WHERE user_id = {p}", (phone, user_id))
+        if region:
+            cursor.execute(f"UPDATE users SET region = {p} WHERE user_id = {p}", (region, user_id))
+        if district:
+            cursor.execute(f"UPDATE users SET district = {p} WHERE user_id = {p}", (district, user_id))
+        if mfy:
+            cursor.execute(f"UPDATE users SET mfy = {p} WHERE user_id = {p}", (mfy, user_id))
 
     conn.commit()
     conn.close()
+
+
+def get_user_profile(user_id: int) -> dict:
+    """
+    Фойдаланувчининг сақланган профилини қайтаради:
+    {'phone', 'region', 'district', 'mfy'} — ҳар бири None бўлиши мумкин.
+    Mini App'да авто-тўлдириш учун ишлатилади.
+    """
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"SELECT phone, region, district, mfy FROM users WHERE user_id = {p}",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return {"phone": None, "region": None, "district": None, "mfy": None}
+    phone, region, district, mfy = row
+    return {"phone": phone, "region": region, "district": district, "mfy": mfy}
 
 
 def get_user_phone(user_id: int) -> str | None:
