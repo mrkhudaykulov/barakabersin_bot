@@ -449,6 +449,10 @@
     <div class="progress-text" id="progressText">0 / 6 майдон тўлдирилди</div>
   </div>
 
+  <div id="debugPanel" style="background:#FFF3CD; border:1px solid #E0A800; color:#5C4500; font-family:monospace; font-size:11px; padding:10px 14px; line-height:1.6; white-space:pre-wrap; word-break:break-all;">
+    Диагностика юкланмоқда...
+  </div>
+
   <div class="content">
 
     <!-- РАСМЛАР -->
@@ -614,6 +618,22 @@
   const initData = tg ? tg.initData : "";
   const tgUser = (tg && tg.initDataUnsafe) ? tg.initDataUnsafe.user : null;
   let botUsername = null; // /api/profile'дан келади
+
+  // ═══ ВАҚТИНЧАЛИК ДИАГНОСТИКА — муаммо топилгач олиб ташланади ═══
+  (function showDebug(){
+    const panel = document.getElementById('debugPanel');
+    const lines = [
+      `window.Telegram mavjud: ${!!window.Telegram}`,
+      `tg (WebApp) mavjud: ${!!tg}`,
+      `tg.platform: ${tg ? tg.platform : '—'}`,
+      `tg.version: ${tg ? tg.version : '—'}`,
+      `initData uzunligi: ${initData.length}`,
+      `initData (birinchi 60 belgi): ${initData ? initData.slice(0,60) : '(BO\\'SH)'}`,
+      `initDataUnsafe.user: ${tgUser ? JSON.stringify(tgUser) : '(YO\\'Q)'}`,
+      `URL: ${window.location.href}`,
+    ];
+    panel.textContent = lines.join('\n');
+  })();
 
   document.getElementById('topbarClose').addEventListener('click', () => {
     if (tg) tg.close();
