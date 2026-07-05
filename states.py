@@ -14,6 +14,17 @@ class AdStates(StatesGroup):
     profile_confirm = State()
 
 
+class OnboardingStates(StatesGroup):
+    """
+    Бот биринчи марта ишга туширилганда (ёки профил тўлиқ бўлмаса)
+    вилоят/туман/МФЙ/телефонни бир марта сўраш учун.
+    """
+    region = State()
+    district = State()
+    mfy = State()
+    phone = State()
+
+
 class CalcStates(StatesGroup):
     menu = State()
     qoy_bosh = State()
@@ -129,10 +140,3 @@ class VetAdminStates(StatesGroup):
     edit_fish = State()
     edit_lavozim = State()
     edit_tel = State()
-
-class OnboardingStates(StatesGroup):
-    """Бот биринчи марта ишга туширилганда маълумот сўраш учун."""
-    region = State()
-    district = State()
-    mfy = State()
-    phone = State()
