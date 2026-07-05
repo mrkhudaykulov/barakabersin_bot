@@ -72,12 +72,12 @@ DISTRICTS = {
 
 def main_menu():
     buttons = [
-        [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
         [KeyboardButton(
             text="🌐 Тез эълон бериш (янги!)",
             web_app=WebAppInfo(url=f"{WEBAPP_URL}/adform")
         )],
-        [KeyboardButton(text="📊 Бозор таҳлили"), KeyboardButton(text="🗂 Менинг эълонларим")],
+        [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
+                [KeyboardButton(text="📊 Бозор таҳлили"), KeyboardButton(text="🗂 Менинг эълонларим")],
         [KeyboardButton(text="🩺 Ветеринария"), KeyboardButton(text="🔔 Хабардор қил")],
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
