@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Чорва Бозор — Эълон бериш</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&family=PT+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F5F1E4;
+    --paper-soft:#EFEAD9;
+    --card:#FFFFFF;
+    --line:#E1DAC4;
+    --ink:#2B2A22;
+    --ink-soft:#6B6656;
+    --pasture:#2E4A34;
+    --pasture-deep:#213A2A;
+    --pasture-mist:#DCE6DA;
+    --tag:#F0A93B;
+    --tag-deep:#C4801E;
+    --tag-ink:#4A2E0A;
+    --clay:#B24A2F;
+
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+    --radius-s:10px; --radius-m:16px; --radius-l:22px;
+
+    --font-display:'Unbounded', sans-serif;
+    --font-body:'Manrope', sans-serif;
+    --font-mono:'PT Mono', monospace;
+  }
+
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; height:100%;}
+  body{
+    font-family:var(--font-body);
+    color:var(--ink);
+    background:var(--pasture-deep);
+    min-height:100vh;
+    min-height:100dvh;
+  }
+
+  /* ===== Mini App контейнери — реал Telegram WebView тўлиқ экран ===== */
+  .phone{
+    width:100%;
+    min-height:100vh;
+    min-height:100dvh;
+    background:var(--paper);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+  }
+
+  /* ===== Топбар ===== */
+  .topbar{
+    padding:14px var(--sp-4) var(--sp-3);
+    background:var(--paper);
+    border-bottom:1px solid var(--line);
+    flex-shrink:0;
+  }
+  .topbar-row{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:var(--sp-3);
+  }
+  .topbar-close{
+    width:30px; height:30px; border-radius:50%;
+    background:var(--paper-soft); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center;
+    font-size:15px; color:var(--ink-soft);
+    cursor:pointer;
+  }
+  .topbar-title{
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:16px;
+    color:var(--pasture-deep);
+  }
+  .topbar-spacer{width:30px;}
+
+  .progress-track{
+    height:6px; border-radius:99px;
+    background:var(--paper-soft);
+    border:1px solid var(--line);
+    overflow:hidden;
+  }
+  .progress-fill{
+    height:100%;
+    background:linear-gradient(90deg, var(--tag), var(--pasture));
+    width:0%;
+    border-radius:99px;
+    transition:width .35s ease;
+  }
+  .progress-text{
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    color:var(--ink-soft);
+    margin-top:6px;
+    letter-spacing:.02em;
+  }
+
+  /* ===== Скролл контент ===== */
+  .content{
+    flex:1;
+    overflow-y:auto;
+    padding:var(--sp-4) var(--sp-4) var(--sp-6);
+    background:
+      radial-gradient(ellipse at top, rgba(255,255,255,.4), transparent 60%),
+      var(--paper);
+  }
+  .content::-webkit-scrollbar{width:0;}
+
+  .section{margin-bottom:var(--sp-5);}
+  .section-label{
+    font-family:var(--font-mono);
+    font-size:11px;
+    font-weight:500;
+    letter-spacing:.09em;
+    text-transform:uppercase;
+    color:var(--pasture);
+    margin-bottom:var(--sp-2);
+    display:flex; align-items:center; gap:6px;
+  }
+  .section-label .req{color:var(--clay); font-size:13px;}
+
+  /* ===== Расм юклаш ===== */
+  .photo-strip{
+    display:flex; gap:var(--sp-2);
+    overflow-x:auto;
+    padding-bottom:2px;
+  }
+  .photo-thumb{
+    position:relative;
+    flex:0 0 auto;
+    width:78px; height:78px;
+    border-radius:var(--radius-s);
+    overflow:hidden;
+    background:var(--paper-soft);
+    border:1px solid var(--line);
+  }
+  .photo-thumb img, .photo-thumb video{width:100%; height:100%; object-fit:cover; display:block;}
+  .photo-thumb .video-badge{
+    position:absolute; top:3px; left:3px;
+    background:rgba(20,22,15,.6); color:#fff;
+    font-size:10px;
+    width:16px; height:16px; border-radius:5px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .photo-thumb .cover-badge{
+    position:absolute; bottom:3px; left:3px;
+    background:var(--tag); color:var(--tag-ink);
+    font-family:var(--font-mono); font-size:8.5px; font-weight:700;
+    padding:2px 5px; border-radius:5px;
+  }
+  .photo-thumb .remove-btn{
+    position:absolute; top:3px; right:3px;
+    width:18px; height:18px; border-radius:50%;
+    background:rgba(30,25,15,.65); color:#fff;
+    border:none; font-size:11px; line-height:1;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  .photo-add{
+    flex:0 0 auto;
+    width:78px; height:78px;
+    border-radius:var(--radius-s);
+    border:1.5px dashed var(--line);
+    background:var(--paper-soft);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:2px;
+    cursor:pointer;
+    color:var(--pasture);
+  }
+  .photo-add span.plus{font-size:20px; line-height:1;}
+  .photo-add span.txt{font-family:var(--font-mono); font-size:9px; color:var(--ink-soft);}
+
+  /* ===== Ҳайвон тури chips ===== */
+  .chip-grid{
+    display:flex; flex-wrap:wrap; gap:var(--sp-2);
+  }
+  .chip{
+    font-family:var(--font-body);
+    font-weight:600;
+    font-size:13px;
+    padding:9px 14px;
+    border-radius:99px;
+    background:var(--card);
+    border:1.5px solid var(--line);
+    color:var(--ink);
+    cursor:pointer;
+    display:flex; align-items:center; gap:6px;
+    transition:background .15s ease, border-color .15s ease, transform .1s ease, color .15s ease;
+  }
+  .chip:active{transform:scale(.96);}
+  .chip.selected{
+    background:var(--pasture);
+    border-color:var(--pasture);
+    color:#fff;
+  }
+
+  /* ===== Инпутлар ===== */
+  .field-row{display:flex; gap:var(--sp-3);}
+  .field{flex:1; margin-bottom:var(--sp-3);}
+  .field:last-child{margin-bottom:0;}
+  label.field-label{
+    display:block;
+    font-size:11.5px;
+    color:var(--ink-soft);
+    margin-bottom:5px;
+    font-weight:600;
+  }
+  select, input[type=text], input[type=tel], textarea{
+    width:100%;
+    font-family:var(--font-body);
+    font-size:14.5px;
+    color:var(--ink);
+    background:var(--card);
+    border:1.5px solid var(--line);
+    border-radius:var(--radius-s);
+    padding:11px 13px;
+    outline:none;
+    transition:border-color .15s ease, box-shadow .15s ease;
+    appearance:none;
+    -webkit-appearance:none;
+  }
+  select:focus, input:focus, textarea:focus{
+    border-color:var(--pasture);
+    box-shadow:0 0 0 3px var(--pasture-mist);
+  }
+  select{
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' stroke='%236B6656' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat:no-repeat;
+    background-position:right 13px center;
+    padding-right:32px;
+  }
+  select:disabled{color:var(--ink-soft); background-color:var(--paper-soft); cursor:not-allowed;}
+  textarea{resize:none; min-height:64px; font-size:14px; line-height:1.4;}
+  .char-count{
+    text-align:right; font-family:var(--font-mono); font-size:10px;
+    color:var(--ink-soft); margin-top:4px;
+  }
+  input[readonly].phone-input{background:var(--card);}
+
+  .saved-phone-chip{
+    margin-top:8px;
+    display:inline-flex; align-items:center; gap:6px;
+    background:var(--pasture-mist);
+    border:1px solid var(--pasture);
+    color:var(--pasture-deep);
+    font-family:var(--font-mono);
+    font-size:11.5px;
+    padding:6px 11px;
+    border-radius:99px;
+    cursor:pointer;
+  }
+
+  .price-input-wrap{position:relative;}
+  .price-input-wrap input{padding-right:52px; font-family:var(--font-mono);}
+  .price-suffix{
+    position:absolute; right:13px; top:50%; transform:translateY(-50%);
+    font-family:var(--font-mono); font-size:12px; color:var(--ink-soft);
+  }
+
+  /* ===== ЭЪЛОН КАРТОЧКАСИ (signature preview — замонавий) ===== */
+  .tag-wrap{margin-top:var(--sp-2);}
+  .tag-card{
+    position:relative;
+    background:var(--card);
+    border-radius:20px;
+    overflow:hidden;
+    box-shadow:0 14px 30px -16px rgba(43,42,34,.35), 0 1px 0 rgba(0,0,0,.03);
+    border:1px solid var(--line);
+  }
+  .tag-photo-area{
+    position:relative;
+    height:150px;
+    background:linear-gradient(135deg, var(--pasture-mist) 0%, #EFE7CE 100%);
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+  }
+  .tag-photo-area img{
+    width:100%; height:100%; object-fit:cover; display:block;
+  }
+  .tag-photo-placeholder{
+    font-size:44px;
+    opacity:.55;
+    filter:grayscale(.15);
+  }
+  .tag-photo-area::after{
+    content:"";
+    position:absolute; left:0; right:0; bottom:0; height:56%;
+    background:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(20,22,15,.55) 100%);
+    pointer-events:none;
+  }
+  .tag-serial-badge{
+    position:absolute; top:10px; left:10px; z-index:2;
+    font-family:var(--font-mono);
+    font-size:10px; font-weight:700;
+    letter-spacing:.03em;
+    color:#fff;
+    background:rgba(20,22,15,.4);
+    backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px);
+    padding:4px 9px;
+    border-radius:99px;
+    border:1px solid rgba(255,255,255,.18);
+  }
+  .tag-animal-badge{
+    position:absolute; top:10px; right:10px; z-index:2;
+    display:flex; align-items:center; gap:5px;
+    font-family:var(--font-body);
+    font-size:11.5px; font-weight:700;
+    color:var(--tag-ink);
+    background:var(--tag);
+    padding:5px 11px 5px 8px;
+    border-radius:99px;
+    box-shadow:0 3px 8px -2px rgba(196,128,30,.5);
+  }
+  .tag-animal-badge .emoji{font-size:13px;}
+  .tag-loc-overlay{
+    position:absolute; left:12px; bottom:10px; z-index:2;
+    display:flex; align-items:center; gap:4px;
+    font-size:12px; font-weight:600;
+    color:#fff;
+    text-shadow:0 1px 3px rgba(0,0,0,.4);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    max-width:calc(100% - 24px);
+  }
+  .tag-content{
+    padding:13px 15px 15px;
+    display:flex; align-items:flex-end; justify-content:space-between;
+    gap:10px;
+  }
+  .tag-price-block{min-width:0;}
+  .tag-price-label{
+    font-family:var(--font-mono);
+    font-size:9.5px;
+    color:var(--ink-soft);
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    margin-bottom:2px;
+  }
+  .tag-price{
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:18px;
+    color:var(--pasture-deep);
+    letter-spacing:-.01em;
+    white-space:nowrap;
+  }
+  .tag-price .cur{
+    font-size:12px;
+    font-weight:600;
+    color:var(--ink-soft);
+    margin-left:3px;
+  }
+  .tag-status-dot{
+    flex-shrink:0;
+    display:flex; align-items:center; gap:6px;
+    font-family:var(--font-mono);
+    font-size:9.5px;
+    color:var(--pasture);
+    background:var(--pasture-mist);
+    padding:5px 10px;
+    border-radius:99px;
+    white-space:nowrap;
+  }
+  .tag-status-dot .dot{
+    width:6px; height:6px; border-radius:50%;
+    background:var(--pasture);
+    box-shadow:0 0 0 3px rgba(46,74,52,.15);
+  }
+  .tag-hint{
+    text-align:center;
+    font-family:var(--font-mono);
+    font-size:10px;
+    color:var(--ink-soft);
+    margin-top:8px;
+    letter-spacing:.02em;
+  }
+
+  /* ===== Тўлиқ каналдаги кўриниш ===== */
+  .full-preview{
+    margin-top:10px;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:13px 14px 12px;
+  }
+  .full-preview-label{
+    font-family:var(--font-mono);
+    font-size:9.5px;
+    text-transform:uppercase;
+    letter-spacing:.07em;
+    color:var(--ink-soft);
+    margin-bottom:8px;
+    display:flex; align-items:center; gap:5px;
+  }
+  .full-preview-body{
+    font-size:12.5px;
+    line-height:1.65;
+    color:var(--ink);
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .full-preview-body b{color:var(--pasture-deep);}
+  .full-preview-footer{
+    margin-top:9px;
+    padding-top:9px;
+    border-top:1px dashed var(--line);
+    font-family:var(--font-mono);
+    font-size:10px;
+    color:var(--ink-soft);
+    line-height:1.7;
+  }
+
+  /* ===== Пастки sticky панел ===== */
+  .bottom-bar{
+    flex-shrink:0;
+    background:var(--card);
+    border-top:1px solid var(--line);
+    padding:12px var(--sp-4) 16px;
+    box-shadow:0 -8px 20px -14px rgba(0,0,0,.25);
+  }
+  .bottom-fraction{
+    text-align:center;
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    color:var(--ink-soft);
+    margin-bottom:9px;
+  }
+  .submit-btn{
+    width:100%;
+    border:none;
+    border-radius:var(--radius-m);
+    padding:14px;
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:14.5px;
+    color:#fff;
+    background:linear-gradient(135deg, var(--pasture) 0%, var(--pasture-deep) 100%);
+    cursor:pointer;
+    transition:opacity .2s ease, transform .1s ease;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .submit-btn:active{transform:scale(.985);}
+  .submit-btn:disabled{
+    background:var(--paper-soft);
+    color:var(--ink-soft);
+    cursor:not-allowed;
+    border:1px solid var(--line);
+  }
+
+  /* ===== Тасдиқ toast ===== */
+  .toast-overlay{
+    position:absolute; inset:0;
+    background:rgba(33,58,42,.72);
+    backdrop-filter:blur(2px);
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; pointer-events:none;
+    transition:opacity .25s ease;
+    z-index:60;
+    padding:0 28px;
+  }
+  .toast-overlay.show{opacity:1; pointer-events:auto;}
+  .toast-card{
+    background:var(--paper);
+    border-radius:var(--radius-l);
+    padding:28px 24px 24px;
+    text-align:center;
+    transform:translateY(14px);
+    transition:transform .25s ease;
+    box-shadow:0 20px 40px rgba(0,0,0,.35);
+  }
+  .toast-overlay.show .toast-card{transform:translateY(0);}
+  .toast-emoji{font-size:38px; margin-bottom:10px;}
+  .toast-title{
+    font-family:var(--font-display); font-weight:700; font-size:16px;
+    color:var(--pasture-deep); margin-bottom:6px;
+  }
+  .toast-text{
+    font-size:13px; color:var(--ink-soft); line-height:1.5; margin-bottom:18px;
+  }
+  .toast-close{
+    background:var(--pasture); color:#fff; border:none;
+    font-family:var(--font-body); font-weight:700; font-size:13px;
+    padding:10px 22px; border-radius:99px; cursor:pointer;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition-duration:0.001ms !important;}
+  }
+</style>
+</head>
+<body>
+
+<div class="phone">
+
+  <div class="topbar">
+    <div class="topbar-row">
+      <div class="topbar-close" id="topbarClose">✕</div>
+      <div class="topbar-title">🐾 Эълон бериш</div>
+      <div class="topbar-spacer"></div>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-text" id="progressText">0 / 6 майдон тўлдирилди</div>
+  </div>
+
+  <div class="content">
+
+    <!-- РАСМЛАР -->
+    <div class="section">
+      <div class="section-label"><span class="req">●</span> Расм ва видео</div>
+      <div class="photo-strip" id="photoStrip">
+        <div class="photo-add" id="photoAddBtn">
+          <span class="plus">+</span>
+          <span class="txt">Расм</span>
+        </div>
+      </div>
+      <input type="file" id="photoInput" accept="image/*,video/*" multiple hidden>
+    </div>
+
+    <!-- ҲАЙВОН ТУРИ -->
+    <div class="section">
+      <div class="section-label"><span class="req">●</span> Ҳайвон тури</div>
+      <div class="chip-grid" id="animalChips">
+        <!-- JS билан тўлдирилади -->
+      </div>
+    </div>
+
+    <!-- ҲУДУД -->
+    <div class="section">
+      <div class="section-label"><span class="req">●</span> Ҳудуд</div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Вилоят</label>
+          <select id="regionSelect">
+            <option value="">Танланг</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Туман</label>
+          <select id="districtSelect" disabled>
+            <option value="">Аввал вилоят</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">МФЙ номи (ихтиёрий)</label>
+        <input type="text" id="mfyInput" placeholder="Масалан: Работ МФЙ">
+      </div>
+    </div>
+
+    <!-- ТАФСИЛОТ -->
+    <div class="section">
+      <div class="section-label"><span class="req">●</span> Тафсилот</div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Сони</label>
+          <input type="text" inputmode="numeric" id="qtyInput" placeholder="1">
+        </div>
+        <div class="field">
+          <label class="field-label">Нархи</label>
+          <div class="price-input-wrap">
+            <input type="text" inputmode="numeric" id="priceInput" placeholder="15 000 000">
+            <span class="price-suffix">сўм</span>
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">Изоҳ (ихтиёрий)</label>
+        <textarea id="descInput" maxlength="300" placeholder="Ҳайвон ҳақида қўшимча маълумот..."></textarea>
+        <div class="char-count"><span id="descCount">0</span>/300</div>
+      </div>
+    </div>
+
+    <!-- АЛОҚА -->
+    <div class="section">
+      <div class="section-label"><span class="req">●</span> Алоқа</div>
+      <div class="field">
+        <label class="field-label">Телефон рақами</label>
+        <input type="tel" id="phoneInput" placeholder="+998 90 123 45 67">
+        <div class="saved-phone-chip" id="savedPhoneChip">📱 Сақланган: +998 90 123-45-67</div>
+      </div>
+    </div>
+
+    <!-- ЖОНЛИ PREVIEW — ЭЪЛОН КАРТОЧКАСИ -->
+    <div class="section tag-wrap">
+      <div class="section-label">Эълонингиз шундай кўринади</div>
+      <div class="tag-card">
+        <div class="tag-photo-area" id="tagPhotoArea">
+          <span class="tag-photo-placeholder" id="tagPhotoPlaceholder">🐾</span>
+          <span class="tag-serial-badge" id="tagSerial">CB-0000</span>
+          <span class="tag-animal-badge" id="tagAnimalBadge">
+            <span class="emoji">🐾</span><span id="tagAnimalText">Тур?</span>
+          </span>
+          <span class="tag-loc-overlay" id="tagLoc">📍 Ҳудуд танланмаган</span>
+        </div>
+        <div class="tag-content">
+          <div class="tag-price-block">
+            <div class="tag-price-label">Нархи</div>
+            <div class="tag-price" id="tagPrice">— <span class="cur">сўм</span></div>
+          </div>
+          <div class="tag-status-dot"><span class="dot"></span>Қораламa</div>
+        </div>
+      </div>
+      <div class="tag-hint">тўлдирган сайин янгиланади</div>
+
+      <div class="full-preview">
+        <div class="full-preview-label">📄 Каналдаги тўлиқ матн</div>
+        <div class="full-preview-body" id="fullPreviewBody">—</div>
+        <div class="full-preview-footer">
+          Админсиз эълон жойлаш: @chorva_bozor_bot<br>
+          Канал: @internetmolbozor
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="bottom-bar">
+    <div class="bottom-fraction" id="bottomFraction">Давом этиш учун майдонларни тўлдиринг</div>
+    <button class="submit-btn" id="submitBtn" disabled>🐾 Эълон бериш</button>
+  </div>
+
+  <div class="toast-overlay" id="toastOverlay">
+    <div class="toast-card">
+      <div class="toast-emoji" id="toastEmoji">✅</div>
+      <div class="toast-title" id="toastTitle">Эълон юборилди!</div>
+      <div class="toast-text" id="toastText">Эълонингиз қабул қилинди, админ тасдиқлагач каналга жойланади.</div>
+      <button class="toast-close" id="toastClose">Тушунарли</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ══════════════════════════════════════
+  // Маълумотлар (бот базасидаги DISTRICTS билан бир хил)
+  // ══════════════════════════════════════
+  const DISTRICTS = {
+    "Фарғона": ["Бешариқ","Боғдод","Бувайда","Данғара","Ёзёвон","Қува","Қувасой","Қўқон","Қўштепа","Марғилон","Олтиариқ","Риштон","Сўх","Тошлоқ","Ўзбекистон","Учкўприк","Фарғона","Фурқат"],
+    "Тошкент": ["Пойтахт","Ангрен","Бекобод","Бўка","Бўстонлиқ","Зангиота","Қибрай","Қуйичирчиқ","Оққўрғон","Олмалиқ","Оҳангарон","Паркент","Пискент","Тошкент.т","Ўртачирчиқ","Чиноз","Чирчиқ","Юқоричирчиқ","Ягийўл","Нурафшон"],
+    "Қашқадарё": ["Ғузор","Деҳқонобод","Касби","Китоб","Косон","Қамаши","Қарши","Миришкор","Чироқчи","Нишон","Кўкдала","Яккабоғ","Шаҳрисабз","Муборак"],
+    "Наманган": ["Косонсой","Мингбулоқ","Наманган","Норин","Поп","Тўрақўрғон","Уйчи","Учқўрғон","Чортоқ","Чуст","Янгиқўрғон","Давлатобод"],
+    "Андижон": ["Андижон","Асака","Балиқчи","Бўстон","Булоқбоши","Жалақудуқ","Избоскан","Қўрғонтепа","Марҳамат","Олтинкўл","Пахтобод","Улуғнор","Хонобод","Хўжаобод","Шаҳрихон"],
+    "Бухоро": ["Бухоро","Вобкент","Ғиждувон","Жондор","Когон","Қоровулбозор","Қоракўл","Олот","Пешку","Ромитан","Шофиркон"],
+    "Жиззах": ["Арнасой","Бахмал","Ғаллаорол","Дўстлик","Жиззах","Зарбдор","Зафаробод","Зомин","Мирзачўл","Пахтакор","Фориш","Ш.Рашидов","Янгиобод"],
+    "Қорақалпоғистон": ["Амударё","Беруний","Бўзатов","Кегейли","Қонликўл","Қораўзак","Қўнғирот","Мўйноқ","Нукус","Тахиатош","Тахтакўпир","Тўрткўл","Хўжайли","Чимбой","Шуманай","Элликқала"],
+    "Навоий": ["Зарафшон","Кармана","Конимех","Қизилтепа","Навбаҳор","Навоий","Нурота","Томди","Учқудуқ","Хатирчи","Ғазғон"],
+    "Самарқанд": ["Булунғур","Жомбой","Иштихон","Каттақўрғон","Қўшработ","Нарпай","Нуробод","Оқдарё","Пахтачи","Пайариқ","Пасдарғом","Самарқанд","Тойлоқ","Ургут"],
+    "Сирдарё": ["Боёвут","Гулистон","Мирзаобод","Оқолтин","Сайхунобод","Сардоба","Сирдарё","Ховос","Ширин","Янгиер"],
+    "Сурхондарё": ["Ангор","Бандихон","Бойсун","Денов","Жарқўрғон","Қизириқ","Қумқўрғон","Музработ","Олтинсой","Сариосиё","Термиз","Узун","Шеробод","Шўрчи"],
+    "Хоразм": ["Боғот","Гурлан","Қўшкўпир","Урганч","Хазорасп","Хива","Хонқа","Шовот","Янгиариқ","Янгибозор","Тупроққала"]
+  };
+
+  const ANIMALS = [
+    {name:"Буқа", emoji:"🐂"}, {name:"Сигир", emoji:"🐄"}, {name:"Тана", emoji:"🐮"},
+    {name:"Бузоқ", emoji:"🐮"}, {name:"Қўчқор", emoji:"🐏"}, {name:"Совлиқ", emoji:"🐑"},
+    {name:"Қўзи", emoji:"🐑"}, {name:"Эчки", emoji:"🐐"}, {name:"Улоқ", emoji:"🐐"},
+    {name:"От", emoji:"🐴"}, {name:"Туя", emoji:"🐫"}, {name:"Парранда", emoji:"🐓"},
+    {name:"Бошқа", emoji:"🐾"}
+  ];
+
+  // ══════════════════════════════════════
+  // Ҳолат (state)
+  // ══════════════════════════════════════
+  const state = {
+    media: [],
+    animal: null,
+    region: "",
+    district: "",
+    mfy: "",
+    qty: "",
+    price: "",
+    desc: "",
+    phone: ""
+  };
+
+  // ── Telegram Mini App SDK ──
+  const tg = window.Telegram ? window.Telegram.WebApp : null;
+  if (tg){
+    tg.ready();
+    tg.expand();
+  }
+  const initData = tg ? tg.initData : "";
+
+  document.getElementById('topbarClose').addEventListener('click', () => {
+    if (tg) tg.close();
+  });
+
+  const serial = "CB-" + (2600 + Math.floor(Math.random()*90)) + "-" + String(Math.floor(Math.random()*9000)+1000);
+  document.getElementById('tagSerial').textContent = serial;
+
+  // ── Профилни серверdan олиб, авто-тўлдириш ──
+  async function loadProfile(){
+    if (!initData) return;
+    try {
+      const res = await fetch('/api/profile?initData=' + encodeURIComponent(initData));
+      const data = await res.json();
+      if (!data.ok || !data.profile) return;
+
+      const p = data.profile;
+      if (p.region){
+        regionSelect.value = p.region;
+        regionSelect.dispatchEvent(new Event('change'));
+        if (p.district){
+          // districtSelect'ни region change tugagandan keyin to'ldiramiz
+          setTimeout(() => {
+            districtSelect.value = p.district;
+            state.district = p.district;
+            renderTag(); renderFullPreview(); updateProgress();
+          }, 0);
+        }
+      }
+      if (p.mfy){
+        document.getElementById('mfyInput').value = p.mfy;
+        state.mfy = p.mfy;
+      }
+      if (p.phone){
+        phoneInput.value = p.phone;
+        state.phone = p.phone;
+      }
+      renderFullPreview();
+      updateProgress();
+    } catch (err){
+      console.warn('Профиль олинмади:', err);
+    }
+  }
+
+  // ── Ҳайвон chips ──
+  const animalChipsEl = document.getElementById('animalChips');
+  ANIMALS.forEach(a => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = `<span>${a.emoji}</span><span>${a.name}</span>`;
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+      chip.classList.add('selected');
+      state.animal = a;
+      renderTag();
+      renderFullPreview();
+      updateProgress();
+    });
+    animalChipsEl.appendChild(chip);
+  });
+
+  // ── Вилоят select ──
+  const regionSelect = document.getElementById('regionSelect');
+  const districtSelect = document.getElementById('districtSelect');
+  Object.keys(DISTRICTS).forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r; opt.textContent = r;
+    regionSelect.appendChild(opt);
+  });
+
+  regionSelect.addEventListener('change', () => {
+    state.region = regionSelect.value;
+    state.district = "";
+    districtSelect.innerHTML = '';
+    if (state.region) {
+      districtSelect.disabled = false;
+      const opt0 = document.createElement('option');
+      opt0.value = ""; opt0.textContent = "Танланг";
+      districtSelect.appendChild(opt0);
+      DISTRICTS[state.region].forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d; opt.textContent = d;
+        districtSelect.appendChild(opt);
+      });
+    } else {
+      districtSelect.disabled = true;
+      const opt0 = document.createElement('option');
+      opt0.value = ""; opt0.textContent = "Аввал вилоят";
+      districtSelect.appendChild(opt0);
+    }
+    renderTag(); renderFullPreview(); updateProgress();
+  });
+
+  districtSelect.addEventListener('change', () => {
+    state.district = districtSelect.value;
+    renderTag(); renderFullPreview(); updateProgress();
+  });
+
+  document.getElementById('mfyInput').addEventListener('input', e => {
+    state.mfy = e.target.value;
+    renderFullPreview();
+  });
+
+  // ── Сон / Нарх ──
+  const qtyInput = document.getElementById('qtyInput');
+  const priceInput = document.getElementById('priceInput');
+
+  qtyInput.addEventListener('input', e => {
+    e.target.value = e.target.value.replace(/[^0-9]/g,'');
+    state.qty = e.target.value;
+    renderFullPreview();
+    updateProgress();
+  });
+
+  function formatPrice(v){
+    const digits = v.replace(/[^0-9]/g,'');
+    return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+  priceInput.addEventListener('input', e => {
+    e.target.value = formatPrice(e.target.value);
+    state.price = e.target.value.replace(/\s/g,'');
+    renderTag(); renderFullPreview(); updateProgress();
+  });
+
+  // ── Изоҳ ──
+  const descInput = document.getElementById('descInput');
+  const descCount = document.getElementById('descCount');
+  descInput.addEventListener('input', e => {
+    state.desc = e.target.value;
+    descCount.textContent = e.target.value.length;
+    renderFullPreview();
+  });
+
+  // ── Телефон ──
+  const phoneInput = document.getElementById('phoneInput');
+  phoneInput.addEventListener('input', e => {
+    state.phone = e.target.value;
+    renderFullPreview();
+    updateProgress();
+  });
+
+  document.getElementById('savedPhoneChip').addEventListener('click', () => {
+    phoneInput.value = "+998 90 123-45-67";
+    state.phone = phoneInput.value;
+    renderFullPreview();
+    updateProgress();
+  });
+
+  // ── Расм/видео юклаш ──
+  const photoStrip = document.getElementById('photoStrip');
+  const photoAddBtn = document.getElementById('photoAddBtn');
+  const photoInput = document.getElementById('photoInput');
+
+  photoAddBtn.addEventListener('click', () => photoInput.click());
+
+  photoInput.addEventListener('change', e => {
+    const files = Array.from(e.target.files || []);
+    const MAX_SIZE = 20 * 1024 * 1024; // 20MB — Bot API limiti
+
+    files.forEach(file => {
+      if (file.size > MAX_SIZE){
+        if (tg && tg.showAlert){
+          tg.showAlert(`"${file.name}" файли жуда катта (20MB дан ошди). Илтимос, кичикроқ файл танланг.`);
+        } else {
+          alert(`"${file.name}" файли жуда катта (20MB дан ошди).`);
+        }
+        return;
+      }
+
+      const isVideo = file.type.startsWith('video/');
+      const reader = new FileReader();
+      reader.onload = ev => {
+        state.media.push({
+          type: isVideo ? 'video' : 'image',
+          src: ev.target.result,   // preview учун (data URL)
+          file: file                // юклаш учун (ҳақиқий File объекти)
+        });
+        renderPhotos();
+        renderTag();
+        renderFullPreview();
+        updateProgress();
+      };
+      reader.readAsDataURL(file);
+    });
+    photoInput.value = '';
+  });
+
+  function renderPhotos(){
+    photoStrip.querySelectorAll('.photo-thumb').forEach(el => el.remove());
+    state.media.forEach((item, i) => {
+      const thumb = document.createElement('div');
+      thumb.className = 'photo-thumb';
+      const mediaTag = item.type === 'video'
+        ? `<video src="${item.src}" muted playsinline preload="metadata"></video>`
+        : `<img src="${item.src}" alt="">`;
+      thumb.innerHTML = `
+        ${mediaTag}
+        ${item.type === 'video' ? '<span class="video-badge">▶</span>' : ''}
+        ${i === 0 ? '<span class="cover-badge">Асосий</span>' : ''}
+        <button class="remove-btn" data-i="${i}">✕</button>
+      `;
+      thumb.querySelector('.remove-btn').addEventListener('click', () => {
+        state.media.splice(i,1);
+        renderPhotos(); renderTag(); renderFullPreview(); updateProgress();
+      });
+      photoStrip.insertBefore(thumb, photoAddBtn);
+    });
+  }
+
+  // ── Жонли preview (чорва белгиси) ──
+  function renderTag(){
+    // Ҳайвон бейджи
+    document.getElementById('tagAnimalText').textContent = state.animal ? state.animal.name : "Тур?";
+    document.querySelector('#tagAnimalBadge .emoji').textContent = state.animal ? state.animal.emoji : "🐾";
+
+    // Жойлашув (расм устидаги overlay)
+    const locText = state.region
+      ? (state.district ? `${state.region}, ${state.district}` : state.region)
+      : "Ҳудуд танланмаган";
+    document.getElementById('tagLoc').textContent = "📍 " + locText;
+
+    // Нарх
+    const priceEl = document.getElementById('tagPrice');
+    priceEl.innerHTML = state.price
+      ? formatPrice(state.price) + ' <span class="cur">сўм</span>'
+      : '— <span class="cur">сўм</span>';
+
+    // Расм/видео ёки placeholder
+    const photoArea = document.getElementById('tagPhotoArea');
+    const placeholder = document.getElementById('tagPhotoPlaceholder');
+    let mediaEl = photoArea.querySelector('img, video');
+    if (state.media.length){
+      const first = state.media[0];
+      const wantTag = first.type === 'video' ? 'VIDEO' : 'IMG';
+      if (!mediaEl || mediaEl.tagName !== wantTag){
+        if (mediaEl) mediaEl.remove();
+        mediaEl = document.createElement(first.type === 'video' ? 'video' : 'img');
+        if (first.type === 'video'){
+          mediaEl.muted = true; mediaEl.loop = true; mediaEl.autoplay = true; mediaEl.playsInline = true;
+        }
+        photoArea.insertBefore(mediaEl, photoArea.firstChild);
+      }
+      mediaEl.src = first.src;
+      placeholder.style.display = 'none';
+    } else {
+      if (mediaEl) mediaEl.remove();
+      placeholder.style.display = '';
+      placeholder.textContent = state.animal ? state.animal.emoji : "🐾";
+    }
+  }
+
+  // ── Прогресс ──
+  const REQUIRED_FIELDS = ['media','animal','region','district','qty','price','phone'];
+  function countFilled(){
+    let n = 0;
+    if (state.media.length) n++;
+    if (state.animal) n++;
+    if (state.region) n++;
+    if (state.district) n++;
+    if (state.qty) n++;
+    if (state.price) n++;
+    if (state.phone.trim().length >= 9) n++;
+    return n;
+  }
+  const TOTAL = 7;
+
+  function updateProgress(){
+    const n = countFilled();
+    const pct = Math.round((n/TOTAL)*100);
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressText').textContent = `${n} / ${TOTAL} майдон тўлдирилди`;
+
+    const submitBtn = document.getElementById('submitBtn');
+    const bottomFraction = document.getElementById('bottomFraction');
+    if (n === TOTAL){
+      submitBtn.disabled = false;
+      bottomFraction.textContent = "Барча майдонлар тўлдирилди ✓";
+    } else {
+      submitBtn.disabled = true;
+      bottomFraction.textContent = `Давом этиш учун яна ${TOTAL - n} та майдон тўлдиринг`;
+    }
+  }
+
+  // ── Юбориш ──
+  const submitBtn = document.getElementById('submitBtn');
+  const toastOverlay = document.getElementById('toastOverlay');
+  const toastEmoji = document.getElementById('toastEmoji');
+  const toastTitle = document.getElementById('toastTitle');
+  const toastText = document.getElementById('toastText');
+
+  function showToast(success, message){
+    toastEmoji.textContent = success ? '✅' : '⚠️';
+    toastTitle.textContent = success ? 'Эълон юборилди!' : 'Хатолик юз берди';
+    toastText.textContent = message;
+    toastOverlay.classList.add('show');
+  }
+
+  submitBtn.addEventListener('click', async () => {
+    if (submitBtn.disabled) return;
+
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Юборилмоқда...';
+
+    try {
+      const formData = new FormData();
+      formData.append('animal_type', state.animal ? state.animal.name : '');
+      formData.append('region', state.region);
+      formData.append('district', state.district);
+      formData.append('mfy', state.mfy || '');
+      formData.append('qty', state.qty);
+      formData.append('price', state.price);
+      formData.append('description', state.desc || '');
+      formData.append('phone', state.phone);
+      formData.append('initData', initData);
+
+      state.media.forEach(item => {
+        formData.append('media', item.file, item.file.name);
+      });
+
+      const res = await fetch('/api/ads/submit', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (data.ok){
+        showToast(true, 'Эълонингиз қабул қилинди, админ тасдиқлагач каналга жойланади.');
+      } else {
+        showToast(false, data.error || 'Номаълум хатолик юз берди. Қайта уриниб кўринг.');
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+      }
+    } catch (err){
+      showToast(false, 'Интернет алоқасида муаммо. Қайта уриниб кўринг.');
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
+    }
+  });
+
+  document.getElementById('toastClose').addEventListener('click', () => {
+    toastOverlay.classList.remove('show');
+    if (toastTitle.textContent === 'Эълон юборилди!' && tg){
+      tg.close();
+    }
+  });
+
+  // ── Тўлиқ каналдаги матн (real caption'ga o'xshash) ──
+  function renderFullPreview(){
+    const el = document.getElementById('fullPreviewBody');
+    const animalName = state.animal ? state.animal.name : '—';
+    const qty = state.qty || '—';
+    const price = state.price ? formatPrice(state.price) + ' сўм' : '—';
+    const desc = state.desc.trim() || 'Киритилмаган';
+    const region = state.region || '—';
+    const district = state.district || '—';
+    const mfy = state.mfy && state.mfy.trim() ? state.mfy.trim() : 'Кўрсатилмаган';
+    const phone = state.phone.trim() || '—';
+
+    el.innerHTML =
+      `#️⃣ #${escapeHtml(animalName)}\n` +
+      `🔢 <b>Сони:</b> ${escapeHtml(qty)}\n` +
+      `💰 <b>Нархи:</b> ${escapeHtml(price)}\n` +
+      `📝 <b>Изоҳ:</b> ${escapeHtml(desc)}\n` +
+      `📍 <b>Манзил:</b> ${escapeHtml(region)} в, ${escapeHtml(district)} т, ${escapeHtml(mfy)} МФЙ\n\n` +
+      `📞 <b>Алоқа:</b> ${escapeHtml(phone)}`;
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  }
+
+  renderTag();
+  renderFullPreview();
+  updateProgress();
+  loadProfile();
+</script>
+
+</body>
+</html>
