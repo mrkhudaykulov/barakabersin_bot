@@ -8,6 +8,7 @@ from config import bot, dp
 from database import init_db
 from handlers import register_all_handlers
 from handlers.scheduler import start_scheduler
+from webapp import register_webapp_routes
 
 logging.basicConfig(level=logging.INFO)
 
@@ -23,9 +24,11 @@ async def main_loop():
     # Барча handlerларни рўйхатдан ўтказиш
     register_all_handlers(dp)
 
-    # Веб-сервер (Render портини банд қилиш учун)
-    app = web.Application()
+    # Веб-сервер (Render портини банд қилиш учун + Mini App backend)
+    app = web.Application(client_max_size=60 * 1024 * 1024)  # 60MB — фото/видео учун
     app.router.add_get("/", handle_render_health_check)
+    register_webapp_routes(app)  # /adform, /api/profile, /api/ads/submit
+
     runner = web.AppRunner(app)
     await runner.setup()
 
