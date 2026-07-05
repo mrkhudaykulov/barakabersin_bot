@@ -57,26 +57,45 @@ def verify_init_data(init_data: str) -> dict | None:
     https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
     """
     if not init_data:
+        logging.warning("[initData] БЎШ — Mini App Telegram ичида очилмаган бўлиши мумкин.")
         return None
+
     try:
         parsed = dict(parse_qsl(init_data, strict_parsing=True))
-    except ValueError:
+    except ValueError as e:
+        logging.warning(f"[initData] parse_qsl хатоси: {e} | raw(120)={init_data[:120]!r}")
         return None
+
+    logging.info(f"[initData] Қабул қилинган калитлар: {sorted(parsed.keys())}")
 
     received_hash = parsed.pop("hash", None)
     if not received_hash:
+        logging.warning("[initData] 'hash' майдони йўқ!")
         return None
 
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+
+    token_len = len(BOT_TOKEN) if BOT_TOKEN else 0
+    token_preview = f"{BOT_TOKEN[:6]}...{BOT_TOKEN[-4:]}" if BOT_TOKEN and len(BOT_TOKEN) > 12 else "???"
+    logging.info(f"[initData] BOT_TOKEN узунлиги={token_len}, preview={token_preview}")
 
     secret_key = hmac.new(key=b"WebAppData", msg=BOT_TOKEN.encode(), digestmod=hashlib.sha256).digest()
     computed_hash = hmac.new(key=secret_key, msg=data_check_string.encode(), digestmod=hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(computed_hash, received_hash):
+        logging.warning(
+            f"[initData] HASH МОС ЭМАС!\n"
+            f"  received_hash={received_hash}\n"
+            f"  computed_hash={computed_hash}\n"
+            f"  data_check_string={data_check_string!r}"
+        )
         return None
+
+    logging.info("[initData] ✅ Имзо тўғри тасдиқланди.")
 
     user_raw = parsed.get("user")
     if not user_raw:
+        logging.warning("[initData] 'user' майдони йўқ!")
         return None
     try:
         return json.loads(user_raw)
