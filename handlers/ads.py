@@ -20,7 +20,7 @@ from database import (
     MIN_PRICE, MAX_PRICE,
     fmt_number, fix_keyboard_text,
     get_connection, get_placeholder,
-    save_user, get_user_phone, 
+    save_user, get_user_phone, get_user_profile,
     repost_ad, is_premium_user, 
     archive_ad, AD_EXPIRE_DAYS,
     get_notification_users, is_user_blocked, 
@@ -199,6 +199,22 @@ async def process_type(message: types.Message, state: FSMContext):
         
     fixed = fix_keyboard_text(message.text)
     await state.update_data(animal_type=fixed)
+
+    # ═══ ПРОФИЛДАН АВТО-ТЎЛДИРИШ ═══
+    profile = get_user_profile(message.from_user.id)
+    if profile.get("region") and profile.get("district"):
+        await state.update_data(
+            region=profile["region"],
+            district=profile["district"],
+            mfy=profile.get("mfy"),
+        )
+        await state.set_state(AdStates.quantity)
+        await message.answer(
+            "Сонини киритинг (масалан: 2 бош, 5 та):",
+            reply_markup=standard_step_keyboard()
+        )
+        return
+
     await state.set_state(AdStates.region)
     await message.answer(
         "Вилоятни танланг:",
@@ -241,6 +257,13 @@ async def process_district(message: types.Message, state: FSMContext):
         
     fixed = fix_keyboard_text(message.text)
     await state.update_data(district=fixed)
+
+    data = await state.get_data()
+    if data.get("editing_profile"):
+        await state.update_data(editing_profile=False)
+        await _show_profile_summary(message, state)
+        return
+
     await state.set_state(AdStates.mfy)
     await message.answer(
         "МФЙ номини ёзинг (матн кўринишида):",
@@ -253,6 +276,13 @@ async def process_mfy(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         return
     await state.update_data(mfy=message.text)
+
+    data = await state.get_data()
+    if data.get("editing_profile"):
+        await state.update_data(editing_profile=False)
+        await _show_profile_summary(message, state)
+        return
+
     await state.set_state(AdStates.quantity)
     await message.answer(
         "Сонини киритинг (масалан: 2 бош, 5 та):",
@@ -373,60 +403,116 @@ async def process_description(message: types.Message, state: FSMContext):
         await state.update_data(description=desc)            
 
     # ═══ ТЕЗ РЎЙХАТГА ОЛИШ: базада телефон борми? ═══
-    saved_phone = get_user_phone(message.from_user.id)
-    if saved_phone:
-        await state.update_data(saved_phone=saved_phone)
-        # Сақланган телефонни кўрсатиб, тасдиқ сўраймиз
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(
-                text=f"✅ Ҳа, {saved_phone}",
-                callback_data="use_saved_phone"
-            ),
-            InlineKeyboardButton(
-                text="📱 Янги рақам",
-                callback_data="new_phone"
-            )
-        ]])
-        await message.answer(
-            f"📞 Аввалги рақамингиз: <b>{saved_phone}</b>\n\n"
-            f"Шу рақамдан фойдаланасизми?",
-            parse_mode="HTML",
-            reply_markup=kb
-        )
-    else:
-        await state.set_state(AdStates.phone)
-        await message.answer(
-            "Алоқа учун телефон рақамингизни юборинг:\n"
-            "⚠️ Диққат! Сизга харидорлар шу рақам орқали телефон қилиши учун, "
-            "ТЕЛЕФОН рақамингиз ва фойдаланувчи номи эълонда, @internetmolbozor каналида кўринади!",
-            reply_markup=phone_keyboard()
-        )
-
-
-@router.callback_query(F.data == "use_saved_phone")
-async def use_saved_phone(callback: types.CallbackQuery, state: FSMContext):
-    """Сақланган телефонни ишлатиш"""
     data = await state.get_data()
-    phone = data.get("saved_phone")
+    if not data.get("phone"):
+        saved_phone = get_user_phone(message.from_user.id)
+        if saved_phone:
+            await state.update_data(phone=saved_phone)
+        else:
+            await state.set_state(AdStates.phone)
+            await message.answer(
+                "Алоқа учун телефон рақамингизни юборинг:\n"
+                "⚠️ Диққат! Сизга харидорлар шу рақам орқали телефон қилиши учун, "
+                "ТЕЛЕФОН рақамингиз ва фойдаланувчи номи эълонда, @internetmolbozor каналида кўринади!",
+                reply_markup=phone_keyboard()
+            )
+            return
+
+    await _show_profile_summary(message, state)
+
+
+async def _show_profile_summary(message: types.Message, state: FSMContext):
+    """
+    Вилоят/туман/МФЙ/телефон маълумотини бир жойда кўрсатади —
+    авто-тўлдирилган, лекин ҳар бирини таҳрирлаш имконияти билан.
+    """
+    data = await state.get_data()
+    region = data.get("region") or "—"
+    district = data.get("district") or "—"
+    mfy = data.get("mfy") or "—"
+    phone = data.get("phone") or "—"
+
+    await state.set_state(AdStates.profile_confirm)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✏️ Вилоят/Туман", callback_data="editprofile_region"),
+            InlineKeyboardButton(text="✏️ МФЙ", callback_data="editprofile_mfy"),
+        ],
+        [
+            InlineKeyboardButton(text="✏️ Телефон", callback_data="editprofile_phone"),
+        ],
+        [
+            InlineKeyboardButton(text="✅ Тасдиқлаш ва эълонни жойлаш", callback_data="confirmprofile"),
+        ],
+    ])
+
+    await message.answer(
+        f"📋 <b>Маълумотларингизни текширинг:</b>\n\n"
+        f"📍 <b>Вилоят:</b> {region}\n"
+        f"🏘 <b>Туман:</b> {district}\n"
+        f"🏡 <b>МФЙ:</b> {mfy}\n"
+        f"📞 <b>Телефон:</b> {phone}\n\n"
+        f"⚠️ Диққат! ТЕЛЕФОН рақамингиз ва фойдаланувчи номингиз "
+        f"эълонда, @internetmolbozor каналида кўринади.\n\n"
+        f"Тўғри бўлса тасдиқланг, ёки ўзгартирмоқчи бўлган "
+        f"майдонни танланг:",
+        parse_mode="HTML",
+        reply_markup=kb
+    )
+
+
+@router.callback_query(F.data == "editprofile_region")
+async def edit_profile_region(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(editing_profile=True)
+    await state.set_state(AdStates.region)
     await callback.message.delete()
-    await _finalize_ad(callback.message, state, phone, callback.from_user)
+    await callback.message.answer("Вилоятни қайта танланг:", reply_markup=regions_keyboard())
     await callback.answer()
 
 
-@router.callback_query(F.data == "new_phone")
-async def request_new_phone(callback: types.CallbackQuery, state: FSMContext):
-    """Янги телефон рақами сўраш"""
+@router.callback_query(F.data == "editprofile_mfy")
+async def edit_profile_mfy(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(editing_profile=True)
+    await state.set_state(AdStates.mfy)
     await callback.message.delete()
-    await state.set_state(AdStates.phone)
     await callback.message.answer(
-        "📱 Янги телефон рақамингизни юборинг:",
+        "МФЙ номини қайта ёзинг:",
+        reply_markup=standard_step_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "editprofile_phone")
+async def edit_profile_phone(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(editing_profile=True)
+    await state.set_state(AdStates.phone)
+    await callback.message.delete()
+    await callback.message.answer(
+        "Янги телефон рақамингизни юборинг:",
         reply_markup=phone_keyboard()
     )
     await callback.answer()
 
 
+@router.callback_query(F.data == "confirmprofile")
+async def confirm_profile(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    phone = data.get("phone")
+
+    if not (data.get("region") and data.get("district") and phone):
+        await callback.answer("⚠️ Илтимос, аввал бўш майдонларни тўлдиринг.", show_alert=True)
+        return
+
+    await callback.message.delete()
+    await _finalize_ad(callback.message, state, phone, callback.from_user)
+    await callback.answer()
+
+
 @router.message(AdStates.phone, F.contact | F.text)
 async def process_phone(message: types.Message, state: FSMContext):
+    if message.text and message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        return
     if message.text and not any(char.isdigit() for char in message.text):
         await message.answer(
             "⚠️ Илтимос, телефон рақамни тўғри форматда ёзинг.",
@@ -442,8 +528,8 @@ async def process_phone(message: types.Message, state: FSMContext):
         user_id=message.from_user.id,
         phone=phone
     )
-
-    await _finalize_ad(message, state, phone, message.from_user)
+    await state.update_data(phone=phone, editing_profile=False)
+    await _show_profile_summary(message, state)
 
 
 # Якуний эълон бериш жараёни
@@ -451,9 +537,19 @@ async def process_phone(message: types.Message, state: FSMContext):
 async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, user):
     """
     Эълонни базага сақлаш (pending) ва админларга юбориш.
-    process_phone ва use_saved_phone иккаласидан чақирилади.
+    confirm_profile'дан чақирилади.
     """
     data = await state.get_data()
+
+    # Профилни шу эълондаги охирги қийматлар билан янгилаб қўямиз
+    # (кейинги эълонда яна шу маълумот авто-тўлдирилсин)
+    save_user(
+        user_id=user.id,
+        region=data.get('region'),
+        district=data.get('district'),
+        mfy=data.get('mfy'),
+        phone=phone,
+    )
 
     # ═══ ЁМОН СЎЗЛАРНИ ТЕКШИРИШ ═══
     check_fields = [
@@ -488,7 +584,8 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
     bot_info = await bot.get_me()
 
     price_display = html.escape(data.get('price_display', data['price']))
-        
+    mfy_display = html.escape(data.get('mfy') or "Кўрсатилмаган")
+
     caption = (
         f"#️⃣ #{html.escape(data['animal_type'])}\n"
         f"🔢 <b>Сони:</b> {html.escape(data['quantity'])}\n"
@@ -496,7 +593,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         f"📝 <b>Изоҳ:</b> {html.escape(data['description'])}\n"
         f"📍 <b>Манзил:</b> {html.escape(data['region'])} в, "
         f"{html.escape(data['district'])} т, "
-        f"{html.escape(data['mfy'])} МФЙ\n\n"
+        f"{mfy_display} МФЙ\n\n"
         f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
     )
     if user.id not in REVIEW_ADMINS:
@@ -615,7 +712,7 @@ async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
         f"📝 {html.escape(data['description'])}\n"
         f"📍 {html.escape(data['region'])} в, "
         f"{html.escape(data['district'])} т, "
-        f"{html.escape(data['mfy'])} МФЙ\n\n"
+        f"{html.escape(data.get('mfy') or 'Кўрсатилмаган')} МФЙ\n\n"
         f"📞 {html.escape(phone)}\n"
         f"👤 {user.full_name} (ID: {user.id})\n\n"
         f"🆔 Эълон ID: {ad_id}"
@@ -717,7 +814,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
             f"📝 <b>Изоҳ:</b> {html.escape(desc)}\n"
             f"📍 <b>Манзил:</b> {html.escape(region)} в, "
             f"{html.escape(dist)} т, "
-            f"{html.escape(mfy)} МФЙ\n\n"
+            f"{html.escape(mfy or 'Кўрсатилмаган')} МФЙ\n\n"
             f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
         )
         if user_id not in REVIEW_ADMINS:
@@ -1302,7 +1399,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
                 f"#️⃣ <b>#{html.escape(a_type)}</b>\n"
                 f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
                 f"💰 <b>Нархи:</b> {html.escape(price)}\n"
-                f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т, {html.escape(mfy)} МФЙ\n"
+                f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т, {html.escape(mfy or 'Кўрсатилмаган')} МФЙ\n"
                 f"\n📞 {html.escape(phone)}\n"
                 f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
                 f" | "
