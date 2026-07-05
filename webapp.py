@@ -112,7 +112,12 @@ async def api_profile(request: web.Request):
         return _unauthorized()
 
     profile = get_user_profile(user["id"])
-    return web.json_response({"ok": True, "profile": profile})
+    bot_info = await bot.get_me()
+    return web.json_response({
+        "ok": True,
+        "profile": profile,
+        "bot_username": bot_info.username,
+    })
 
 
 # ═══════════════════════════════════════
