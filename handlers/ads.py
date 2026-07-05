@@ -4,11 +4,11 @@ import logging
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    InlineKeyboardMarkup, InlineKeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo,
     InputMediaPhoto, InputMediaVideo
 )
 
-from config import bot, CHANNEL_ID, REVIEW_ADMINS
+from config import bot, CHANNEL_ID, REVIEW_ADMINS, WEBAPP_URL
 from states import AdStates
 from keyboards import (
     main_menu, cancel_keyboard, photo_confirm_keyboard,
@@ -45,6 +45,32 @@ def _get_keyboard_texts(keyboard) -> set:
             for button in row:
                 texts.add(button.text)
     return texts
+
+# ═══════════════════════════════════════
+# 🌐 ТЕЗ ЭЪЛОН БЕРИШ (Mini App)
+# ═══════════════════════════════════════
+
+@router.message(F.text == "🌐 Тез эълон бериш (янги!)")
+async def open_miniapp(message: types.Message):
+    """
+    ДИҚҚАТ: Reply keyboard тугмасида web_app ишлатилса,
+    Telegram initData'ни УМУМАН бермайди (фақат sendData,
+    матн учун, 4KB чекловли). Шунинг учун бу оддий матн
+    тугмаси — босилганда Inline тугмали хабар юборамиз,
+    ана шу inline тугма web_app'ни очади ва initData тўғри келади.
+    """
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="📱 Тезкор формани очиш",
+            web_app=WebAppInfo(url=f"{WEBAPP_URL}/adform")
+        )
+    ]])
+    await message.answer(
+        "🌐 Тезкор эълон бериш формасини очиш учун "
+        "қуйидаги тугмани босинг:",
+        reply_markup=kb
+    )
+
 
 # ═══════════════════════════════════════
 # ➕ ЭЪЛОН БЕРИШ
