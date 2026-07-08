@@ -8,6 +8,11 @@ groups.py
 барча актив гуруҳларга ✅/❌ тугмали хабар юборилади. Ҳар бир гуруҳ ўз
 админи томонидан МУСТАҚИЛ тасдиқланади/рад этилади — каналдаги
 REVIEW_ADMINS тасдиғига ҳеч қандай алоқаси йўқ.
+
+МУҲИМ (тузатилган хато): ҳар бир callback handler'да `callback.answer()`
+БИРИНЧИ навбатда чақирилади — акс ҳолда, секин DB/Telegram сўровлари
+(get_chat_member, add_region_group) туфайли Telegram'нинг callback query
+муддати тугаб, "query is too old" хатоси чиқарди.
 """
 
 import logging
@@ -19,7 +24,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import bot
 from keyboards import DISTRICTS
 from database import (
-    add_region_group, deactivate_chat,
+    add_region_group, deactivate_chat, get_regions_for_chat,
     get_ad_group_post, review_ad_group_post,
     get_all_active_group_chat_ids, get_blocks_by_admin
 )
@@ -98,11 +103,17 @@ async def all_connected_groups(message: types.Message):
     await message.answer(text, parse_mode="HTML")
 
 
-def _build_region_inline_kb():
+def _build_region_inline_kb(selected_regions=None):
+    """
+    Вилоят танлаш тугмалари. `selected_regions` берилса —
+    аллақачон танланганлар олдига ✅ қўшиб кўрсатади (checkmark).
+    """
+    selected_regions = selected_regions or set()
     buttons = []
     row = []
     for r in REGIONS:
-        row.append(InlineKeyboardButton(text=r, callback_data=f"reggroup_{r}"))
+        label = f"✅ {r}" if r in selected_regions else r
+        row.append(InlineKeyboardButton(text=label, callback_data=f"reggroup_{r}"))
         if len(row) == 2:
             buttons.append(row)
             row = []
@@ -158,7 +169,8 @@ async def viloyat_command(message: types.Message):
     """
     Гуруҳда исталган вақтда — вилоят(лар) боғлашни қайта очиш учун.
     Фақат гуруҳларда ишлайди, ва фақат ўша гуруҳнинг ҳақиқий
-    админи/эгаси чақира олади.
+    админи/эгаси чақира олади. Аллақачон танланган вилоятлар ✅ билан
+    кўрсатилади.
     """
     if message.chat.type not in ("group", "supergroup"):
         await message.answer("ℹ️ Бу буйруқ фақат гуруҳларда ишлайди.")
@@ -169,43 +181,53 @@ async def viloyat_command(message: types.Message):
         await message.answer("⚠️ Фақат гуруҳ админи вилоят(лар)ни созлай олади.")
         return
 
-    kb = _build_region_inline_kb()
+    selected = set(get_regions_for_chat(message.chat.id))
+    kb = _build_region_inline_kb(selected_regions=selected)
     await message.answer(
         "🏘 Бу гуруҳни қайси вилоят(лар)га боғлаймиз?\n\n"
-        "(Бир нечта вилоят танлашингиз мумкин)",
+        "(Бир нечта вилоят танлашингиз мумкин, ✅ — аллақачон танланган)",
         reply_markup=kb
     )
 
 
 @router.callback_query(F.data.startswith("reggroup_"))
 async def region_group_callback(callback: types.CallbackQuery):
+    # ═══ ТЕЗ ЖАВОБ — Telegram callback muddati tugashini oldini olish ═══
+    await callback.answer()
+
     chat_id = callback.message.chat.id
 
     # Фақат шу гуруҳнинг ҳақиқий админи/эгаси танлаши мумкин
     member = await bot.get_chat_member(chat_id, callback.from_user.id)
     if member.status not in ("administrator", "creator"):
-        await callback.answer("⚠️ Фақат гуруҳ админи танлаши мумкин.", show_alert=True)
+        await callback.message.answer("⚠️ Фақат гуруҳ админи танлаши мумкин.")
         return
 
     region = callback.data.replace("reggroup_", "")
 
     if region == "done":
-        await callback.message.edit_text("✅ Созлаш якунланди. Раҳмат!")
-        await callback.answer()
+        try:
+            await callback.message.edit_text("✅ Созлаш якунланди. Раҳмат!")
+        except Exception:
+            pass
         return
 
     chat_title = callback.message.chat.title
     chat_username = callback.message.chat.username
     add_region_group(chat_id, chat_title, chat_username, region)
 
-    await callback.answer(f"✅ {region} қўшилди!")
-    await callback.message.answer(
-        f"✅ Бу гуруҳ энди <b>{region}</b> вилояти учун ҳам эълонларни олади.\n\n"
-        f"Яна вилоят қўшмоқчи бўлсангиз танланг, ёки якунлаш учун "
-        f"«✅ Тугатиш» тугмасини босинг:",
-        parse_mode="HTML",
-        reply_markup=_build_region_inline_kb()
-    )
+    # ═══ Ҳозиргача танланган БАРЧА вилоятларни олиб, ✅ билан ЎРНИДА янгилаймиз ═══
+    selected = set(get_regions_for_chat(chat_id))
+    try:
+        await callback.message.edit_text(
+            f"✅ Танланганлар: {', '.join(sorted(selected))}\n\n"
+            f"Яна вилоят қўшмоқчи бўлсангиз танланг, ёки якунлаш учун "
+            f"«✅ Тугатиш» тугмасини босинг:",
+            parse_mode="HTML",
+            reply_markup=_build_region_inline_kb(selected_regions=selected)
+        )
+    except Exception as e:
+        logging.warning(f"Хабарни янгилашда хато (эҳтимол ўзгармаган): {e}")
 
 
 # ═══════════════════════════════════════
@@ -214,16 +236,19 @@ async def region_group_callback(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("gapprove_"))
 async def group_approve_callback(callback: types.CallbackQuery):
+    # ═══ ТЕЗ ЖАВОБ — birinchi navbatda ═══
+    await callback.answer()
+
     post_id = int(callback.data.replace("gapprove_", ""))
     post = get_ad_group_post(post_id)
     if not post:
-        await callback.answer("⚠️ Топилмади (эҳтимол аллақачон кўриб чиқилган).", show_alert=True)
+        await callback.message.answer("⚠️ Топилмади (эҳтимол аллақачон кўриб чиқилган).")
         return
 
     chat_id = callback.message.chat.id
     member = await bot.get_chat_member(chat_id, callback.from_user.id)
     if member.status not in ("administrator", "creator"):
-        await callback.answer("⚠️ Фақат гуруҳ админи тасдиқлаши мумкин.", show_alert=True)
+        await callback.message.answer("⚠️ Фақат гуруҳ админи тасдиқлаши мумкин.")
         return
 
     review_ad_group_post(post_id, admin_id=callback.from_user.id, approve=True)
@@ -231,21 +256,23 @@ async def group_approve_callback(callback: types.CallbackQuery):
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-    await callback.answer("✅ Тасдиқланди!")
 
 
 @router.callback_query(F.data.startswith("greject_"))
 async def group_reject_callback(callback: types.CallbackQuery):
+    # ═══ ТЕЗ ЖАВОБ — birinchi navbatda ═══
+    await callback.answer()
+
     post_id = int(callback.data.replace("greject_", ""))
     post = get_ad_group_post(post_id)
     if not post:
-        await callback.answer("⚠️ Топилмади (эҳтимол аллақачон кўриб чиқилган).", show_alert=True)
+        await callback.message.answer("⚠️ Топилмади (эҳтимол аллақачон кўриб чиқилган).")
         return
 
     chat_id = callback.message.chat.id
     member = await bot.get_chat_member(chat_id, callback.from_user.id)
     if member.status not in ("administrator", "creator"):
-        await callback.answer("⚠️ Фақат гуруҳ админи рад эта олади.", show_alert=True)
+        await callback.message.answer("⚠️ Фақат гуруҳ админи рад эта олади.")
         return
 
     review_ad_group_post(post_id, admin_id=callback.from_user.id, approve=False)
@@ -253,4 +280,3 @@ async def group_reject_callback(callback: types.CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
-    await callback.answer("❌ Рад этилди ва ўчирилди.")
