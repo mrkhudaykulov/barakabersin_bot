@@ -1707,3 +1707,347 @@ def update_vet_suggestion_fields(suggestion_id, fish=None, lavozim=None, tel=Non
     )
     conn.commit()
     conn.close()
+
+
+# ═══════════════════════════════════════
+# ВИЛОЯТ ↔ ГУРУҲ БОҒЛАШ (кўп-кўпга)
+# ═══════════════════════════════════════
+
+def _ensure_region_group_tables():
+    """region_groups ва ad_group_posts жадвалларини яратади (мавжуд бўлмаса)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS region_groups (
+                id SERIAL PRIMARY KEY,
+                chat_id BIGINT NOT NULL,
+                chat_title TEXT,
+                chat_username TEXT,
+                region TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                added_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE (chat_id, region)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ad_group_posts (
+                id SERIAL PRIMARY KEY,
+                ad_id INTEGER NOT NULL,
+                chat_id BIGINT NOT NULL,
+                message_id BIGINT,
+                status TEXT DEFAULT 'pending',
+                reviewed_by BIGINT,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+    else:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS region_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER NOT NULL,
+                chat_title TEXT,
+                chat_username TEXT,
+                region TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (chat_id, region)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ad_group_posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ad_id INTEGER NOT NULL,
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER,
+                status TEXT DEFAULT 'pending',
+                reviewed_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+    conn.commit()
+    conn.close()
+
+
+# init_db() ишга тушганда бу жадваллар ҳам яратилиши учун:
+# init_db() функциясининг ЎЗИГА қўшимча қатор ёзмасдан,
+# бу ерда мустақил ишга туширамиз (import пайтида эмас, чақирилганда)
+_region_group_tables_ready = False
+
+
+def _ensure_ready():
+    global _region_group_tables_ready
+    if not _region_group_tables_ready:
+        _ensure_region_group_tables()
+        _region_group_tables_ready = True
+
+
+def add_region_group(chat_id: int, chat_title: str, chat_username: str, region: str):
+    """Гуруҳни (chat_id) берилган вилоятга боғлайди. Мавжуд бўлса — такрорламайди."""
+    _ensure_ready()
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute(f"""
+            INSERT INTO region_groups (chat_id, chat_title, chat_username, region, is_active)
+            VALUES ({p}, {p}, {p}, {p}, TRUE)
+            ON CONFLICT (chat_id, region) DO UPDATE SET
+                chat_title = EXCLUDED.chat_title,
+                chat_username = EXCLUDED.chat_username,
+                is_active = TRUE
+        """, (chat_id, chat_title, chat_username, region))
+    else:
+        cursor.execute(f"""
+            INSERT OR IGNORE INTO region_groups (chat_id, chat_title, chat_username, region, is_active)
+            VALUES ({p}, {p}, {p}, {p}, 1)
+        """, (chat_id, chat_title, chat_username, region))
+        cursor.execute(f"""
+            UPDATE region_groups SET chat_title = {p}, chat_username = {p}, is_active = 1
+            WHERE chat_id = {p} AND region = {p}
+        """, (chat_title, chat_username, chat_id, region))
+    conn.commit()
+    conn.close()
+
+
+def get_groups_for_region(region: str):
+    """Берилган вилоятга боғланган, актив гуруҳлар рўйхати: [(chat_id, chat_title, chat_username), ...]"""
+    _ensure_ready()
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute(f"""
+            SELECT chat_id, chat_title, chat_username FROM region_groups
+            WHERE region = {p} AND is_active = TRUE
+        """, (region,))
+    else:
+        cursor.execute(f"""
+            SELECT chat_id, chat_title, chat_username FROM region_groups
+            WHERE region = {p} AND is_active = 1
+        """, (region,))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def deactivate_chat(chat_id: int):
+    """Бот гуруҳдан чиқарилганда — шу chat_id'нинг барча боғланишларини ноактив қилади."""
+    _ensure_ready()
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute(f"UPDATE region_groups SET is_active = FALSE WHERE chat_id = {p}", (chat_id,))
+    else:
+        cursor.execute(f"UPDATE region_groups SET is_active = 0 WHERE chat_id = {p}", (chat_id,))
+    conn.commit()
+    conn.close()
+
+
+def create_ad_group_post(ad_id: int, chat_id: int) -> int:
+    """Эълон учун гуруҳга юбориладиган ёзувни pending ҳолатда яратади, ID қайтаради."""
+    _ensure_ready()
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        INSERT INTO ad_group_posts (ad_id, chat_id, status)
+        VALUES ({p}, {p}, 'pending')
+    """, (ad_id, chat_id))
+    conn.commit()
+    if DATABASE_URL:
+        cursor.execute("SELECT lastval()")
+    else:
+        cursor.execute("SELECT last_insert_rowid()")
+    new_id = cursor.fetchone()[0]
+    conn.close()
+    return new_id
+
+
+def set_ad_group_post_message(post_id: int, message_id: int):
+    """Гуруҳга жойлангандан кейин, хабар ID сини сақлайди."""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE ad_group_posts SET message_id = {p} WHERE id = {p}", (message_id, post_id))
+    conn.commit()
+    conn.close()
+
+
+def get_ad_group_post(post_id: int):
+    """Битта ёзувни қайтаради: (id, ad_id, chat_id, message_id, status, reviewed_by)"""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        SELECT id, ad_id, chat_id, message_id, status, reviewed_by
+        FROM ad_group_posts WHERE id = {p}
+    """, (post_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row
+
+
+def review_ad_group_post(post_id: int, admin_id: int, approve: bool):
+    """Гуруҳ админи томонидан тасдиқлаш/рад этишни сақлайди."""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    new_status = "approved" if approve else "rejected"
+    cursor.execute(f"""
+        UPDATE ad_group_posts SET status = {p}, reviewed_by = {p} WHERE id = {p}
+    """, (new_status, admin_id, post_id))
+    conn.commit()
+    conn.close()
+
+
+def get_ad_group_links(ad_id: int):
+    """
+    Берилган эълон учун — тасдиқланган ва PUBLIC (username'ли) гуруҳлардаги
+    ҳаволалар рўйхатини қайтаради: ["https://t.me/username/123", ...]
+    Приват гуруҳлар (username йўқ) — ҳавола бўлмагани учун рўйхатга кирмайди.
+    """
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        SELECT DISTINCT gp.message_id, rg.chat_username
+        FROM ad_group_posts gp
+        JOIN region_groups rg ON gp.chat_id = rg.chat_id
+        WHERE gp.ad_id = {p} AND gp.status = {p} AND rg.chat_username IS NOT NULL
+    """, (ad_id, "approved"))
+    rows = cursor.fetchall()
+    conn.close()
+    links = []
+    for message_id, chat_username in rows:
+        if message_id and chat_username:
+            links.append(f"https://t.me/{chat_username}/{message_id}")
+    return links
+
+
+# ═══════════════════════════════════════
+# ТЕЗКОР БЛОКЛАШ (админ инline тугма орқали)
+# ═══════════════════════════════════════
+
+def force_block_user(user_id: int):
+    """Фойдаланувчини рад сонидан қатъи назар, ДАРҲОЛ блоклайди."""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute(f"""
+            UPDATE users SET is_blocked = TRUE, blocked_at = NOW() WHERE user_id = {p}
+        """, (user_id,))
+    else:
+        cursor.execute(f"""
+            UPDATE users SET is_blocked = 1, blocked_at = CURRENT_TIMESTAMP WHERE user_id = {p}
+        """, (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def _ensure_block_log_table():
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS block_log (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                blocked_by BIGINT NOT NULL,
+                ad_id INTEGER,
+                reason TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+    else:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS block_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                blocked_by INTEGER NOT NULL,
+                ad_id INTEGER,
+                reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+    conn.commit()
+    conn.close()
+
+
+_block_log_ready = False
+
+
+def log_block(user_id: int, blocked_by: int, ad_id: int = None, reason: str = None):
+    """Кимнинг кимни блоклаганини сақлайди (гуруҳ админи ўз рўйхатини кўриши учун)."""
+    global _block_log_ready
+    if not _block_log_ready:
+        _ensure_block_log_table()
+        _block_log_ready = True
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        INSERT INTO block_log (user_id, blocked_by, ad_id, reason)
+        VALUES ({p}, {p}, {p}, {p})
+    """, (user_id, blocked_by, ad_id, reason))
+    conn.commit()
+    conn.close()
+
+
+def get_blocks_by_admin(admin_id: int):
+    """Шу админ (ёки гуруҳ модератори) блоклаган фойдаланувчилар рўйхати."""
+    global _block_log_ready
+    if not _block_log_ready:
+        _ensure_block_log_table()
+        _block_log_ready = True
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        SELECT bl.user_id, bl.ad_id, bl.reason, bl.created_at, u.full_name, u.username
+        FROM block_log bl
+        LEFT JOIN users u ON bl.user_id = u.user_id
+        WHERE bl.blocked_by = {p}
+        ORDER BY bl.created_at DESC
+    """, (admin_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def get_all_active_group_chat_ids():
+    """
+    Барча актив гуруҳларнинг (chat_id, chat_title, chat_username) рўйхати —
+    ҳар бир гуруҳ учун унга боғланган вилоятлар рўйхати билан бирга.
+    Қайтаради: {chat_id: {"chat_title":..., "chat_username":..., "regions": [...]}}
+    """
+    _ensure_ready()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute("""
+            SELECT chat_id, chat_title, chat_username, region
+            FROM region_groups WHERE is_active = TRUE
+            ORDER BY chat_title
+        """)
+    else:
+        cursor.execute("""
+            SELECT chat_id, chat_title, chat_username, region
+            FROM region_groups WHERE is_active = 1
+            ORDER BY chat_title
+        """)
+    rows = cursor.fetchall()
+    conn.close()
+
+    result = {}
+    for chat_id, chat_title, chat_username, region in rows:
+        if chat_id not in result:
+            result[chat_id] = {
+                "chat_title": chat_title,
+                "chat_username": chat_username,
+                "regions": []
+            }
+        result[chat_id]["regions"].append(region)
+    return result
