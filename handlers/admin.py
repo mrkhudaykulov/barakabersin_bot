@@ -139,7 +139,7 @@ async def admin_view_ads(message: types.Message, state: FSMContext):
             f" {qty} | 💰 {price}\n"
             f"    {region}, {dist}\n"
             f"   👤 [Фойдаланувчи](tg://user?id={uid}) | "
-            f"📌 {status_text}\n\n"
+            f"📌 {status}\n\n"
         )
 
     if len(text) > 4000:
