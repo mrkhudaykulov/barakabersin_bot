@@ -32,6 +32,26 @@ def _get_home_kb(user_id: int):
     """Фойдаланувчи турига мос бош меню клавиатураси."""
     return main_menu_admin() if user_id in ADMINS else main_menu()
 
+
+async def _add_group_admin_buttons_if_any(kb, user_id: int):
+    """
+    Агар фойдаланувчи биror боғланган гуруҳда (ҳақиқий Telegram админи
+    сифатида) бўлса — "Менинг гуруҳларим"/"Мен блокладим" тугмаларини
+    мавжуд клавиатурага қўшиб қайтаради. Бош ADMINS'га ҳам, оддий
+    фойдаланувчиларга ҳам бир xil tarzda ishlaydi.
+    """
+    try:
+        from groups import get_user_managed_groups
+        managed = await get_user_managed_groups(user_id)
+    except Exception:
+        managed = []
+    if managed:
+        kb.keyboard.append([
+            KeyboardButton(text="🏘 Менинг гуруҳларим"),
+            KeyboardButton(text="🚫 Мен блокладим"),
+        ])
+    return kb
+
 def _get_ads_show_profile_summary():
     """Айланма импортни олдини олиш учун lazy import."""
     from ads import _show_profile_summary
@@ -159,20 +179,20 @@ async def start_cmd(message: types.Message, state: FSMContext):
         await _ask_next_onboarding_step(message, state)
         return
 
+    kb = _get_home_kb(message.from_user.id)
+    kb = await _add_group_admin_buttons_if_any(kb, message.from_user.id)
     await message.answer(
         "Керакли бўлимни менюдаги тугмаларда танланг!",
-        reply_markup=_get_home_kb(message.from_user.id)
+        reply_markup=kb
     )
 
 
 @router.message(F.text == "🏠 Бош меню")
 async def home_menu(message: types.Message, state: FSMContext):
     await state.clear()
-    if message.from_user.id in ADMINS:
-        from keyboards import main_menu_admin
-        await message.answer("🏠 Асосий меню", reply_markup=main_menu_admin())
-    else:
-        await message.answer("🏠 Асосий меню", reply_markup=main_menu())
+    kb = _get_home_kb(message.from_user.id)
+    kb = await _add_group_admin_buttons_if_any(kb, message.from_user.id)
+    await message.answer("🏠 Асосий меню", reply_markup=kb)
 
 
 @router.message(F.text == "📊 Бозор таҳлили")
