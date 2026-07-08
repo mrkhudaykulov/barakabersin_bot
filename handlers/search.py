@@ -7,7 +7,8 @@ import logging
 from database import (
     get_connection, get_placeholder, parse_price_text, fmt_number,
     get_full_statistics, MAX_PRICE, MIN_PRICE, fix_keyboard_text,
-    match_price_index, search_all, is_premium_user  # ← қўшилди
+    match_price_index, search_all, is_premium_user,  # ← қўшилди
+    get_ad_group_links  # ← гуруҳ ҳаволалари учун
 )
 from states import SearchStates
 from keyboards import main_menu, search_animal_keyboard, regions_with_all_keyboard, notification_districts_keyboard
@@ -219,7 +220,12 @@ async def search_district(message: types.Message, state: FSMContext):
                     first_msg_id = msg_id_str.split(",")[0].strip()
                     channel_username = "internetmolbozor"
                     ad_link = f"https://t.me/{channel_username}/{first_msg_id}"
-                    text += f'   <a href="{ad_link}">👁кўриш</a>'
+                    text += f'   <a href="{ad_link}">👁кўриш (канал)</a>'
+
+                # ═══ Вилоят гуруҳларидаги ҳаволалар (агар бор бўлса) ═══
+                group_links = get_ad_group_links(ad_id)
+                for idx, glink in enumerate(group_links, 1):
+                    text += f'\n   <a href="{glink}">👁кўриш (гуруҳ {idx})</a>'
 
                 await message.answer(
                     text,
