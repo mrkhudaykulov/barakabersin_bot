@@ -72,7 +72,7 @@ DISTRICTS = {
 def main_menu():
     buttons = [
         [KeyboardButton(text="🌐 Тез эълон бериш (янги!)")],
-        [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
+        [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],        
         [KeyboardButton(text="📊 Бозор таҳлили"), KeyboardButton(text="🗂 Менинг эълонларим")],
         [KeyboardButton(text="🩺 Ветеринария"), KeyboardButton(text="🔔 Хабардор қил")],
     ]
@@ -300,6 +300,7 @@ def admin_menu_keyboard():
         [KeyboardButton(text="🚫 Блок"), KeyboardButton(text="💎 Премиум")],
         [KeyboardButton(text="📢 Тарқатиш"), KeyboardButton(text="📊 Статистика")],
         [KeyboardButton(text="🔍 Нарх текшириш"), KeyboardButton(text="🩺 Вет таклифлар")],
+        [KeyboardButton(text="🏘 Уланган гуруҳлар")],
         [KeyboardButton(text="🏠 Бош меню")]
     ], resize_keyboard=True)
 
