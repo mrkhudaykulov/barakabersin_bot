@@ -31,7 +31,8 @@ from database import (
     get_monthly_ad_count, parse_price_with_type,
     MAX_ADS_PER_MONTH_REGULAR,
     MAX_ADS_PER_MONTH_PREMIUM,
-    clean_phone, get_price_range
+    clean_phone, get_price_range,
+    force_block_user, log_block
 )
 
 router = Router()
@@ -705,6 +706,13 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             phone=phone
         )
 
+        # ═══ ВИЛОЯТГА БОҒЛАНГАН ГУРУҲЛАРГА ЮБОРИШ ═══
+        await _send_to_region_groups(
+            ad_id=ad_id,
+            data=data,
+            media_list=media_list,
+        )
+
     except Exception as e:
         logging.error(f"Эълон жойлашда хато: {e}")
         await message.answer(
@@ -727,6 +735,9 @@ async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
         [
             InlineKeyboardButton(text="✅ Тасдиқлаш", callback_data=f"approve_{ad_id}"),
             InlineKeyboardButton(text="❌ Рад қилиш", callback_data=f"reject_{ad_id}")
+        ],
+        [
+            InlineKeyboardButton(text="🚫 Блоклаш", callback_data=f"block_{ad_id}")
         ]
     ])
  
@@ -790,6 +801,69 @@ async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
         except Exception as e:
             logging.error(f"Админ {admin_id} га юборишда хато: {e}")
  
+
+# ═══════════════════════════════════════
+# ВИЛОЯТГА БОҒЛАНГАН ГУРУҲЛАРГА ЮБОРИШ
+# ═══════════════════════════════════════
+
+async def _send_to_region_groups(ad_id, data, media_list):
+    """
+    Эълоннинг вилоятига боғланган барча актив гуруҳларга юборади.
+    Ҳар бир гуруҳ ўз админи томонидан МУСТАҚИЛ тасдиқланади —
+    каналдаги REVIEW_ADMINS'га ҳеч қандай алоқаси йўқ.
+    """
+    from database import get_groups_for_region, create_ad_group_post, set_ad_group_post_message
+
+    groups = get_groups_for_region(data.get('region'))
+    if not groups:
+        return
+
+    group_caption = (
+        f"#️⃣ {html.escape(data['animal_type'])}\n"
+        f"🔢 {html.escape(data['quantity'])}\n"
+        f"💰 {html.escape(data.get('price_display', data['price']))}\n"
+        f"📝 {html.escape(data['description'])}\n"
+        f"📍 {html.escape(data['region'])} в, "
+        f"{html.escape(data['district'])} т, "
+        f"{html.escape(data.get('mfy') or 'Кўрсатилмаган')} МФЙ"
+    )
+
+    for chat_id, chat_title, chat_username in groups:
+        try:
+            post_id = create_ad_group_post(ad_id, chat_id)
+            group_kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✅ Тасдиқлаш", callback_data=f"gapprove_{post_id}"),
+                InlineKeyboardButton(text="❌ Ўчириш", callback_data=f"greject_{post_id}")
+            ]])
+
+            if media_list:
+                first_media = media_list[0]
+                if first_media["type"] == "photo":
+                    sent = await bot.send_photo(
+                        chat_id=chat_id, photo=first_media["file_id"],
+                        caption=group_caption, parse_mode="HTML", reply_markup=group_kb
+                    )
+                elif first_media["type"] == "video":
+                    sent = await bot.send_video(
+                        chat_id=chat_id, video=first_media["file_id"],
+                        caption=group_caption, parse_mode="HTML", reply_markup=group_kb
+                    )
+                else:
+                    sent = await bot.send_message(
+                        chat_id=chat_id, text=group_caption,
+                        parse_mode="HTML", reply_markup=group_kb
+                    )
+            else:
+                sent = await bot.send_message(
+                    chat_id=chat_id, text=group_caption,
+                    parse_mode="HTML", reply_markup=group_kb
+                )
+
+            set_ad_group_post_message(post_id, sent.message_id)
+
+        except Exception as e:
+            logging.error(f"Гуруҳ {chat_title} ({chat_id}) га юборишда хато: {e}")
+
 
 # ═══════════════════════════════════════
 # ТАСДИҚЛАШ КАЛЛБЕК
@@ -992,42 +1066,6 @@ async def approve_ad_callback(callback: types.CallbackQuery):
     except Exception as e:
         logging.error(f"Notification error: {e}")
 
-    # ═══ АДМИН ЧАТИДАГИ ТУГМАЛАРНИ ЎЧИРИШ ВА МАТННИ ЯНГИЛАШ ═══
-    text_content = (
-        f"✅ *Эълон #{ad_id} тасдиқланди!*\n\n"
-        f"🐾 {a_type}\n"
-        f"📍 {region}\n"
-        f"💰 {price}\n\n"
-        f"Каналга жойланди."
-    )
-    
-    try:
-        # Агар расмли эълон бўлса (caption ўзгартирамиз)
-        await callback.bot.edit_message_caption(
-            chat_id=callback.message.chat.id,
-            message_id=callback.message.message_id,
-            caption=text_content,
-            parse_mode="Markdown",
-            reply_markup=None
-        )
-    except Exception:
-        try:
-            # Агар оддий матнли эълон бўлса (text ўзгартирамиз)
-            await callback.bot.edit_message_text(
-                chat_id=callback.message.chat.id,
-                message_id=callback.message.message_id,
-                text=text_content,
-                parse_mode="Markdown",
-                reply_markup=None
-            )
-        except Exception:
-            # Агар иккаласи ҳам ўхшамаса, тугмаларни мажбурий ўчирамиз
-            await callback.bot.edit_message_reply_markup(
-                chat_id=callback.message.chat.id,
-                message_id=callback.message.message_id,
-                reply_markup=None
-            )
-
     # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══       
     try:
         post_link = f"https://t.me/internetmolbozor/{sent.message_id}"
@@ -1054,12 +1092,8 @@ async def approve_ad_callback(callback: types.CallbackQuery):
             f"user_id={user_id}, ad_id={ad_id}, хато={e}"
         )
 
-    # ═══ БОШҚА АДМИНЛАРНИНГ ХАБАРИНИ ЯНГИЛАШ ═══
-    await _update_other_admins(
-        ad_id, callback.from_user.id,
-        f"✅ Админ @{callback.from_user.username or callback.from_user.id} "
-        f"томонидан тасдиқланди."
-    )
+    # ═══ БАРЧА АДМИНЛАРДАГИ REVIEW ХАБАРНИ ЎЧИРИШ (базада эмас, faqat chatdan) ═══
+    await _clear_all_admin_review_messages(ad_id)
 
     await callback.answer("✅ Тасдиқланди!")
 
@@ -1098,15 +1132,6 @@ async def reject_ad_callback(callback: types.CallbackQuery):
     cursor.execute(f"DELETE FROM ads WHERE id = {p}", (ad_id,))
     conn.commit()
     conn.close()
-
-    # ═══ АДМИНГА ХАБАР ═══
-    try:
-        await callback.message.edit_text(
-            f"❌ *Эълон #{ad_id} рад этилди.*",
-            parse_mode="Markdown"
-        )
-    except Exception:
-        pass
 
     # ═══ РАД СОНИНИ ОШИРИШ ВА БЛОК ТЕКШИРИШ ═══
     if ad:
@@ -1162,79 +1187,90 @@ async def reject_ad_callback(callback: types.CallbackQuery):
             except Exception:
                 pass
 
-    # ═══ БОШҚА АДМИНЛАРНИНГ ХАБАРИНИ ЯНГИЛАШ ═══
-    await _update_other_admins(
-        ad_id, callback.from_user.id,
-        f"❌ Админ @{callback.from_user.username or callback.from_user.id} "
-        f"томонидан рад этилди."
-    )
+    # ═══ БАРЧА АДМИНЛАРДАГИ REVIEW ХАБАРНИ ЎЧИРИШ (базада эмас, faqat chatdan) ═══
+    await _clear_all_admin_review_messages(ad_id)
 
     await callback.answer("❌ Рад этилди!")
+
+
+# ═══════════════════════════════════════
+# 🚫 БЛОКЛАШ КАЛЛБЕК (тезкор, доимий блок)
+# ═══════════════════════════════════════
+
+@router.callback_query(F.data.startswith("block_"))
+async def block_user_callback(callback: types.CallbackQuery):
+    if callback.from_user.id not in REVIEW_ADMINS:
+        await callback.answer("⛔ Сиз админ эмассиз!")
+        return
+
+    ad_id = int(callback.data.replace("block_", ""))
+
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"SELECT user_id, animal_type FROM ads WHERE id = {p}",
+        (ad_id,)
+    )
+    ad = cursor.fetchone()
+
+    if not ad:
+        await callback.answer("⚠️ Бу эълон бошқа админ томонидан кўрилган!")
+        conn.close()
+        return
+
+    user_id, a_type = ad
+
+    # ═══ ЭЪЛОННИ БАЗАДАН ЎЧИРИШ (rad etish bilan bir xil) ═══
+    cursor.execute(f"DELETE FROM ads WHERE id = {p}", (ad_id,))
+    conn.commit()
+    conn.close()
+
+    # ═══ ДАРҲОЛ БЛОКЛАШ (рад сонидан қатъи назар) ═══
+    force_block_user(user_id)
+    log_block(
+        user_id=user_id,
+        blocked_by=callback.from_user.id,
+        ad_id=ad_id,
+        reason="Эълон tasdiqlash paytida admin tomonidan bloklandi"
+    )
+
+    # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            text=(
+                f"🚫 *Сиз блокландингиз!*\n\n"
+                f"Админ томонидан эълонингиз ({a_type}) сабабли "
+                f"эълон бериш ҳуқуқингиз чекланди."
+            ),
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass
+
+    # ═══ БАРЧА АДМИНЛАРДАГИ REVIEW ХАБАРНИ ЎЧИРИШ ═══
+    await _clear_all_admin_review_messages(ad_id)
+
+    await callback.answer("🚫 Фойдаланувчи блокланди!")
+
 
 # ═══════════════════════════════════════
 # БОШҚА АДМИНЛАРНИНГ ХАБАРИНИ ЯНГИЛАШ
 # ═══════════════════════════════════════
 
-async def _update_other_admins(ad_id: int, acted_admin_id: int, status_text: str):
+async def _clear_all_admin_review_messages(ad_id: int):
     """
-    Хамма админдаги тасдиқлаш хабарини ЎЗИ ўзгартиради.
-    Расм/видео бўлса caption, матн бўлса text ўзгартирилади.
+    Эълон тасдиқланган/рад этилган/бloklangan bo'lsa — BARCHA админлардаги
+    review хабарини ЎЧИРАДИ (базадан эмас, faqat chatdan). Base'da ad
+    saqlanaveradi, faqat admin_review_messages tracking tozalanadi.
     """
     rows = get_admin_review_messages(ad_id)
-
-    new_text = (
-        f"ℹ️ Эълон #{ad_id} кўрилди.\n\n"
-        f"{status_text}"
-    )
-
     for admin_id, message_id, chat_id in rows:
-        if admin_id == acted_admin_id:
-            continue  # Бу админники approve/reject ичида аллақачон ўзгарган
-
-        edited = False
-
-        # ═══ 1-УРИНИШ: caption ўзгартириш (расмли/видеоли хабар) ═══
         try:
-            await bot.edit_message_caption(
-                chat_id=chat_id,
-                message_id=message_id,
-                caption=new_text,
-                parse_mode="Markdown",
-                reply_markup=None
-            )
-            edited = True
-        except Exception:
-            pass
-
-        # ═══ 2-УРИНИШ: text ўзгартириш (матнли хабар) ═══
-        if not edited:
-            try:
-                await bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text=new_text,
-                    parse_mode="Markdown",
-                    reply_markup=None
-                )
-                edited = True
-            except Exception:
-                pass
-
-        # ═══ 3-УРИНИШ: Камида тугмаларни ўчириш ═══
-        if not edited:
-            try:
-                await bot.edit_message_reply_markup(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    reply_markup=None
-                )
-                edited = True
-            except Exception as e:
-                logging.error(
-                    f"Админ {admin_id} хабарини таҳрирлашда "
-                    f"хаммаси хато: {e}"
-                )
-
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            logging.debug(f"Админ {admin_id} хабарини ўчиришда хато (аллақачон ўчирилган бўлиши мумкин): {e}")
     delete_admin_review_messages(ad_id)
 
 # ═══════════════════════════════════════
