@@ -2051,3 +2051,24 @@ def get_all_active_group_chat_ids():
             }
         result[chat_id]["regions"].append(region)
     return result
+
+
+def get_regions_for_chat(chat_id: int):
+    """Берилган гуруҳга (chat_id) ҳозирча боғланган, актив вилоятлар рўйхати."""
+    _ensure_ready()
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute(f"""
+            SELECT region FROM region_groups
+            WHERE chat_id = {p} AND is_active = TRUE
+        """, (chat_id,))
+    else:
+        cursor.execute(f"""
+            SELECT region FROM region_groups
+            WHERE chat_id = {p} AND is_active = 1
+        """, (chat_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
