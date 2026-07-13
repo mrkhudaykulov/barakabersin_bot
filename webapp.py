@@ -25,6 +25,7 @@ Route'лар:
 текширади (Telegram hujjatidagi rasmiy algoritm).
 """
 
+import asyncio
 import hashlib
 import hmac
 import html
@@ -373,11 +374,61 @@ async def api_submit_ad(request: web.Request):
         )
     conn.close()
 
+    # ═══ ФОЙДАЛАНУВЧИГА ДАРҲОЛ ЖАВОБ (kutish kerak bo'lmasin) ═══
+    # Қолган БАРЧА секин иш (reviewer/guruhларга юбориш, ad_media, профиль,
+    # фойдаланувчига хабар) — фон режимида, HTTP javobidan KEYIN davom etadi.
+    asyncio.create_task(
+        _process_ad_after_insert(
+            ad_id=ad_id,
+            fields_clean=fields_clean,
+            media_files=media_files,
+            user=user,
+            phone=phone,
+            tg_username=tg_username,
+            animal_type=animal_type,
+            qty=qty,
+            price=price,
+            description=description,
+            region=region,
+            district=district,
+            mfy=mfy,
+        )
+    )
+
+    return web.json_response({"ok": True})
+
+
+async def _process_ad_after_insert(
+    ad_id, fields_clean, media_files, user, phone, tg_username,
+    animal_type, qty, price, description, region, district, mfy
+):
+    """
+    Эълон базага сақлангандан КЕЙИН бажариладиган, СЕКИН қисм —
+    фон режимида (background task) ишлайди, HTTP жавобини кутиб турмайди.
+    Фойдаланувчи Mini App'да дарҳол "қабул қилинди" кўради, шу орада
+    бу функция реал ишни (юклаш, юбориш) орқа фонда давом эттиради.
+    """
     # ═══ АДМИНЛАРГА ЮБОРИШ (шу жараёнда file_id'лар олинади) ═══
     try:
         media_files = await _send_to_reviewers_webapp(ad_id, fields_clean, media_files, user, phone)
     except Exception as e:
         logging.error(f"Mini App: reviewer'larga yuborishda xato: {e}")
+
+    # ═══ ВИЛОЯТГА БОҒЛАНГАН ГУРУҲЛАРГА ЮБОРИШ (ads.py'даги мантиq bilan bir xil) ═══
+    try:
+        from handlers.ads import _send_to_region_groups
+        group_data = {
+            "animal_type": animal_type,
+            "quantity": qty,
+            "price": price,
+            "description": description,
+            "region": region,
+            "district": district,
+            "mfy": mfy,
+        }
+        await _send_to_region_groups(ad_id, group_data, media_files)
+    except Exception as e:
+        logging.error(f"Mini App: guruhlarga yuborishda xato: {e}")
 
     # ═══ ad_media ЖАДВАЛИГА file_id'ЛАРНИ САҚЛАШ ═══
     p = get_placeholder()
@@ -417,8 +468,6 @@ async def api_submit_ad(request: web.Request):
         mfy=None if mfy == "Кўрсатилмаган" else mfy,
         phone=phone,
     )
-
-    return web.json_response({"ok": True})
 
 
 def register_webapp_routes(app: web.Application):
