@@ -24,7 +24,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import bot
 from keyboards import DISTRICTS
 from database import (
-    add_region_group, deactivate_chat, get_regions_for_chat,
+    add_region_group, remove_region_group, deactivate_chat, get_regions_for_chat,
     get_ad_group_post, review_ad_group_post,
     get_all_active_group_chat_ids, get_blocks_by_admin
 )
@@ -214,20 +214,29 @@ async def region_group_callback(callback: types.CallbackQuery):
 
     chat_title = callback.message.chat.title
     chat_username = callback.message.chat.username
-    add_region_group(chat_id, chat_title, chat_username, region)
+
+    already_selected = region in get_regions_for_chat(chat_id)
+    if already_selected:
+        remove_region_group(chat_id, region)
+    else:
+        add_region_group(chat_id, chat_title, chat_username, region)
 
     # ═══ Ҳозиргача танланган БАРЧА вилоятларни олиб, ✅ билан ЎРНИДА янгилаймиз ═══
     selected = set(get_regions_for_chat(chat_id))
+    new_text = (
+        f"✅ Танланганлар: {', '.join(sorted(selected)) if selected else '(ҳали йўқ)'}\n\n"
+        f"Яна вилоят қўшмоқчи бўлсангиз танланг, ёки якунлаш учун "
+        f"«✅ Тугатиш» тугмасини босинг:"
+    )
     try:
         await callback.message.edit_text(
-            f"✅ Танланганлар: {', '.join(sorted(selected))}\n\n"
-            f"Яна вилоят қўшмоқчи бўлсангиз танланг, ёки якунлаш учун "
-            f"«✅ Тугатиш» тугмасини босинг:",
+            new_text,
             parse_mode="HTML",
             reply_markup=_build_region_inline_kb(selected_regions=selected)
         )
     except Exception as e:
-        logging.warning(f"Хабарни янгилашда хато (эҳтимол ўзгармаган): {e}")
+        # "message is not modified" каби хатолар — зарарсиз, e'tibor bermaymiz
+        logging.debug(f"Хабарни янгилашда (зарарсиз) хато: {e}")
 
 
 # ═══════════════════════════════════════
