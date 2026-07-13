@@ -2072,3 +2072,13 @@ def get_regions_for_chat(chat_id: int):
     rows = cursor.fetchall()
     conn.close()
     return [r[0] for r in rows]
+
+
+def remove_region_group(chat_id: int, region: str):
+    """Берилган гуруҳ-вилоят боғланишини ўчиради (фақат шу region, қолганлари сақланади)."""
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"DELETE FROM region_groups WHERE chat_id = {p} AND region = {p}", (chat_id, region))
+    conn.commit()
+    conn.close()
