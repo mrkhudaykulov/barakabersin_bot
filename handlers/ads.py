@@ -79,6 +79,9 @@ async def open_miniapp(message: types.Message):
 
 @router.message(F.text == "➕ Эълон бериш")
 async def start_ad(message: types.Message, state: FSMContext):
+    # ═══ "ЁЗМОҚДА..." ИНДИКАТОРИ — DB tekshiruvlari ketayotganda foydalanuvchi kutayotganini bilsin ═══
+    await bot.send_chat_action(message.chat.id, "typing")
+
     # ═══ БЛОК ТЕКШИРИШ ═══
     if is_user_blocked(message.from_user.id):
         await message.answer(
