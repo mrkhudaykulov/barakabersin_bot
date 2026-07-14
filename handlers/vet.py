@@ -18,6 +18,8 @@ from database import (
 from vet_contacts_data import VET_REGIONS, VET_DISTRICTS
 
 router = Router()
+router.message.filter(F.chat.type == "private")
+
 
 # Расмий маълумотлар манбаи — ҳар бир туман контакт хабарининг бошида кўрсатилади
 VET_SOURCE_LINK = "https://gov.uz/uz/vetgov"
