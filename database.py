@@ -1,6 +1,7 @@
 import re
 import os
 import logging
+import asyncio
 from contextlib import contextmanager
 
 
@@ -57,7 +58,7 @@ AD_EXPIRE_DAYS = 7
 # БАЗА ЯРАТИШ
 # ═══════════════════════════════════════
 
-def init_db():
+def _sync_init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -278,15 +279,18 @@ def init_db():
     conn.close()
 
     # Мавжуд базани янги устунлар билан янгилаш
-    migrate_db()
+    _sync_migrate_db()
 
     logging.info(
         "Baza yaratildi (PostgreSQL)" if DATABASE_URL
         else "Baza yaratildi (SQLite)"
     )
 
+async def init_db(*args, **kwargs):
+    return await asyncio.to_thread(_sync_init_db, *args, **kwargs)
 
-def migrate_db():
+
+def _sync_migrate_db():
     """
     Мавжуд базага янги устунларни хавфсиз қўшиш.
     Бот аллақачон ишлаётган бўлса ҳам хатосиз ишлайди.
@@ -408,11 +412,14 @@ def migrate_db():
     conn.close()
     logging.info("Миграция тугади.")
 
+async def migrate_db(*args, **kwargs):
+    return await asyncio.to_thread(_sync_migrate_db, *args, **kwargs)
+
 # ═══════════════════════════════════════
 # 🔥 ЭЪЛОН ВА МЕДИАЛАРНИ БАЗАГА САҚЛАШФУНКЦИЯСИ
 # ═══════════════════════════════════════
 
-def save_ad_with_media(user_id: int, data: dict, media_list: list) -> int | None:
+def _sync_save_ad_with_media(user_id: int, data: dict, media_list: list) -> int | None:
     """
     Эълон малумотларини 'ads' жадвалига қўшади ва унга тегишли
     барча расм/видеоларни 'ad_media' жадвалига боғлаб сақлайди.
@@ -458,12 +465,15 @@ def save_ad_with_media(user_id: int, data: dict, media_list: list) -> int | None
     finally:
         conn.close()
 
+async def save_ad_with_media(*args, **kwargs):
+    return await asyncio.to_thread(_sync_save_ad_with_media, *args, **kwargs)
+
 
 # ═══════════════════════════════════════
 # ФОЙДАЛАНУВЧИ — ТЕЛЕФОН САҚЛАШ
 # ═══════════════════════════════════════
 
-def save_user(user_id: int, full_name: str = None, username: str = None, phone: str = None,
+def _sync_save_user(user_id: int, full_name: str = None, username: str = None, phone: str = None,
               region: str = None, district: str = None, mfy: str = None):
     """Фойдаланувчини базага сақлаш ёки янгилаш"""
     p = get_placeholder()
@@ -504,8 +514,11 @@ def save_user(user_id: int, full_name: str = None, username: str = None, phone: 
 
         conn.commit()
 
+async def save_user(*args, **kwargs):
+    return await asyncio.to_thread(_sync_save_user, *args, **kwargs)
 
-def get_user_profile(user_id: int) -> dict:
+
+def _sync_get_user_profile(user_id: int) -> dict:
     """
     Фойдаланувчининг сақланган профилини қайтаради:
     {'phone', 'region', 'district', 'mfy'} — ҳар бири None бўлиши мумкин.
@@ -524,8 +537,11 @@ def get_user_profile(user_id: int) -> dict:
     phone, region, district, mfy = row
     return {"phone": phone, "region": region, "district": district, "mfy": mfy}
 
+async def get_user_profile(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_user_profile, *args, **kwargs)
 
-def get_user_phone(user_id: int) -> str | None:
+
+def _sync_get_user_phone(user_id: int) -> str | None:
     """Базадан фойдаланувчи телефонини олиш"""
     p = get_placeholder()
     with db_connection() as conn:
@@ -534,12 +550,15 @@ def get_user_phone(user_id: int) -> str | None:
         row = cursor.fetchone()
     return row[0] if row and row[0] else None
 
+async def get_user_phone(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_user_phone, *args, **kwargs)
+
 
 # ═══════════════════════════════════════
 # ЭЪЛОН МУДДАТИ — SCHEDULER УЧУН
 # ═══════════════════════════════════════
 
-def get_expiring_ads(days_left: int):
+def _sync_get_expiring_ads(days_left: int):
     """
     Муддати days_left кун қолган АКТИВ эълонларни қайтаради.
     Scheduler эслатма юборади.
@@ -568,8 +587,11 @@ def get_expiring_ads(days_left: int):
         rows = cursor.fetchall()
         return rows
 
+async def get_expiring_ads(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_expiring_ads, *args, **kwargs)
 
-def get_expired_ads():
+
+def _sync_get_expired_ads():
     """
     Муддати ўтган (expires_at < now) АКТИВ эълонларни қайтаради.
     Scheduler архивлаши учун.
@@ -598,8 +620,11 @@ def get_expired_ads():
         rows = cursor.fetchall()
         return rows
 
+async def get_expired_ads(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_expired_ads, *args, **kwargs)
 
-def archive_ad(ad_id: int):
+
+def _sync_archive_ad(ad_id: int):
     """Эълонни arxiv статусига ўтказиш"""
     p = get_placeholder()
     with db_connection() as conn:
@@ -610,8 +635,11 @@ def archive_ad(ad_id: int):
         )
         conn.commit()
 
+async def archive_ad(*args, **kwargs):
+    return await asyncio.to_thread(_sync_archive_ad, *args, **kwargs)
 
-def repost_ad(ad_id: int):
+
+def _sync_repost_ad(ad_id: int):
     """Эълонни каналга қайта жойлаш — expires_at 7 кунга янгиланади"""
     p = get_placeholder()
     with db_connection() as conn:
@@ -631,6 +659,9 @@ def repost_ad(ad_id: int):
                 WHERE id = {p}
             """, (ad_id,))
         conn.commit()
+
+async def repost_ad(*args, **kwargs):
+    return await asyncio.to_thread(_sync_repost_ad, *args, **kwargs)
 
 # ═══════════════════════════════════════
 # YORDAMCHI FUNKSIYALAR
@@ -755,7 +786,7 @@ def parse_price_with_type(text):
 # НАРХ ИНДЕКСИ
 # ═══════════════════════════════════════
 
-def get_price_index(animal_type=None):
+def _sync_get_price_index(animal_type=None):
     """Эълонлар асосида нархлар индексини ҳисоблаш"""
     p = get_placeholder()
     with db_connection() as conn:
@@ -803,8 +834,11 @@ def get_price_index(animal_type=None):
 
         return result
 
+async def get_price_index(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_price_index, *args, **kwargs)
 
-def get_market_prices_index():
+
+def _sync_get_market_prices_index():
     """Фойдаланувчилар киритган бозор нархлари"""
     with db_connection() as conn:
         cursor = conn.cursor()
@@ -852,8 +886,11 @@ def get_market_prices_index():
 
         return result
 
+async def get_market_prices_index(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_market_prices_index, *args, **kwargs)
 
-def search_ads_db(animal_type=None, region=None, district=None, max_price=None, limit=10):
+
+def _sync_search_ads_db(animal_type=None, region=None, district=None, max_price=None, limit=10):
     """Эълонларни қидириш"""
     p = get_placeholder()
     with db_connection() as conn:
@@ -893,12 +930,15 @@ def search_ads_db(animal_type=None, region=None, district=None, max_price=None, 
 
         return rows
 
+async def search_ads_db(*args, **kwargs):
+    return await asyncio.to_thread(_sync_search_ads_db, *args, **kwargs)
+
 
 # ═══════════════════════════════════════
 # ҚИДИРИШ (3 МАНБА)
 # ═══════════════════════════════════════
 
-def search_all(animal_type=None, region=None, district=None, limit=10):
+def _sync_search_all(animal_type=None, region=None, district=None, limit=10):
     """3 манбадан қидириш"""
     p = get_placeholder()
     with db_connection() as conn:
@@ -965,12 +1005,15 @@ def search_all(animal_type=None, region=None, district=None, limit=10):
 
         return result
 
+async def search_all(*args, **kwargs):
+    return await asyncio.to_thread(_sync_search_all, *args, **kwargs)
+
 
 # ═══════════════════════════════════════
 # СТАТИСТИКА
 # ═══════════════════════════════════════
 
-def get_full_statistics():
+def _sync_get_full_statistics():
     """Тўлиқ статистика"""
     with db_connection() as conn:
         cursor = conn.cursor()
@@ -1027,6 +1070,9 @@ def get_full_statistics():
         stats["market_price_entries"] = cursor.fetchone()[0]
 
         return stats
+
+async def get_full_statistics(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_full_statistics, *args, **kwargs)
 
 
 # ═══════════════════════════════════════
@@ -1147,7 +1193,7 @@ def match_price_index(text):
     return text
 
 
-def get_notification_users(animal_type, region, price, district=None):
+def _sync_get_notification_users(animal_type, region, price, district=None):
     """Мос кузатувчиларни топиш — ҳайвон тури, вилоят, туман, нарх бўйича"""
     with db_connection() as conn:
         cursor = conn.cursor()
@@ -1179,8 +1225,11 @@ def get_notification_users(animal_type, region, price, district=None):
         rows = cursor.fetchall()
         return rows
 
+async def get_notification_users(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_notification_users, *args, **kwargs)
 
-def get_user_notifications(user_id):
+
+def _sync_get_user_notifications(user_id):
     with db_connection() as conn:
         cur = conn.cursor()
         p = get_placeholder()
@@ -1196,7 +1245,10 @@ def get_user_notifications(user_id):
         rows = cur.fetchall()
         return rows
 
-def delete_notification(notification_id):
+async def get_user_notifications(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_user_notifications, *args, **kwargs)
+
+def _sync_delete_notification(notification_id):
 
     with db_connection() as conn:
         cur = conn.cursor()
@@ -1213,11 +1265,14 @@ def delete_notification(notification_id):
 
         conn.commit()
 
+async def delete_notification(*args, **kwargs):
+    return await asyncio.to_thread(_sync_delete_notification, *args, **kwargs)
+
 # ═══════════════════════════════════════
 # ЭЪЛОН ТАСДИҚЛАШ ТИЗИМИ
 # ═══════════════════════════════════════
 
-def get_pending_ad(ad_id):
+def _sync_get_pending_ad(ad_id):
     """Тасдиқ кутаётган эълонни олиш"""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1231,7 +1286,10 @@ def get_pending_ad(ad_id):
         row = cursor.fetchone()
         return row
 
-def approve_ad(ad_id, admin_id):
+async def get_pending_ad(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_pending_ad, *args, **kwargs)
+
+def _sync_approve_ad(ad_id, admin_id):
     """Эълонни тасдиқлаш — status='active', reviewed_by=admin_id"""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1245,8 +1303,11 @@ def approve_ad(ad_id, admin_id):
         conn.commit()
     return affected > 0  # True = тасдиқланди, False = бошқа админ аввал тасдиқлаган
 
+async def approve_ad(*args, **kwargs):
+    return await asyncio.to_thread(_sync_approve_ad, *args, **kwargs)
 
-def reject_ad(ad_id, admin_id, reason=""):
+
+def _sync_reject_ad(ad_id, admin_id, reason=""):
     """Эълонни рад қилиш"""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1260,6 +1321,9 @@ def reject_ad(ad_id, admin_id, reason=""):
         conn.commit()
     return affected > 0
 
+async def reject_ad(*args, **kwargs):
+    return await asyncio.to_thread(_sync_reject_ad, *args, **kwargs)
+
 
 # ═══════════════════════════════════════
 # БЛОКЛАШ ТИЗИМИ
@@ -1268,7 +1332,7 @@ def reject_ad(ad_id, admin_id, reason=""):
 MAX_REJECTIONS = 4  # Шунча марта рад қилинса блокланади
 
 
-def is_user_blocked(user_id):
+def _sync_is_user_blocked(user_id):
     """Фойдаланувчи блокланганми?"""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1285,8 +1349,11 @@ def is_user_blocked(user_id):
             return row[0] == 1
     return False
 
+async def is_user_blocked(*args, **kwargs):
+    return await asyncio.to_thread(_sync_is_user_blocked, *args, **kwargs)
 
-def increment_rejection(user_id):
+
+def _sync_increment_rejection(user_id):
     """Рад қилиш сонини ошириш. 4 марта бўлса блоклаш."""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1327,8 +1394,11 @@ def increment_rejection(user_id):
         conn.commit()
     return count, blocked
 
+async def increment_rejection(*args, **kwargs):
+    return await asyncio.to_thread(_sync_increment_rejection, *args, **kwargs)
 
-def unblock_user(user_id):
+
+def _sync_unblock_user(user_id):
     """Фойдаланувчини блокдан чиқариш"""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1349,8 +1419,11 @@ def unblock_user(user_id):
             """, (user_id,))
         conn.commit()
 
+async def unblock_user(*args, **kwargs):
+    return await asyncio.to_thread(_sync_unblock_user, *args, **kwargs)
 
-def get_rejection_count(user_id):
+
+def _sync_get_rejection_count(user_id):
     """Рад қилишлар сонини олиш"""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1362,8 +1435,11 @@ def get_rejection_count(user_id):
         row = cursor.fetchone()
     return row[0] if row else 0
 
+async def get_rejection_count(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_rejection_count, *args, **kwargs)
 
-def get_blocked_users():
+
+def _sync_get_blocked_users():
     """Блокланган фойдаланувчилар рўйхати"""
     with db_connection() as conn:
         cursor = conn.cursor()
@@ -1386,9 +1462,12 @@ def get_blocked_users():
         rows = cursor.fetchall()
         return rows
 
+async def get_blocked_users(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_blocked_users, *args, **kwargs)
+
 # Админга юборилган хабарни бошқа Админ томонидан таҳрирлаш (тасдиқлаш ва рад қилиш кнопкаларини)
 
-def save_admin_review_message(ad_id: int, admin_id: int, message_id: int, chat_id: int):
+def _sync_save_admin_review_message(ad_id: int, admin_id: int, message_id: int, chat_id: int):
     """Ҳар бир админга юборилган review хабарини базага сақлайди."""
     p = get_placeholder()
     conn = get_connection()
@@ -1411,9 +1490,12 @@ def save_admin_review_message(ad_id: int, admin_id: int, message_id: int, chat_i
         logging.error(f"save_admin_review_message хато: {e}")
     finally:
         conn.close()
+
+async def save_admin_review_message(*args, **kwargs):
+    return await asyncio.to_thread(_sync_save_admin_review_message, *args, **kwargs)
  
  
-def get_admin_review_messages(ad_id: int) -> list:
+def _sync_get_admin_review_messages(ad_id: int) -> list:
     """ad_id бўйича барча админлар учун (admin_id, message_id, chat_id) қайтаради."""
     p = get_placeholder()
     conn = get_connection()
@@ -1430,9 +1512,12 @@ def get_admin_review_messages(ad_id: int) -> list:
         return []
     finally:
         conn.close()
+
+async def get_admin_review_messages(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_admin_review_messages, *args, **kwargs)
  
  
-def delete_admin_review_messages(ad_id: int):
+def _sync_delete_admin_review_messages(ad_id: int):
     """Эълон кўрилгандан кейин базадан тозалаш."""
     p = get_placeholder()
     conn = get_connection()
@@ -1448,7 +1533,10 @@ def delete_admin_review_messages(ad_id: int):
     finally:
         conn.close()
 
-def is_premium_user(user_id: int) -> bool:
+async def delete_admin_review_messages(*args, **kwargs):
+    return await asyncio.to_thread(_sync_delete_admin_review_messages, *args, **kwargs)
+
+def _sync_is_premium_user(user_id: int) -> bool:
     p = get_placeholder()
     with db_connection() as conn:
         cursor = conn.cursor()
@@ -1461,6 +1549,9 @@ def is_premium_user(user_id: int) -> bool:
         return False
     return bool(row[0])
 
+async def is_premium_user(*args, **kwargs):
+    return await asyncio.to_thread(_sync_is_premium_user, *args, **kwargs)
+
 # ═══════════════════════════════════════
 # ОЙЛИК ЭЪЛОН ЛИМИТИ
 # ═══════════════════════════════════════
@@ -1469,7 +1560,7 @@ MAX_ADS_PER_MONTH_REGULAR = 15
 MAX_ADS_PER_MONTH_PREMIUM = 150
 
 
-def get_monthly_ad_count(user_id: int) -> int:
+def _sync_get_monthly_ad_count(user_id: int) -> int:
     """
     Жорий ойда фойдаланувчи яратган эълонлар сони.
     Статусидан қатий назар (active, sold, deleted, rejected)
@@ -1494,6 +1585,9 @@ def get_monthly_ad_count(user_id: int) -> int:
 
         count = cursor.fetchone()[0]
     return count
+
+async def get_monthly_ad_count(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_monthly_ad_count, *args, **kwargs)
 # Телефон рақамини тозалаш
 def clean_phone(phone: str) -> str:
     """Телефон рақамдан ортиқча белгиларни тозалаш"""
@@ -1503,7 +1597,7 @@ def clean_phone(phone: str) -> str:
     cleaned = re.sub(r'[\s\-\.\,\(\)\[\]\/]', '', phone)
     return cleaned
 
-def get_price_range(animal_type):
+def _sync_get_price_range(animal_type):
     """Ҳайвон тури учун ўртача нарх"""
     p = get_placeholder()
     prices = []
@@ -1535,12 +1629,15 @@ def get_price_range(animal_type):
 
     return sum(prices) // len(prices)
 
+async def get_price_range(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_price_range, *args, **kwargs)
+
 
 # ═══════════════════════════════════════
 # ВЕТЕРИНАРИЯ ХОДИМЛАРИ — ФОЙДАЛАНУВЧИ ТАКЛИФЛАРИ
 # ═══════════════════════════════════════
 
-def add_vet_suggestion(user_id, username, action_type, region, district,
+def _sync_add_vet_suggestion(user_id, username, action_type, region, district,
                         role_type, fish=None, lavozim=None, tel=None, comment=None):
     """
     Фойдаланувчи таклифини 'pending' статусда базага сақлайди.
@@ -1567,8 +1664,11 @@ def add_vet_suggestion(user_id, username, action_type, region, district,
         new_id = cursor.fetchone()[0]
         return new_id
 
+async def add_vet_suggestion(*args, **kwargs):
+    return await asyncio.to_thread(_sync_add_vet_suggestion, *args, **kwargs)
 
-def get_pending_vet_suggestions(limit=20):
+
+def _sync_get_pending_vet_suggestions(limit=20):
     """Кутилаётган (pending) барча таклифлар рўйхати, эскидан янгигa."""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1584,8 +1684,11 @@ def get_pending_vet_suggestions(limit=20):
         rows = cursor.fetchall()
         return rows
 
+async def get_pending_vet_suggestions(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_pending_vet_suggestions, *args, **kwargs)
 
-def get_vet_suggestion_by_id(suggestion_id):
+
+def _sync_get_vet_suggestion_by_id(suggestion_id):
     """Битта таклифни ID бўйича олиш."""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1600,8 +1703,11 @@ def get_vet_suggestion_by_id(suggestion_id):
         row = cursor.fetchone()
         return row
 
+async def get_vet_suggestion_by_id(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_vet_suggestion_by_id, *args, **kwargs)
 
-def count_pending_vet_suggestions():
+
+def _sync_count_pending_vet_suggestions():
     """Кутилаётган таклифлар сони (админ менюсида кўрсатиш учун)."""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1610,8 +1716,11 @@ def count_pending_vet_suggestions():
         count = cursor.fetchone()[0]
         return count
 
+async def count_pending_vet_suggestions(*args, **kwargs):
+    return await asyncio.to_thread(_sync_count_pending_vet_suggestions, *args, **kwargs)
 
-def review_vet_suggestion(suggestion_id, admin_id, approve: bool, admin_comment=None):
+
+def _sync_review_vet_suggestion(suggestion_id, admin_id, approve: bool, admin_comment=None):
     """
     Админ таклифни тасдиқлайди ёки рад этади.
     approve=True  -> status='approved'
@@ -1638,8 +1747,11 @@ def review_vet_suggestion(suggestion_id, admin_id, approve: bool, admin_comment=
 
         conn.commit()
 
+async def review_vet_suggestion(*args, **kwargs):
+    return await asyncio.to_thread(_sync_review_vet_suggestion, *args, **kwargs)
 
-def get_approved_vet_override(region, district, role_type):
+
+def _sync_get_approved_vet_override(region, district, role_type):
     """
     Берилган (вилоят, туман, лавозим тури) учун ОХИРГИ тасдиқланган
     таклифни қайтаради — бу runtime'да vet_contacts_data.py'даги
@@ -1662,8 +1774,11 @@ def get_approved_vet_override(region, district, role_type):
         fish, lavozim, tel = row
         return {"fish": fish, "lavozim": lavozim, "tel": tel}
 
+async def get_approved_vet_override(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_approved_vet_override, *args, **kwargs)
 
-def update_vet_suggestion_fields(suggestion_id, fish=None, lavozim=None, tel=None):
+
+def _sync_update_vet_suggestion_fields(suggestion_id, fish=None, lavozim=None, tel=None):
     """
     Админ таклифни тасдиқлашдан олдин таҳрирлаши учун —
     берилган майдонларни янгилайди (None бўлмаган майдонлар).
@@ -1693,6 +1808,9 @@ def update_vet_suggestion_fields(suggestion_id, fish=None, lavozim=None, tel=Non
             tuple(params)
         )
         conn.commit()
+
+async def update_vet_suggestion_fields(*args, **kwargs):
+    return await asyncio.to_thread(_sync_update_vet_suggestion_fields, *args, **kwargs)
 
 
 # ═══════════════════════════════════════
@@ -1767,7 +1885,7 @@ def _ensure_ready():
         _region_group_tables_ready = True
 
 
-def add_region_group(chat_id: int, chat_title: str, chat_username: str, region: str):
+def _sync_add_region_group(chat_id: int, chat_title: str, chat_username: str, region: str):
     """Гуруҳни (chat_id) берилган вилоятга боғлайди. Мавжуд бўлса — такрорламайди."""
     _ensure_ready()
     p = get_placeholder()
@@ -1793,8 +1911,11 @@ def add_region_group(chat_id: int, chat_title: str, chat_username: str, region: 
             """, (chat_title, chat_username, chat_id, region))
         conn.commit()
 
+async def add_region_group(*args, **kwargs):
+    return await asyncio.to_thread(_sync_add_region_group, *args, **kwargs)
 
-def get_groups_for_region(region: str):
+
+def _sync_get_groups_for_region(region: str):
     """Берилган вилоятга боғланган, актив гуруҳлар рўйхати: [(chat_id, chat_title, chat_username), ...]"""
     _ensure_ready()
     p = get_placeholder()
@@ -1813,8 +1934,11 @@ def get_groups_for_region(region: str):
         rows = cursor.fetchall()
         return rows
 
+async def get_groups_for_region(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_groups_for_region, *args, **kwargs)
 
-def deactivate_chat(chat_id: int):
+
+def _sync_deactivate_chat(chat_id: int):
     """Бот гуруҳдан чиқарилганда — шу chat_id'нинг барча боғланишларини ноактив қилади."""
     _ensure_ready()
     p = get_placeholder()
@@ -1826,8 +1950,11 @@ def deactivate_chat(chat_id: int):
             cursor.execute(f"UPDATE region_groups SET is_active = 0 WHERE chat_id = {p}", (chat_id,))
         conn.commit()
 
+async def deactivate_chat(*args, **kwargs):
+    return await asyncio.to_thread(_sync_deactivate_chat, *args, **kwargs)
 
-def create_ad_group_post(ad_id: int, chat_id: int) -> int:
+
+def _sync_create_ad_group_post(ad_id: int, chat_id: int) -> int:
     """Эълон учун гуруҳга юбориладиган ёзувни pending ҳолатда яратади, ID қайтаради."""
     _ensure_ready()
     p = get_placeholder()
@@ -1845,8 +1972,11 @@ def create_ad_group_post(ad_id: int, chat_id: int) -> int:
         new_id = cursor.fetchone()[0]
         return new_id
 
+async def create_ad_group_post(*args, **kwargs):
+    return await asyncio.to_thread(_sync_create_ad_group_post, *args, **kwargs)
 
-def set_ad_group_post_message(post_id: int, message_id: int):
+
+def _sync_set_ad_group_post_message(post_id: int, message_id: int):
     """Гуруҳга жойлангандан кейин, хабар ID сини сақлайди."""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1854,8 +1984,11 @@ def set_ad_group_post_message(post_id: int, message_id: int):
         cursor.execute(f"UPDATE ad_group_posts SET message_id = {p} WHERE id = {p}", (message_id, post_id))
         conn.commit()
 
+async def set_ad_group_post_message(*args, **kwargs):
+    return await asyncio.to_thread(_sync_set_ad_group_post_message, *args, **kwargs)
 
-def get_ad_group_post(post_id: int):
+
+def _sync_get_ad_group_post(post_id: int):
     """Битта ёзувни қайтаради: (id, ad_id, chat_id, message_id, status, reviewed_by)"""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1867,8 +2000,11 @@ def get_ad_group_post(post_id: int):
         row = cursor.fetchone()
         return row
 
+async def get_ad_group_post(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_ad_group_post, *args, **kwargs)
 
-def review_ad_group_post(post_id: int, admin_id: int, approve: bool):
+
+def _sync_review_ad_group_post(post_id: int, admin_id: int, approve: bool):
     """Гуруҳ админи томонидан тасдиқлаш/рад этишни сақлайди."""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1879,8 +2015,11 @@ def review_ad_group_post(post_id: int, admin_id: int, approve: bool):
         """, (new_status, admin_id, post_id))
         conn.commit()
 
+async def review_ad_group_post(*args, **kwargs):
+    return await asyncio.to_thread(_sync_review_ad_group_post, *args, **kwargs)
 
-def get_ad_group_links(ad_id: int):
+
+def _sync_get_ad_group_links(ad_id: int):
     """
     Берилган эълон учун — тасдиқланган ва PUBLIC (username'ли) гуруҳлардаги
     ҳаволалар рўйхатини қайтаради: ["https://t.me/username/123", ...]
@@ -1902,12 +2041,15 @@ def get_ad_group_links(ad_id: int):
                 links.append(f"https://t.me/{chat_username}/{message_id}")
         return links
 
+async def get_ad_group_links(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_ad_group_links, *args, **kwargs)
+
 
 # ═══════════════════════════════════════
 # ТЕЗКОР БЛОКЛАШ (админ инline тугма орқали)
 # ═══════════════════════════════════════
 
-def force_block_user(user_id: int):
+def _sync_force_block_user(user_id: int):
     """Фойдаланувчини рад сонидан қатъи назар, ДАРҲОЛ блоклайди."""
     p = get_placeholder()
     with db_connection() as conn:
@@ -1921,6 +2063,9 @@ def force_block_user(user_id: int):
                 UPDATE users SET is_blocked = 1, blocked_at = CURRENT_TIMESTAMP WHERE user_id = {p}
             """, (user_id,))
         conn.commit()
+
+async def force_block_user(*args, **kwargs):
+    return await asyncio.to_thread(_sync_force_block_user, *args, **kwargs)
 
 
 def _ensure_block_log_table():
@@ -1954,7 +2099,7 @@ def _ensure_block_log_table():
 _block_log_ready = False
 
 
-def log_block(user_id: int, blocked_by: int, ad_id: int = None, reason: str = None):
+def _sync_log_block(user_id: int, blocked_by: int, ad_id: int = None, reason: str = None):
     """Кимнинг кимни блоклаганини сақлайди (гуруҳ админи ўз рўйхатини кўриши учун)."""
     global _block_log_ready
     if not _block_log_ready:
@@ -1969,8 +2114,11 @@ def log_block(user_id: int, blocked_by: int, ad_id: int = None, reason: str = No
         """, (user_id, blocked_by, ad_id, reason))
         conn.commit()
 
+async def log_block(*args, **kwargs):
+    return await asyncio.to_thread(_sync_log_block, *args, **kwargs)
 
-def get_blocks_by_admin(admin_id: int):
+
+def _sync_get_blocks_by_admin(admin_id: int):
     """Шу админ (ёки гуруҳ модератори) блоклаган фойдаланувчилар рўйхати."""
     global _block_log_ready
     if not _block_log_ready:
@@ -1989,8 +2137,11 @@ def get_blocks_by_admin(admin_id: int):
         rows = cursor.fetchall()
         return rows
 
+async def get_blocks_by_admin(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_blocks_by_admin, *args, **kwargs)
 
-def get_all_active_group_chat_ids():
+
+def _sync_get_all_active_group_chat_ids():
     """
     Барча актив гуруҳларнинг (chat_id, chat_title, chat_username) рўйхати —
     ҳар бир гуруҳ учун унга боғланган вилоятлар рўйхати билан бирга.
@@ -2024,8 +2175,11 @@ def get_all_active_group_chat_ids():
             result[chat_id]["regions"].append(region)
         return result
 
+async def get_all_active_group_chat_ids(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_all_active_group_chat_ids, *args, **kwargs)
 
-def get_regions_for_chat(chat_id: int):
+
+def _sync_get_regions_for_chat(chat_id: int):
     """Берилган гуруҳга (chat_id) ҳозирча боғланган, актив вилоятлар рўйхати."""
     _ensure_ready()
     p = get_placeholder()
@@ -2044,14 +2198,20 @@ def get_regions_for_chat(chat_id: int):
         rows = cursor.fetchall()
         return [r[0] for r in rows]
 
+async def get_regions_for_chat(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_regions_for_chat, *args, **kwargs)
 
-def remove_region_group(chat_id: int, region: str):
+
+def _sync_remove_region_group(chat_id: int, region: str):
     """Берилган гуруҳ-вилоят боғланишини ўчиради (фақат шу region, қолганлари сақланади)."""
     p = get_placeholder()
     with db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(f"DELETE FROM region_groups WHERE chat_id = {p} AND region = {p}", (chat_id, region))
         conn.commit()
+
+async def remove_region_group(*args, **kwargs):
+    return await asyncio.to_thread(_sync_remove_region_group, *args, **kwargs)
 
 
 # ═══════════════════════════════════════
@@ -2098,7 +2258,7 @@ def _ensure_group_admins_ready():
         _group_admins_ready = True
 
 
-def add_group_admin(chat_id: int, user_id: int, granted_by: int = None):
+def _sync_add_group_admin(chat_id: int, user_id: int, granted_by: int = None):
     """Берилган гуруҳ учун тасдиқлаш ваколатини беради (ёки қайта фаоллаштиради)."""
     _ensure_group_admins_ready()
     p = get_placeholder()
@@ -2122,8 +2282,11 @@ def add_group_admin(chat_id: int, user_id: int, granted_by: int = None):
             """, (granted_by, chat_id, user_id))
         conn.commit()
 
+async def add_group_admin(*args, **kwargs):
+    return await asyncio.to_thread(_sync_add_group_admin, *args, **kwargs)
 
-def remove_group_admin(chat_id: int, user_id: int):
+
+def _sync_remove_group_admin(chat_id: int, user_id: int):
     """Гуруҳ учун тасдиқлаш ваколатини олиб қўяди."""
     _ensure_group_admins_ready()
     p = get_placeholder()
@@ -2141,8 +2304,11 @@ def remove_group_admin(chat_id: int, user_id: int):
             """, (chat_id, user_id))
         conn.commit()
 
+async def remove_group_admin(*args, **kwargs):
+    return await asyncio.to_thread(_sync_remove_group_admin, *args, **kwargs)
 
-def get_group_admin_ids(chat_id: int):
+
+def _sync_get_group_admin_ids(chat_id: int):
     """Берилган гуруҳ учун тасдиqлаш ваколатига эга user_id'лар рўйхати."""
     _ensure_group_admins_ready()
     p = get_placeholder()
@@ -2155,13 +2321,19 @@ def get_group_admin_ids(chat_id: int):
         rows = cursor.fetchall()
         return [r[0] for r in rows]
 
+async def get_group_admin_ids(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_group_admin_ids, *args, **kwargs)
 
-def is_group_admin(chat_id: int, user_id: int) -> bool:
+
+def _sync_is_group_admin(chat_id: int, user_id: int) -> bool:
     """Шу одам, шу гуруҳ учун тасдиqлаш ваколатига эгами?"""
-    return user_id in get_group_admin_ids(chat_id)
+    return user_id in _sync_get_group_admin_ids(chat_id)
+
+async def is_group_admin(*args, **kwargs):
+    return await asyncio.to_thread(_sync_is_group_admin, *args, **kwargs)
 
 
-def get_chats_managed_by(user_id: int):
+def _sync_get_chats_managed_by(user_id: int):
     """Шу одам тасдиqлаш ваколатига эга бўлган БАРЧА гуруҳлар (chat_id рўйхати)."""
     _ensure_group_admins_ready()
     p = get_placeholder()
@@ -2174,8 +2346,11 @@ def get_chats_managed_by(user_id: int):
         rows = cursor.fetchall()
         return [r[0] for r in rows]
 
+async def get_chats_managed_by(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_chats_managed_by, *args, **kwargs)
 
-def get_ad_group_message_ids(ad_id: int):
+
+def _sync_get_ad_group_message_ids(ad_id: int):
     """
     Берилган эълоннинг ГУРУҲЛАРДАГИ барча хабарлари: [(chat_id, message_id), ...]
     Статусидан қатъи назар (эълон таҳрирланганда/ўчирилганда ҳаммасини тозалаш учун).
@@ -2189,6 +2364,9 @@ def get_ad_group_message_ids(ad_id: int):
         """, (ad_id,))
         rows = cursor.fetchall()
         return rows
+
+async def get_ad_group_message_ids(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_ad_group_message_ids, *args, **kwargs)
 
 
 # ═══════════════════════════════════════
@@ -2235,7 +2413,7 @@ def _ensure_review_admins_ready():
         _review_admins_ready = True
 
 
-def seed_review_admins_from_config(config_admin_ids):
+def _sync_seed_review_admins_from_config(config_admin_ids):
     """
     main.py ишга тушганда БИР МАРТА чақирилади — config.py'даги
     REVIEW_ADMINS рўйхатини DB'га 'boshlang'ich' сифатида қўшади
@@ -2243,10 +2421,13 @@ def seed_review_admins_from_config(config_admin_ids):
     """
     _ensure_review_admins_ready()
     for uid in config_admin_ids:
-        add_review_admin(uid, full_name=None, username=None, added_by=None)
+        _sync_add_review_admin(uid, full_name=None, username=None, added_by=None)
+
+async def seed_review_admins_from_config(*args, **kwargs):
+    return await asyncio.to_thread(_sync_seed_review_admins_from_config, *args, **kwargs)
 
 
-def add_review_admin(user_id: int, full_name: str = None, username: str = None, added_by: int = None):
+def _sync_add_review_admin(user_id: int, full_name: str = None, username: str = None, added_by: int = None):
     """Одамни яxлит review_admins ҳавзасига қўшади (ёки қайта фаоллаштиради)."""
     _ensure_review_admins_ready()
     p = get_placeholder()
@@ -2271,8 +2452,11 @@ def add_review_admin(user_id: int, full_name: str = None, username: str = None, 
             """, (user_id,))
         conn.commit()
 
+async def add_review_admin(*args, **kwargs):
+    return await asyncio.to_thread(_sync_add_review_admin, *args, **kwargs)
 
-def remove_review_admin(user_id: int):
+
+def _sync_remove_review_admin(user_id: int):
     """Одамни яxлит review_admins ҳавзасидан олиб ташлайди."""
     _ensure_review_admins_ready()
     p = get_placeholder()
@@ -2284,8 +2468,11 @@ def remove_review_admin(user_id: int):
             cursor.execute(f"UPDATE review_admins SET is_active = 0 WHERE user_id = {p}", (user_id,))
         conn.commit()
 
+async def remove_review_admin(*args, **kwargs):
+    return await asyncio.to_thread(_sync_remove_review_admin, *args, **kwargs)
 
-def get_all_review_admin_ids():
+
+def _sync_get_all_review_admin_ids():
     """Барча актив review_admins ID'лари рўйхати."""
     _ensure_review_admins_ready()
     with db_connection() as conn:
@@ -2297,6 +2484,12 @@ def get_all_review_admin_ids():
         rows = cursor.fetchall()
     return [r[0] for r in rows]
 
+async def get_all_review_admin_ids(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_all_review_admin_ids, *args, **kwargs)
 
-def is_review_admin(user_id: int) -> bool:
-    return user_id in get_all_review_admin_ids()
+
+def _sync_is_review_admin(user_id: int) -> bool:
+    return user_id in _sync_get_all_review_admin_ids()
+
+async def is_review_admin(*args, **kwargs):
+    return await asyncio.to_thread(_sync_is_review_admin, *args, **kwargs)
