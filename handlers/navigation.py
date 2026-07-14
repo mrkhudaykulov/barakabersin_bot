@@ -63,7 +63,7 @@ async def _ask_next_onboarding_step(message: types.Message, state: FSMContext):
     Профилда етишмаган биринчи майдонни сўрайди.
     Ҳаммаси тўлдирилган бўлса — онбординг тугайди, бош меню кўрсатилади.
     """
-    profile = get_user_profile(message.from_user.id)
+    profile = await get_user_profile(message.from_user.id)
  
     if not profile.get("region"):
         await state.set_state(OnboardingStates.region)
@@ -117,7 +117,7 @@ async def onboarding_region(message: types.Message, state: FSMContext):
                               reply_markup=_get_home_kb(message.from_user.id))
         return
     fixed = fix_keyboard_text(message.text)
-    save_user(user_id=message.from_user.id, region=fixed)
+    await save_user(user_id=message.from_user.id, region=fixed)
     await _ask_next_onboarding_step(message, state)
  
  
@@ -129,7 +129,7 @@ async def onboarding_district(message: types.Message, state: FSMContext):
                               reply_markup=_get_home_kb(message.from_user.id))
         return
     fixed = fix_keyboard_text(message.text)
-    save_user(user_id=message.from_user.id, district=fixed)
+    await save_user(user_id=message.from_user.id, district=fixed)
     await _ask_next_onboarding_step(message, state)
  
  
@@ -140,7 +140,7 @@ async def onboarding_mfy(message: types.Message, state: FSMContext):
         await message.answer("Асосий менюга ўтдингиз.",
                               reply_markup=_get_home_kb(message.from_user.id))
         return
-    save_user(user_id=message.from_user.id, mfy=message.text.strip())
+    await save_user(user_id=message.from_user.id, mfy=message.text.strip())
     await _ask_next_onboarding_step(message, state)
  
  
@@ -157,14 +157,14 @@ async def onboarding_phone(message: types.Message, state: FSMContext):
         await message.answer("⚠️ Илтимос, телефон рақамини тўғри форматда юборинг.")
         return
  
-    save_user(user_id=message.from_user.id, phone=phone)
+    await save_user(user_id=message.from_user.id, phone=phone)
     await _ask_next_onboarding_step(message, state)
  
 
 
 @router.message(Command("start"))
 async def start_cmd(message: types.Message, state: FSMContext):
-    save_user(
+    await save_user(
         user_id=message.from_user.id,
         full_name=message.from_user.full_name,
         username=message.from_user.username
@@ -175,7 +175,7 @@ async def start_cmd(message: types.Message, state: FSMContext):
     )
 
     # ═══ ПРОФИЛ ТЎЛИҚМИ? Бўлмаса — онбординг ═══
-    profile = get_user_profile(message.from_user.id)
+    profile = await get_user_profile(message.from_user.id)
     if not (profile.get("region") and profile.get("district") and profile.get("phone")):
         await _ask_next_onboarding_step(message, state)
         return

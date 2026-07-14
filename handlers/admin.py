@@ -4,7 +4,7 @@ import logging
 
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
-from aiogram.filters import Command
+from aiogram.filters import Command, BaseFilter
 from aiogram.fsm.state import State, StatesGroup
 
 from config import bot, ADMINS, CHANNEL_ID
@@ -20,8 +20,31 @@ from keyboards import (
 )
 from states import AdminStates
 
+class IsAdmin(BaseFilter):
+    """
+    Router даражасида қўлланади — шу файлдаги ҲАММА handler'лар учун
+    админ эканликни текширади. Янги handler қўшилганда бу текширувни
+    алоҳида ёзишни унутиб қўйиш имконсиз (routerнинг ўзи блоклайди).
+    """
+    async def __call__(self, message: types.Message) -> bool:
+        return message.from_user.id in ADMINS
+
+
 router = Router()
 router.message.filter(F.chat.type == "private")
+router.message.filter(IsAdmin())
+
+# "🔐 Админ панел" тугмасини админ бўлмаган одам босса (ёки матнни қўлда
+# ёзса) — юқоридаги router уни блоклайди (handler'га умуман етиб бормайди),
+# шунинг учун "рухсат йўқ" хабарини шу алоҳида, ФИЛЬТРСИЗ router беради.
+# handlers/__init__.py'да admin.router'дан КЕЙИН рўйхатдан ўтказилиши шарт.
+fallback_router = Router()
+fallback_router.message.filter(F.chat.type == "private")
+
+
+@fallback_router.message(F.text == "🔐 Админ панел")
+async def admin_panel_denied(message: types.Message):
+    await message.answer("⛔ Сизга рухсат йўқ.")
 
 
 
@@ -65,19 +88,12 @@ def validate_region(text):
     return None
 
 
-def is_admin(user_id):
-    return user_id in ADMINS
-
-
 # ═══════════════════════════════════════
 # 🔐 АДМИН МЕНЮ
 # ═══════════════════════════════════════
 
 @router.message(F.text == "🔐 Админ панел")
 async def admin_panel(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔ Сизга рухсат йўқ.")
-        return
     await state.set_state(AdminStates.menu)
     await message.answer(
         "🔐 *Админ панел*\n\n"
@@ -93,8 +109,6 @@ async def admin_panel(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.menu, F.text == "📋 Эълонлар")
 async def admin_ads_menu(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.ads_menu)
     await message.answer(
         "📋 *Эълонлар бошқариши*\n\n"
@@ -106,19 +120,19 @@ async def admin_ads_menu(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.ads_menu, F.text == "👁 Эълонларни кўриш")
 async def admin_view_ads(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
+    def _fetch_ads_sync():
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, animal_type, quantity, price,
+                   region, district, status, user_id
+            FROM ads ORDER BY id DESC LIMIT 50
+        """)
+        result = cursor.fetchall()
+        conn.close()
+        return result
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT id, animal_type, quantity, price,
-               region, district, status, user_id
-        FROM ads ORDER BY id DESC LIMIT 50
-    """)
-    rows = cursor.fetchall()
-    conn.close()
+    rows = await asyncio.to_thread(_fetch_ads_sync)
 
     if not rows:
         await message.answer("❌ Базада эълонлар йўқ.")
@@ -159,8 +173,6 @@ async def admin_view_ads(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.ads_menu, F.text == "🗑 ID бўйича ўчириш")
 async def ask_del_ad(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.del_ad_id)
     await message.answer(
         "📋 Эълон ID сини киритинг:\n\n"
@@ -172,8 +184,6 @@ async def ask_del_ad(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.del_ad_id)
 async def do_del_ad(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         await state.set_state(AdminStates.ads_menu)
         await message.answer("📋 Эълонлар бошқариши", reply_markup=admin_ads_keyboard())
@@ -185,19 +195,22 @@ async def do_del_ad(message: types.Message, state: FSMContext):
         await message.answer("⚠️ ID рақам бўлиши керак!")
         return
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    def _fetch_ad_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, animal_type, quantity, price, region, district, msg_id FROM ads WHERE id = {p}
+            """, (ad_id,)
+        )
+        result = cursor.fetchone()
+        conn.close()
+        return result
 
-    cursor.execute(f"""
-        SELECT id, animal_type, quantity, price, region, district, msg_id FROM ads WHERE id = {p}
-        """, (ad_id,)
-    )
-    row = cursor.fetchone()
+    row = await asyncio.to_thread(_fetch_ad_sync)
 
     if not row:
         await message.answer(f"❌ ID={ad_id} топилмади.")
-        conn.close()
         return
 
     _, a_type, qty, price, region, dist, msg_ids_str = row
@@ -211,9 +224,15 @@ async def do_del_ad(message: types.Message, state: FSMContext):
         except Exception as e:
             logging.error(f"Каналдан ўчириш хато: msg_id={msg_id}, error={e}")
 
-    cursor.execute(f"DELETE FROM ads WHERE id = {p}", (ad_id,))
-    conn.commit()
-    conn.close()
+    def _delete_ad_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"DELETE FROM ads WHERE id = {p}", (ad_id,))
+        conn.commit()
+        conn.close()
+
+    await asyncio.to_thread(_delete_ad_sync)
 
     await message.answer(
         f"🗑 *Ўчирилди!*\n\n"
@@ -230,8 +249,6 @@ async def do_del_ad(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.ads_menu, F.text == "🗑 Фойдаланувчи эълонларини ўчириш")
 async def ask_del_user_ads(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.del_user_ads_id)
     await message.answer(
         "📋 Фойдаланувчи USER_ID сини киритинг:",
@@ -241,8 +258,6 @@ async def ask_del_user_ads(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.del_user_ads_id)
 async def do_del_user_ads(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         await state.set_state(AdminStates.ads_menu)
         await message.answer("📋 Эълонлар бошқариши", reply_markup=admin_ads_keyboard())
@@ -254,20 +269,27 @@ async def do_del_user_ads(message: types.Message, state: FSMContext):
         await message.answer("⚠️ USER_ID рақам бўлиши керак!")
         return
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    def _fetch_user_ads_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT COUNT(*) FROM ads WHERE user_id = {p}", (user_id,))
+        ads_count = cursor.fetchone()[0]
 
-    cursor.execute(f"SELECT COUNT(*) FROM ads WHERE user_id = {p}", (user_id,))
-    count = cursor.fetchone()[0]
+        if ads_count == 0:
+            conn.close()
+            return ads_count, []
+
+        cursor.execute(f"SELECT msg_id FROM ads WHERE user_id = {p}", (user_id,))
+        msg_id_rows = cursor.fetchall()
+        conn.close()
+        return ads_count, msg_id_rows
+
+    count, all_msg_ids = await asyncio.to_thread(_fetch_user_ads_sync)
 
     if count == 0:
         await message.answer(f"❌ USER_ID={user_id} учун эълонлар топилмади.")
-        conn.close()
         return
-
-    cursor.execute(f"SELECT msg_id FROM ads WHERE user_id = {p}", (user_id,))
-    all_msg_ids = cursor.fetchall()
 
     deleted_count = 0
     for (msg_ids_str,) in all_msg_ids:
@@ -279,9 +301,15 @@ async def do_del_user_ads(message: types.Message, state: FSMContext):
             except Exception:
                 pass
 
-    cursor.execute(f"DELETE FROM ads WHERE user_id = {p}", (user_id,))
-    conn.commit()
-    conn.close()
+    def _delete_user_ads_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"DELETE FROM ads WHERE user_id = {p}", (user_id,))
+        conn.commit()
+        conn.close()
+
+    await asyncio.to_thread(_delete_user_ads_sync)
 
     await message.answer(
         f"🗑 USER_ID={user_id} — *{count} та* эълон ўчирилди.\n"
@@ -298,8 +326,6 @@ async def do_del_user_ads(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.menu, F.text == "💰 Нархлар")
 async def admin_prices_menu(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.prices_menu)
     await message.answer(
         "💰 *Нархлар бошқариши*\n\n"
@@ -313,8 +339,6 @@ async def admin_prices_menu(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.prices_menu, F.text == "➕ Нарх қўшиш")
 async def ask_add_price(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.add_price_animal)
     await message.answer(
         "🐾 Ҳайвон турини киритинг (кириллда):\n"
@@ -325,8 +349,6 @@ async def ask_add_price(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.add_price_animal)
 async def add_price_animal(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         await state.set_state(AdminStates.prices_menu)
         await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
@@ -349,8 +371,6 @@ async def add_price_animal(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.add_price_region)
 async def add_price_region(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         await state.set_state(AdminStates.prices_menu)
         await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
@@ -373,8 +393,6 @@ async def add_price_region(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.add_price_value)
 async def add_price_save(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         await state.set_state(AdminStates.prices_menu)
         await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
@@ -394,15 +412,18 @@ async def add_price_save(message: types.Message, state: FSMContext):
     animal = data.get("mp_animal")
     region = data.get("mp_region")
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        INSERT INTO market_prices (user_id, animal_type, region, price)
-        VALUES ({p}, {p}, {p}, {p})
-    """, (message.from_user.id, animal, region, price))
-    conn.commit()
-    conn.close()
+    def _add_price_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            INSERT INTO market_prices (user_id, animal_type, region, price)
+            VALUES ({p}, {p}, {p}, {p})
+        """, (message.from_user.id, animal, region, price))
+        conn.commit()
+        conn.close()
+
+    await asyncio.to_thread(_add_price_sync)
 
     await message.answer(
         f"✅ *Нарх киритилди!*\n\n"
@@ -419,8 +440,6 @@ async def add_price_save(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.prices_menu, F.text == "➕ Кўп нарх қўшиш")
 async def ask_add_multi(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.add_multi_text)
     await message.answer(
         "📋 *Формат:*\n\n"
@@ -436,55 +455,58 @@ async def ask_add_multi(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.add_multi_text)
 async def do_add_multi(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         await state.set_state(AdminStates.prices_menu)
         await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
         return
 
     lines = message.text.strip().split("\n")
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
 
-    success = 0
-    errors = []
+    def _add_multi_prices_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    for line in lines:
-        parts = line.strip().split()
-        if len(parts) < 3:
-            errors.append(f"❌ `{line.strip()}` — format xato")
-            continue
+        added = 0
+        line_errors = []
 
-        animal = validate_animal(parts[0])
-        region = validate_region(parts[1])
+        for line in lines:
+            parts = line.strip().split()
+            if len(parts) < 3:
+                line_errors.append(f"❌ `{line.strip()}` — format xato")
+                continue
 
-        if animal is None:
-            errors.append(f"❌ `{parts[0]}` — ҳайвон нотўғри")
-            continue
-        if region is None:
-            errors.append(f"❌ `{parts[1]}` — вилоят нотўғри")
-            continue
+            animal = validate_animal(parts[0])
+            region = validate_region(parts[1])
 
-        try:
-            price = int(parts[2].replace(" ", ""))
-        except ValueError:
-            errors.append(f"❌ `{line.strip()}` — нарх хато")
-            continue
+            if animal is None:
+                line_errors.append(f"❌ `{parts[0]}` — ҳайвон нотўғри")
+                continue
+            if region is None:
+                line_errors.append(f"❌ `{parts[1]}` — вилоят нотўғри")
+                continue
 
-        if price < 1000:
-            errors.append(f"❌ `{line.strip()}` — нарх кичик")
-            continue
+            try:
+                price = int(parts[2].replace(" ", ""))
+            except ValueError:
+                line_errors.append(f"❌ `{line.strip()}` — нарх хато")
+                continue
 
-        cursor.execute(f"""
-            INSERT INTO market_prices (user_id, animal_type, region, price)
-            VALUES ({p}, {p}, {p}, {p})
-        """, (message.from_user.id, animal, region, price))
-        success += 1
+            if price < 1000:
+                line_errors.append(f"❌ `{line.strip()}` — нарх кичик")
+                continue
 
-    conn.commit()
-    conn.close()
+            cursor.execute(f"""
+                INSERT INTO market_prices (user_id, animal_type, region, price)
+                VALUES ({p}, {p}, {p}, {p})
+            """, (message.from_user.id, animal, region, price))
+            added += 1
+
+        conn.commit()
+        conn.close()
+        return added, line_errors
+
+    success, errors = await asyncio.to_thread(_add_multi_prices_sync)
 
     text = f"✅ *{success} та нарх киритилди!*\n"
     if errors:
@@ -500,18 +522,18 @@ async def do_add_multi(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.prices_menu, F.text == "👁 Нархларни кўриш")
 async def admin_view_prices(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
+    def _fetch_prices_sync():
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, animal_type, region, price, created_at
+            FROM market_prices ORDER BY created_at DESC LIMIT 100
+        """)
+        result = cursor.fetchall()
+        conn.close()
+        return result
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT id, animal_type, region, price, created_at
-        FROM market_prices ORDER BY created_at DESC LIMIT 100
-    """)
-    rows = cursor.fetchall()
-    conn.close()
+    rows = await asyncio.to_thread(_fetch_prices_sync)
 
     if not rows:
         await message.answer("❌ Базада нархлар йўқ.")
@@ -540,16 +562,12 @@ async def admin_view_prices(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.prices_menu, F.text == "🗑 Нархни ўчириш ID")
 async def ask_del_price(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.del_price_id)
     await message.answer("📋 Нарх ID сини киритинг:", reply_markup=standard_step_keyboard())
 
 
 @router.message(AdminStates.del_price_id)
 async def do_del_price(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         await state.set_state(AdminStates.prices_menu)
         await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
@@ -561,21 +579,26 @@ async def do_del_price(message: types.Message, state: FSMContext):
         await message.answer("⚠️ ID рақам бўлиши керак!")
         return
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT id, animal_type, region, price FROM market_prices WHERE id = {p}", (price_id,))
-    row = cursor.fetchone()
+    def _delete_price_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT id, animal_type, region, price FROM market_prices WHERE id = {p}", (price_id,))
+        result = cursor.fetchone()
+
+        if result:
+            cursor.execute(f"DELETE FROM market_prices WHERE id = {p}", (price_id,))
+            conn.commit()
+        conn.close()
+        return result
+
+    row = await asyncio.to_thread(_delete_price_sync)
 
     if not row:
         await message.answer(f"❌ ID={price_id} топилмади.")
-        conn.close()
         return
 
     _, animal, region, price = row
-    cursor.execute(f"DELETE FROM market_prices WHERE id = {p}", (price_id,))
-    conn.commit()
-    conn.close()
 
     await message.answer(
         f"🗑 *Ўчирилди!*\n\n🆔 ID: {price_id}\n🐾 {animal}\n📍 {region}\n💰 {price:,} сўм",
@@ -589,8 +612,6 @@ async def do_del_price(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.prices_menu, F.text == "🗑 Ҳайвон бўйича ўчириш")
 async def ask_del_animal(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.del_animal_name)
     await message.answer(
         f"🐾 Ҳайвон турини киритинг:\nРўхат: {', '.join(VALID_ANIMALS)}",
@@ -600,8 +621,6 @@ async def ask_del_animal(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.del_animal_name)
 async def do_del_animal(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         await state.set_state(AdminStates.prices_menu)
         await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
@@ -612,20 +631,24 @@ async def do_del_animal(message: types.Message, state: FSMContext):
         await message.answer(f"⚠️ Нотўғри: {message.text}")
         return
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT COUNT(*) FROM market_prices WHERE animal_type = {p}", (animal,))
-    count = cursor.fetchone()[0]
+    def _delete_by_animal_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT COUNT(*) FROM market_prices WHERE animal_type = {p}", (animal,))
+        cnt = cursor.fetchone()[0]
+
+        if cnt > 0:
+            cursor.execute(f"DELETE FROM market_prices WHERE animal_type = {p}", (animal,))
+            conn.commit()
+        conn.close()
+        return cnt
+
+    count = await asyncio.to_thread(_delete_by_animal_sync)
 
     if count == 0:
         await message.answer(f"❌ *{animal}* учун нархлар топилмади.")
-        conn.close()
         return
-
-    cursor.execute(f"DELETE FROM market_prices WHERE animal_type = {p}", (animal,))
-    conn.commit()
-    conn.close()
 
     await message.answer(f"🗑 *{animal}* — {count} та нарх ўчирилди.", parse_mode="Markdown")
     await state.set_state(AdminStates.prices_menu)
@@ -636,8 +659,6 @@ async def do_del_animal(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.prices_menu, F.text == "🗑 Вилоят бўйича ўчириш")
 async def ask_del_region(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.del_region_name)
     await message.answer(
         f"📍 Вилоятни киритинг:\nРўхат: {', '.join(VALID_REGIONS)}",
@@ -647,8 +668,6 @@ async def ask_del_region(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.del_region_name)
 async def do_del_region(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         await state.set_state(AdminStates.prices_menu)
         await message.answer("💰 Нархлар бошқариши", reply_markup=admin_prices_keyboard())
@@ -659,20 +678,24 @@ async def do_del_region(message: types.Message, state: FSMContext):
         await message.answer(f"⚠️ Нотўғри: {message.text}")
         return
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT COUNT(*) FROM market_prices WHERE region = {p}", (region,))
-    count = cursor.fetchone()[0]
+    def _delete_by_region_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT COUNT(*) FROM market_prices WHERE region = {p}", (region,))
+        cnt = cursor.fetchone()[0]
+
+        if cnt > 0:
+            cursor.execute(f"DELETE FROM market_prices WHERE region = {p}", (region,))
+            conn.commit()
+        conn.close()
+        return cnt
+
+    count = await asyncio.to_thread(_delete_by_region_sync)
 
     if count == 0:
         await message.answer(f"❌ *{region}* учун нархлар топилмади.")
-        conn.close()
         return
-
-    cursor.execute(f"DELETE FROM market_prices WHERE region = {p}", (region,))
-    conn.commit()
-    conn.close()
 
     await message.answer(f"🗑 *{region}* — {count} та нарх ўчирилди.", parse_mode="Markdown")
     await state.set_state(AdminStates.prices_menu)
@@ -683,15 +706,15 @@ async def do_del_region(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.prices_menu, F.text == "🗑 Барчасини ўчириш")
 async def ask_clear_prices(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
+    def _count_prices_sync():
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM market_prices")
+        cnt = cursor.fetchone()[0]
+        conn.close()
+        return cnt
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT COUNT(*) FROM market_prices")
-    count = cursor.fetchone()[0]
-    conn.close()
+    count = await asyncio.to_thread(_count_prices_sync)
 
     if count == 0:
         await message.answer("❌ Базада нархлар йўқ.")
@@ -706,14 +729,36 @@ async def ask_clear_prices(message: types.Message, state: FSMContext):
     )
 
 
+@router.message(Command("clearprices_confirm"))
+async def do_clear_prices(message: types.Message, state: FSMContext):
+    def _clear_prices_sync():
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM market_prices")
+        cnt = cursor.fetchone()[0]
+        if cnt > 0:
+            cursor.execute("DELETE FROM market_prices")
+            conn.commit()
+        conn.close()
+        return cnt
+
+    count = await asyncio.to_thread(_clear_prices_sync)
+
+    if count == 0:
+        await message.answer("❌ Базада нархлар йўқ.")
+        return
+
+    await message.answer(f"🗑 Барчаси ўчирилди — *{count} та* нарх маълумоти.", parse_mode="Markdown")
+    await state.set_state(AdminStates.prices_menu)
+    await message.answer("💰 Давом этинг:", reply_markup=admin_prices_keyboard())
+
+
 # ═══════════════════════════════════════
 # 🚫 БЛОК МЕНЮСИ
 # ═══════════════════════════════════════
 
 @router.message(AdminStates.menu, F.text == "🚫 Блок")
 async def admin_block_menu(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.block_menu)
     await message.answer(
         "🚫 *Блок бошқариши*",
@@ -724,10 +769,7 @@ async def admin_block_menu(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.block_menu, F.text == "🚫 Блокланганлар рўйхати")
 async def show_blocked(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-
-    blocked = get_blocked_users()
+    blocked = await get_blocked_users()
     if not blocked:
         await message.answer("✅ Блокланган фойдаланувчилар йўқ.")
         return
@@ -745,16 +787,12 @@ async def show_blocked(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.block_menu, F.text == "🔓 Блокдан чиқариш")
 async def ask_unblock(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.unblock_id)
     await message.answer("📋 USER_ID киритинг:", reply_markup=standard_step_keyboard())
 
 
 @router.message(AdminStates.unblock_id)
 async def do_unblock(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         await state.set_state(AdminStates.block_menu)
         await message.answer("🚫 Блок бошқариши", reply_markup=admin_block_keyboard())
@@ -766,7 +804,7 @@ async def do_unblock(message: types.Message, state: FSMContext):
         await message.answer("⚠️ USER_ID рақам бўлиши керак!")
         return
 
-    unblock_user(user_id)
+    await unblock_user(user_id)
     await message.answer(f"✅ `{user_id}` блокдан чиқарилди.", parse_mode="Markdown")
 
     try:
@@ -788,8 +826,6 @@ async def do_unblock(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.menu, F.text == "💎 Премиум")
 async def admin_premium_menu(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.premium_menu)
     await message.answer(
         "💎 *Премиум бошқариши*",
@@ -800,16 +836,12 @@ async def admin_premium_menu(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.premium_menu, F.text == "💎 Премиум бериш")
 async def ask_premium_give(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.premium_give_id)
     await message.answer("📋 USER_ID киритинг:", reply_markup=standard_step_keyboard())
 
 
 @router.message(AdminStates.premium_give_id)
 async def do_premium_give(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         await state.set_state(AdminStates.premium_menu)
         await message.answer("💎 Премиум бошқариши", reply_markup=admin_premium_keyboard())
@@ -821,29 +853,39 @@ async def do_premium_give(message: types.Message, state: FSMContext):
         await message.answer("⚠️ USER_ID рақам бўлиши керак!")
         return
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT full_name, username, is_premium FROM users WHERE user_id = {p}", (user_id,))
-    row = cursor.fetchone()
+    def _give_premium_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT full_name, username, is_premium FROM users WHERE user_id = {p}", (user_id,))
+        result_row = cursor.fetchone()
 
-    if not row:
-        await message.answer(f"❌ USER_ID={user_id} базада топилмади.")
+        if not result_row:
+            conn.close()
+            return "not_found", None, None
+
+        full_name_v, username_v, already_premium_v = result_row
+        if already_premium_v:
+            conn.close()
+            return "already_premium", full_name_v, username_v
+
+        if __import__('os').getenv("DATABASE_URL"):
+            cursor.execute(f"UPDATE users SET is_premium = TRUE WHERE user_id = {p}", (user_id,))
+        else:
+            cursor.execute(f"UPDATE users SET is_premium = 1 WHERE user_id = {p}", (user_id,))
+        conn.commit()
         conn.close()
+        return "updated", full_name_v, username_v
+
+    status, full_name, username = await asyncio.to_thread(_give_premium_sync)
+
+    if status == "not_found":
+        await message.answer(f"❌ USER_ID={user_id} базада топилмади.")
         return
 
-    full_name, username, already_premium = row
-    if already_premium:
-        conn.close()
+    if status == "already_premium":
         await message.answer(f"ℹ️ `{user_id}` аллақачон Премиум.", parse_mode="Markdown")
         return
-
-    if __import__('os').getenv("DATABASE_URL"):
-        cursor.execute(f"UPDATE users SET is_premium = TRUE WHERE user_id = {p}", (user_id,))
-    else:
-        cursor.execute(f"UPDATE users SET is_premium = 1 WHERE user_id = {p}", (user_id,))
-    conn.commit()
-    conn.close()
 
     uname = f"@{username}" if username else "—"
     safe_name = html.escape(full_name or '—')
@@ -867,16 +909,12 @@ async def do_premium_give(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.premium_menu, F.text == "❌ Премиум олиш")
 async def ask_premium_remove(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.premium_remove_id)
     await message.answer("📋 USER_ID киритинг:", reply_markup=standard_step_keyboard())
 
 
 @router.message(AdminStates.premium_remove_id)
 async def do_premium_remove(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         await state.set_state(AdminStates.premium_menu)
         await message.answer("💎 Премиум бошқариши", reply_markup=admin_premium_keyboard())
@@ -888,15 +926,18 @@ async def do_premium_remove(message: types.Message, state: FSMContext):
         await message.answer("⚠️ USER_ID рақам бўлиши керак!")
         return
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if __import__('os').getenv("DATABASE_URL"):
-        cursor.execute(f"UPDATE users SET is_premium = FALSE WHERE user_id = {p}", (user_id,))
-    else:
-        cursor.execute(f"UPDATE users SET is_premium = 0 WHERE user_id = {p}", (user_id,))
-    conn.commit()
-    conn.close()
+    def _remove_premium_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        if __import__('os').getenv("DATABASE_URL"):
+            cursor.execute(f"UPDATE users SET is_premium = FALSE WHERE user_id = {p}", (user_id,))
+        else:
+            cursor.execute(f"UPDATE users SET is_premium = 0 WHERE user_id = {p}", (user_id,))
+        conn.commit()
+        conn.close()
+
+    await asyncio.to_thread(_remove_premium_sync)
 
     await message.answer(f"✅ `{user_id}` дан Премиум олиб ташланди.", parse_mode="Markdown")
     await state.set_state(AdminStates.premium_menu)
@@ -905,18 +946,18 @@ async def do_premium_remove(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.premium_menu, F.text == "💎 Премиум рўйхати")
 async def show_premium_list(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
+    def _fetch_premium_list_sync():
+        conn = get_connection()
+        cursor = conn.cursor()
+        if __import__('os').getenv("DATABASE_URL"):
+            cursor.execute("SELECT user_id, full_name, username FROM users WHERE is_premium = TRUE ORDER BY user_id")
+        else:
+            cursor.execute("SELECT user_id, full_name, username FROM users WHERE is_premium = 1 ORDER BY user_id")
+        result = cursor.fetchall()
+        conn.close()
+        return result
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if __import__('os').getenv("DATABASE_URL"):
-        cursor.execute(f"SELECT user_id, full_name, username FROM users WHERE is_premium = TRUE ORDER BY user_id")
-    else:
-        cursor.execute(f"SELECT user_id, full_name, username FROM users WHERE is_premium = 1 ORDER BY user_id")
-    rows = cursor.fetchall()
-    conn.close()
+    rows = await asyncio.to_thread(_fetch_premium_list_sync)
 
     if not rows:
         await message.answer("💎 Ҳозирча Премиум аъзолар йўқ.")
@@ -936,8 +977,6 @@ async def show_premium_list(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.menu, F.text == "📢 Тарқатиш")
 async def ask_broadcast(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.set_state(AdminStates.broadcast_text)
     await message.answer(
         "📢 Юбориладиган матнни ёзинг:",
@@ -947,8 +986,6 @@ async def ask_broadcast(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.broadcast_text)
 async def do_broadcast(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
         await state.set_state(AdminStates.menu)
         await message.answer("🔐 Админ панел", reply_markup=admin_menu_keyboard())
@@ -959,12 +996,15 @@ async def do_broadcast(message: types.Message, state: FSMContext):
         await message.answer("⚠️ Матн бўш.")
         return
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT user_id FROM users")
-    users = cursor.fetchall()
-    conn.close()
+    def _fetch_all_users_sync():
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM users")
+        result = cursor.fetchall()
+        conn.close()
+        return result
+
+    users = await asyncio.to_thread(_fetch_all_users_sync)
 
     if not users:
         await message.answer("Базада фойдаланувчилар йўқ.")
@@ -1005,33 +1045,33 @@ async def do_broadcast(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.menu, F.text == "📊 Статистика")
 async def admin_stats(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    
     db_url = __import__('os').getenv("DATABASE_URL", "")
     
-    stats = get_full_statistics()
+    stats = await get_full_statistics()
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    def _fetch_user_stats_sync():
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    cursor.execute(f"SELECT COUNT(*) FROM users")
-    total_users = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM users")
+        total = cursor.fetchone()[0]
 
-    if db_url:
-        cursor.execute(f"SELECT COUNT(*) FROM users WHERE is_premium = TRUE")
-    else:
-        cursor.execute(f"SELECT COUNT(*) FROM users WHERE is_premium = 1")
-    premium_users = cursor.fetchone()[0]
+        if db_url:
+            cursor.execute("SELECT COUNT(*) FROM users WHERE is_premium = TRUE")
+        else:
+            cursor.execute("SELECT COUNT(*) FROM users WHERE is_premium = 1")
+        premium = cursor.fetchone()[0]
 
-    if db_url:
-        cursor.execute(f"SELECT COUNT(*) FROM users WHERE is_blocked = TRUE")
-    else:
-        cursor.execute(f"SELECT COUNT(*) FROM users WHERE is_blocked = 1")
-    blocked = cursor.fetchone()[0]
-        
-    conn.close()
+        if db_url:
+            cursor.execute("SELECT COUNT(*) FROM users WHERE is_blocked = TRUE")
+        else:
+            cursor.execute("SELECT COUNT(*) FROM users WHERE is_blocked = 1")
+        blocked_count = cursor.fetchone()[0]
+
+        conn.close()
+        return total, premium, blocked_count
+
+    total_users, premium_users, blocked = await asyncio.to_thread(_fetch_user_stats_sync)
 
     active_users = total_users - blocked
 
@@ -1089,22 +1129,22 @@ async def admin_stats(message: types.Message, state: FSMContext):
 
 @router.message(AdminStates.menu, F.text == "🔍 Нарх текшириш")
 async def check_prices(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
+    def _check_prices_sync():
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+        cursor.execute("SELECT id, animal_type, region, price FROM ads WHERE status = 'active'")
+        ads_rows = cursor.fetchall()
 
-    cursor.execute(f"SELECT id, animal_type, region, price FROM ads WHERE status = 'active'")
-    ads = cursor.fetchall()
+        cursor.execute("SELECT id, animal_type, region, price FROM market_prices")
+        mp_rows = cursor.fetchall()
+
+        conn.close()
+        return ads_rows, mp_rows
+
+    ads, mp = await asyncio.to_thread(_check_prices_sync)
     zero_ads = [f"🆔{r[0]} | {r[1]} | {r[2]} | `{r[3]}`" for r in ads if parse_price_text(str(r[3])) == 0]
-
-    cursor.execute(f"SELECT id, animal_type, region, price FROM market_prices")
-    mp = cursor.fetchall()
     zero_mp = [f"🆔{r[0]} | {r[1]} | {r[2]} | `{r[3]}`" for r in mp if r[3] is None or r[3] == 0]
-
-    conn.close()
 
     text = f"🔍 *Нарх текшириш*\n\n"
     text += f"📋 Ads: {len(ads)} та | Market_prices: {len(mp)} та\n\n"

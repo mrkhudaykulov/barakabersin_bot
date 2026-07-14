@@ -44,7 +44,7 @@ async def send_expiry_reminder(bot: Bot, days_left: int):
     """
     Муддати days_left кун қолган эълон эгаларига хабар юбориш.
     """
-    ads = get_expiring_ads(2)
+    ads = await get_expiring_ads(2)
     if not ads:
         logger.info(f"[Scheduler] 2 кун қолган эълон йўқ.")
         return
@@ -81,7 +81,7 @@ async def archive_expired_ads(bot: Bot):
     """
     Муддати ўтган эълонларни arxivlash va kanal xabarini yangilash.
     """
-    ads = get_expired_ads()
+    ads = await get_expired_ads()
     if not ads:
         return
 
@@ -91,7 +91,7 @@ async def archive_expired_ads(bot: Bot):
         ad_id, user_id, animal_type, msg_id = ad
         try:
             # Базада статусни ўзгартириш
-            archive_ad(ad_id)
+            await archive_ad(ad_id)
 
             # Каналдаги хабарни "МУДДАТИ ТУГАДИ" деб белгилаш
             if msg_id:

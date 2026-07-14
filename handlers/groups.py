@@ -41,10 +41,10 @@ async def get_user_managed_groups(user_id: int):
     group_admins жадвалидан (Telegram API'га мурожаат қилинмайди, тезроқ).
     Қайтаради: [(chat_id, chat_title, regions_list), ...]
     """
-    chat_ids = get_chats_managed_by(user_id)
+    chat_ids = await get_chats_managed_by(user_id)
     if not chat_ids:
         return []
-    all_groups = get_all_active_group_chat_ids()
+    all_groups = await get_all_active_group_chat_ids()
     result = []
     for chat_id in chat_ids:
         info = all_groups.get(chat_id)
@@ -71,7 +71,7 @@ async def my_managed_groups(message: types.Message):
 
 @router.message(F.text == "🚫 Мен блокладим")
 async def my_blocked_users(message: types.Message):
-    blocks = get_blocks_by_admin(message.from_user.id)
+    blocks = await get_blocks_by_admin(message.from_user.id)
     if not blocks:
         await message.answer("ℹ️ Сиз ҳозирча ҳеч кимни блокламагансиз.")
         return
@@ -90,7 +90,7 @@ async def all_connected_groups(message: types.Message):
     if message.from_user.id not in ADMINS:
         return
 
-    all_groups = get_all_active_group_chat_ids()
+    all_groups = await get_all_active_group_chat_ids()
     if not all_groups:
         await message.answer("ℹ️ Ҳозирча ҳеч қандай гуруҳ боғланмаган.")
         return
@@ -148,7 +148,7 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated):
         # Бот янги қўшилди — ҚЎШГАН ОДАМ шу гуруҳнинг ВИЛОЯТ созламаларини
         # бошқариш ваколатига эга бўлади (эълон тасдиқлаш ваколати ЭМАС —
         # у энди бош админ орқали, алоҳида берилади).
-        add_group_admin(event.chat.id, event.from_user.id, granted_by=None)
+        await add_group_admin(event.chat.id, event.from_user.id, granted_by=None)
 
         kb = _build_region_inline_kb()
         try:
@@ -172,7 +172,7 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated):
 
     elif was_in and not is_in:
         # Бот чиқарилди/чиқиб кетди
-        deactivate_chat(event.chat.id)
+        await deactivate_chat(event.chat.id)
 
 
 async def _notify_bosh_admins_about_new_group(chat, adder):
@@ -235,7 +235,7 @@ async def add_review_admin_callback(callback: types.CallbackQuery):
     except Exception:
         pass
 
-    add_review_admin(
+    await add_review_admin(
         target_user_id, full_name=full_name, username=username,
         added_by=callback.from_user.id
     )
@@ -263,7 +263,7 @@ async def list_review_admins_command(message: types.Message):
     if message.from_user.id not in ADMINS:
         return
 
-    ids = get_all_review_admin_ids()
+    ids = await get_all_review_admin_ids()
     if not ids:
         await message.answer("ℹ️ Review admins ҳавзаси ҳозирча бўш.")
         return
@@ -300,7 +300,7 @@ async def remove_review_admin_callback(callback: types.CallbackQuery):
         return
 
     target_user_id = int(callback.data.replace("removereviewadmin_", ""))
-    remove_review_admin(target_user_id)
+    await remove_review_admin(target_user_id)
 
     await callback.answer("✅ Олиб ташланди!")
     try:
@@ -323,11 +323,11 @@ async def viloyat_command(message: types.Message):
         await message.answer("ℹ️ Бу буйруқ фақат гуруҳларда ишлайди.")
         return
 
-    if not is_group_admin(message.chat.id, message.from_user.id):
+    if not await is_group_admin(message.chat.id, message.from_user.id):
         await message.answer("⚠️ Фақат шу гуруҳ учун тасдиқлаш ваколатига эга одам вилоят(лар)ни созлай олади.")
         return
 
-    selected = set(get_regions_for_chat(message.chat.id))
+    selected = set(await get_regions_for_chat(message.chat.id))
     kb = _build_region_inline_kb(selected_regions=selected)
     await message.answer(
         "🏘 Бу гуруҳни қайси вилоят(лар)га боғлаймиз?\n\n"
@@ -360,7 +360,7 @@ async def add_group_admin_command(message: types.Message):
         return
 
     target = message.reply_to_message.from_user
-    add_group_admin(message.chat.id, target.id, granted_by=message.from_user.id)
+    await add_group_admin(message.chat.id, target.id, granted_by=message.from_user.id)
     await message.answer(
         f"✅ {target.full_name} энди шу гуруҳ учун эълон тасдиқлаш ваколатига эга."
     )
@@ -383,7 +383,7 @@ async def remove_group_admin_command(message: types.Message):
         return
 
     target = message.reply_to_message.from_user
-    remove_group_admin(message.chat.id, target.id)
+    await remove_group_admin(message.chat.id, target.id)
     await message.answer(
         f"✅ {target.full_name} энди шу гуруҳ учун тасдиқлаш ваколатига эга ЭМАС."
     )
@@ -396,7 +396,7 @@ async def region_group_callback(callback: types.CallbackQuery):
 
     chat_id = callback.message.chat.id
 
-    if not is_group_admin(chat_id, callback.from_user.id):
+    if not await is_group_admin(chat_id, callback.from_user.id):
         await callback.message.answer("⚠️ Фақат шу гуруҳ учун тасдиқлаш ваколатига эга одам танлаши мумкин.")
         return
 
@@ -412,14 +412,14 @@ async def region_group_callback(callback: types.CallbackQuery):
     chat_title = callback.message.chat.title
     chat_username = callback.message.chat.username
 
-    already_selected = region in get_regions_for_chat(chat_id)
+    already_selected = region in await get_regions_for_chat(chat_id)
     if already_selected:
-        remove_region_group(chat_id, region)
+        await remove_region_group(chat_id, region)
     else:
-        add_region_group(chat_id, chat_title, chat_username, region)
+        await add_region_group(chat_id, chat_title, chat_username, region)
 
     # ═══ Ҳозиргача танланган БАРЧА вилоятларни олиб, ✅ билан ЎРНИДА янгилаймиз ═══
-    selected = set(get_regions_for_chat(chat_id))
+    selected = set(await get_regions_for_chat(chat_id))
     new_text = (
         f"✅ Танланганлар: {', '.join(sorted(selected)) if selected else '(ҳали йўқ)'}\n\n"
         f"Яна вилоят қўшмоқчи бўлсангиз танланг, ёки якунлаш учун "

@@ -1,3 +1,5 @@
+import asyncio
+
 from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -93,10 +95,10 @@ async def create_notification(message: types.Message, state: FSMContext):
 
     # ── Лимит текшируви ──
     user_id = message.from_user.id
-    is_premium = is_premium_user(user_id)
+    is_premium = await is_premium_user(user_id)
     limit = MAX_NOTIFICATIONS_PREMIUM if is_premium else MAX_NOTIFICATIONS_REGULAR
 
-    notifications = get_user_notifications(user_id)
+    notifications = await get_user_notifications(user_id)
     current_count = len(notifications)
 
     if current_count >= limit:
@@ -278,8 +280,8 @@ async def notify_max_price(message: types.Message, state: FSMContext):
         return
     
     # ── Лимитни қайта текшириш (сафегард) ──
-    notifications = get_user_notifications(message.from_user.id)
-    is_premium = is_premium_user(message.from_user.id)
+    notifications = await get_user_notifications(message.from_user.id)
+    is_premium = await is_premium_user(message.from_user.id)
     limit = MAX_NOTIFICATIONS_PREMIUM if is_premium else MAX_NOTIFICATIONS_REGULAR
 
     if len(notifications) >= limit:
@@ -293,58 +295,64 @@ async def notify_max_price(message: types.Message, state: FSMContext):
         return
 
    
-    # Такрорий текшириш
-    p = get_placeholder()
-    conn = get_connection()
-    cur = conn.cursor()
+    # Такрорий текшириш ва сақлаш
+    def _save_notification_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cur = conn.cursor()
 
-    cur.execute(
-        f"""
-        SELECT id FROM notifications
-        WHERE user_id = {p}
-        AND animal_type = {p}
-        AND region = {p}
-        AND district = {p}
-        AND min_price = {p}
-        AND max_price = {p}
-        """,
-        (
-            message.from_user.id,
-            data["animal_type"],
-            data["region"],
-            data.get("district", "Барчаси"),
-            data["min_price"],
-            max_price
+        cur.execute(
+            f"""
+            SELECT id FROM notifications
+            WHERE user_id = {p}
+            AND animal_type = {p}
+            AND region = {p}
+            AND district = {p}
+            AND min_price = {p}
+            AND max_price = {p}
+            """,
+            (
+                message.from_user.id,
+                data["animal_type"],
+                data["region"],
+                data.get("district", "Барчаси"),
+                data["min_price"],
+                max_price
+            )
         )
-    )
 
-    if cur.fetchone():
+        if cur.fetchone():
+            conn.close()
+            return "duplicate"
+
+        cur.execute(
+            f"""
+            INSERT INTO notifications
+            (user_id, animal_type, region, district, min_price, max_price)
+            VALUES ({p},{p},{p},{p},{p},{p})
+            """,
+            (
+                message.from_user.id,
+                data["animal_type"],
+                data["region"],
+                data.get("district", "Барчаси"),
+                data["min_price"],
+                max_price
+            )
+        )
+        conn.commit()
         conn.close()
+        return "saved"
+
+    result = await asyncio.to_thread(_save_notification_sync)
+
+    if result == "duplicate":
         await message.answer(
             "⚠️ Бу эслатма аввал яратилган.",
             reply_markup=main_menu()
         )
         await state.clear()
         return
-
-    # Сақлаш
-    cur.execute(
-        f"""
-        INSERT INTO notifications
-        (user_id, animal_type, region, district, min_price, max_price)
-        VALUES ({p},{p},{p},{p},{p},{p})
-        """,
-        (
-            message.from_user.id,
-            data["animal_type"],
-            data["region"],
-            data.get("district", "Барчаси"),
-            data["min_price"],
-            max_price
-        )
-    )
-    conn.commit()
-    conn.close()
 
     district_text = data.get("district", "Барчаси")
 
@@ -367,7 +375,7 @@ async def notify_max_price(message: types.Message, state: FSMContext):
 @router.message(F.text == "📌 Менинг кузатувларим")
 async def my_notifications(message: types.Message, state: FSMContext):
     await state.clear()
-    notifications = get_user_notifications(message.from_user.id)
+    notifications = await get_user_notifications(message.from_user.id)
 
     if not notifications:
         await message.answer(
@@ -421,23 +429,30 @@ async def my_notifications(message: types.Message, state: FSMContext):
 async def delete_notification_callback(callback: types.CallbackQuery):
     notif_id = int(callback.data.replace("del_notif_", ""))
 
-    p = get_placeholder()
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(
-        f"SELECT user_id FROM notifications WHERE id = {p}",
-        (notif_id,)
-    )
-    row = cur.fetchone()
+    def _delete_notif_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT user_id FROM notifications WHERE id = {p}",
+            (notif_id,)
+        )
+        result_row = cur.fetchone()
 
-    if not row or row[0] != callback.from_user.id:
-        await callback.answer("⛔ Сиз бу кузатув эгаси эмассиз!")
+        if not result_row or result_row[0] != callback.from_user.id:
+            conn.close()
+            return "denied"
+
+        cur.execute(f"DELETE FROM notifications WHERE id = {p}", (notif_id,))
+        conn.commit()
         conn.close()
-        return
+        return "deleted"
 
-    cur.execute(f"DELETE FROM notifications WHERE id = {p}", (notif_id,))
-    conn.commit()
-    conn.close()
+    outcome = await asyncio.to_thread(_delete_notif_sync)
+
+    if outcome == "denied":
+        await callback.answer("⛔ Сиз бу кузатув эгаси эмассиз!")
+        return
 
     await callback.message.edit_text("🗑 Кузатув ўчирилди.")
     await callback.answer("Ўчирилди ✅")
@@ -451,20 +466,23 @@ async def delete_notification_callback(callback: types.CallbackQuery):
 async def edit_notification_start(callback: types.CallbackQuery, state: FSMContext):
     notif_id = int(callback.data.replace("edit_notif_", ""))
 
-    p = get_placeholder()
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(
-        f"SELECT user_id FROM notifications WHERE id = {p}",
-        (notif_id,)
-    )
-    row = cur.fetchone()
+    def _check_notif_owner_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT user_id FROM notifications WHERE id = {p}",
+            (notif_id,)
+        )
+        result_row = cur.fetchone()
+        conn.close()
+        return result_row
+
+    row = await asyncio.to_thread(_check_notif_owner_sync)
 
     if not row or row[0] != callback.from_user.id:
         await callback.answer("⛔ Сиз бу кузатув эгаси эмассиз!")
-        conn.close()
         return
-    conn.close()
 
     await state.set_state(NotifyStates.edit_min_price)
     await state.update_data(edit_notif_id=notif_id)
@@ -508,19 +526,22 @@ async def edit_max_price(message: types.Message, state: FSMContext):
 
     notif_id = data.get("edit_notif_id")
 
-    p = get_placeholder()
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(
-        f"""
-        UPDATE notifications
-        SET min_price = {p}, max_price = {p}
-        WHERE id = {p}
-        """,
-        (min_price, max_price, notif_id)
-    )
-    conn.commit()
-    conn.close()
+    def _update_notif_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            UPDATE notifications
+            SET min_price = {p}, max_price = {p}
+            WHERE id = {p}
+            """,
+            (min_price, max_price, notif_id)
+        )
+        conn.commit()
+        conn.close()
+
+    await asyncio.to_thread(_update_notif_sync)
 
     await state.clear()
     await message.answer(

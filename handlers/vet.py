@@ -143,7 +143,7 @@ async def vet_district(message: types.Message, state: FSMContext):
     # ═══ Оддий туман — маълумот кўрсатиш ═══
     # Тасдиқланган фойдаланувчи таклифлари мавжуд бўлса, статик
     # маълумот ўрнига ўшани кўрсатамиз (энг сўнгги тасдиқланган)
-    bolim_override = get_approved_vet_override(region, fixed_district, "bolim_boshligi")
+    bolim_override = await get_approved_vet_override(region, fixed_district, "bolim_boshligi")
 
     bolim = bolim_override or info.get("bolim_boshligi")
     lab_list = info.get("lab_mudiri_list", [])
@@ -347,7 +347,7 @@ async def vet_suggest_confirm(message: types.Message, state: FSMContext):
 
     username = f"@{message.from_user.username}" if message.from_user.username else None
 
-    suggestion_id = add_vet_suggestion(
+    suggestion_id = await add_vet_suggestion(
         user_id=message.from_user.id,
         username=username,
         action_type=data["vet_action_type"],
