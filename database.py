@@ -545,29 +545,28 @@ def get_expiring_ads(days_left: int):
     Scheduler эслатма юборади.
     """
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    if DATABASE_URL:
-        cursor.execute(f"""
-            SELECT id, user_id, animal_type, quantity, price, msg_id
-            FROM ads
-            WHERE status = {p}
-              AND expires_at IS NOT NULL
-              AND expires_at::date = (NOW() + INTERVAL '{days_left} days')::date
-        """, ("active",))
-    else:
-        cursor.execute(f"""
-            SELECT id, user_id, animal_type, quantity, price, msg_id
-            FROM ads
-            WHERE status = {p}
-              AND expires_at IS NOT NULL
-              AND date(expires_at) = date('now', '+{days_left} days')
-        """, ("active",))
+        if DATABASE_URL:
+            cursor.execute(f"""
+                SELECT id, user_id, animal_type, quantity, price, msg_id
+                FROM ads
+                WHERE status = {p}
+                  AND expires_at IS NOT NULL
+                  AND expires_at::date = (NOW() + INTERVAL '{days_left} days')::date
+            """, ("active",))
+        else:
+            cursor.execute(f"""
+                SELECT id, user_id, animal_type, quantity, price, msg_id
+                FROM ads
+                WHERE status = {p}
+                  AND expires_at IS NOT NULL
+                  AND date(expires_at) = date('now', '+{days_left} days')
+            """, ("active",))
 
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+        rows = cursor.fetchall()
+        return rows
 
 
 def get_expired_ads():
@@ -576,65 +575,62 @@ def get_expired_ads():
     Scheduler архивлаши учун.
     """
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    if DATABASE_URL:
-        cursor.execute(f"""
-            SELECT id, user_id, animal_type, msg_id
-            FROM ads
-            WHERE status = {p}
-              AND expires_at IS NOT NULL
-              AND expires_at < NOW()
-        """, ("active",))
-    else:
-        cursor.execute(f"""
-            SELECT id, user_id, animal_type, msg_id
-            FROM ads
-            WHERE status = {p}
-              AND expires_at IS NOT NULL
-              AND expires_at < datetime('now')
-        """, ("active",))
+        if DATABASE_URL:
+            cursor.execute(f"""
+                SELECT id, user_id, animal_type, msg_id
+                FROM ads
+                WHERE status = {p}
+                  AND expires_at IS NOT NULL
+                  AND expires_at < NOW()
+            """, ("active",))
+        else:
+            cursor.execute(f"""
+                SELECT id, user_id, animal_type, msg_id
+                FROM ads
+                WHERE status = {p}
+                  AND expires_at IS NOT NULL
+                  AND expires_at < datetime('now')
+            """, ("active",))
 
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+        rows = cursor.fetchall()
+        return rows
 
 
 def archive_ad(ad_id: int):
     """Эълонни arxiv статусига ўтказиш"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        f"UPDATE ads SET status = 'expired' WHERE id = {p}",
-        (ad_id,)
-    )
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE ads SET status = 'expired' WHERE id = {p}",
+            (ad_id,)
+        )
+        conn.commit()
 
 
 def repost_ad(ad_id: int):
     """Эълонни каналга қайта жойлаш — expires_at 7 кунга янгиланади"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute(f"""
-            UPDATE ads
-            SET expires_at = NOW() + INTERVAL '7 days',
-                status = 'active'
-            WHERE id = {p}
-        """, (ad_id,))
-    else:
-        cursor.execute(f"""
-            UPDATE ads
-            SET expires_at = datetime('now', '+7 days'),
-                status = 'active'
-            WHERE id = {p}
-        """, (ad_id,))
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute(f"""
+                UPDATE ads
+                SET expires_at = NOW() + INTERVAL '7 days',
+                    status = 'active'
+                WHERE id = {p}
+            """, (ad_id,))
+        else:
+            cursor.execute(f"""
+                UPDATE ads
+                SET expires_at = datetime('now', '+7 days'),
+                    status = 'active'
+                WHERE id = {p}
+            """, (ad_id,))
+        conn.commit()
 
 # ═══════════════════════════════════════
 # YORDAMCHI FUNKSIYALAR
@@ -762,143 +758,140 @@ def parse_price_with_type(text):
 def get_price_index(animal_type=None):
     """Эълонлар асосида нархлар индексини ҳисоблаш"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    query = f"""
-        SELECT animal_type, region, price
-        FROM ads
-        WHERE status = {p}
-    """
-    params = ["active"]
-    if animal_type:
-        query += f" AND animal_type = {p}"
-        params.append(animal_type)
+        query = f"""
+            SELECT animal_type, region, price
+            FROM ads
+            WHERE status = {p}
+        """
+        params = ["active"]
+        if animal_type:
+            query += f" AND animal_type = {p}"
+            params.append(animal_type)
 
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
 
-    stats = {}
-    for a_type, region, price_text in rows:
-        price = parse_price_text(price_text)
-        if price == 0 or price > MAX_PRICE:
-            continue
-        key = (a_type, region)
-        if key not in stats:
-            stats[key] = {"prices": [], "count": 0}
-        stats[key]["prices"].append(price)
-        stats[key]["count"] += 1
+        stats = {}
+        for a_type, region, price_text in rows:
+            price = parse_price_text(price_text)
+            if price == 0 or price > MAX_PRICE:
+                continue
+            key = (a_type, region)
+            if key not in stats:
+                stats[key] = {"prices": [], "count": 0}
+            stats[key]["prices"].append(price)
+            stats[key]["count"] += 1
 
-    result = {}
-    for (a_type, region), data in stats.items():
-        if a_type not in result:
-            result[a_type] = []
-        prices = data["prices"]
-        result[a_type].append({
-            "region": region,
-            "avg": sum(prices) / len(prices),
-            "min": min(prices),
-            "max": max(prices),
-            "count": data["count"]
-        })
+        result = {}
+        for (a_type, region), data in stats.items():
+            if a_type not in result:
+                result[a_type] = []
+            prices = data["prices"]
+            result[a_type].append({
+                "region": region,
+                "avg": sum(prices) / len(prices),
+                "min": min(prices),
+                "max": max(prices),
+                "count": data["count"]
+            })
 
-    for a_type in result:
-        result[a_type].sort(key=lambda x: x["avg"])
+        for a_type in result:
+            result[a_type].sort(key=lambda x: x["avg"])
 
-    return result
+        return result
 
 
 def get_market_prices_index():
     """Фойдаланувчилар киритган бозор нархлари"""
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    if DATABASE_URL:
-        cursor.execute("""
-            SELECT animal_type, region,
-                   AVG(price) as avg_price,
-                   MIN(price) as min_price,
-                   MAX(price) as max_price,
-                   COUNT(*) as cnt
-            FROM market_prices
-            WHERE created_at > NOW() - INTERVAL '10 days'
-            GROUP BY animal_type, region
-            ORDER BY animal_type, avg_price
-        """)
-    else:
-        cursor.execute("""
-            SELECT animal_type, region,
-                   AVG(price) as avg_price,
-                   MIN(price) as min_price,
-                   MAX(price) as max_price,
-                   COUNT(*) as cnt
-            FROM market_prices
-            WHERE created_at > datetime('now', '-10 days')
-            GROUP BY animal_type, region
-            ORDER BY animal_type, avg_price
-        """)
+        if DATABASE_URL:
+            cursor.execute("""
+                SELECT animal_type, region,
+                       AVG(price) as avg_price,
+                       MIN(price) as min_price,
+                       MAX(price) as max_price,
+                       COUNT(*) as cnt
+                FROM market_prices
+                WHERE created_at > NOW() - INTERVAL '10 days'
+                GROUP BY animal_type, region
+                ORDER BY animal_type, avg_price
+            """)
+        else:
+            cursor.execute("""
+                SELECT animal_type, region,
+                       AVG(price) as avg_price,
+                       MIN(price) as min_price,
+                       MAX(price) as max_price,
+                       COUNT(*) as cnt
+                FROM market_prices
+                WHERE created_at > datetime('now', '-10 days')
+                GROUP BY animal_type, region
+                ORDER BY animal_type, avg_price
+            """)
 
-    rows = cursor.fetchall()
-    conn.close()
+        rows = cursor.fetchall()
 
-    result = {}
-    for a_type, region, avg_p, min_p, max_p, cnt in rows:
-        if avg_p > MAX_PRICE:
-            continue
-        if a_type not in result:
-            result[a_type] = []
-        result[a_type].append({
-            "region": region,
-            "avg": avg_p,
-            "min": min_p,
-            "max": max_p,
-            "count": cnt
-        })
+        result = {}
+        for a_type, region, avg_p, min_p, max_p, cnt in rows:
+            if avg_p > MAX_PRICE:
+                continue
+            if a_type not in result:
+                result[a_type] = []
+            result[a_type].append({
+                "region": region,
+                "avg": avg_p,
+                "min": min_p,
+                "max": max_p,
+                "count": cnt
+            })
 
-    return result
+        return result
 
 
 def search_ads_db(animal_type=None, region=None, district=None, max_price=None, limit=10):
     """Эълонларни қидириш"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    query = f"""
-        SELECT id, animal_type, quantity, price,
-               region, district, description
-        FROM ads
-        WHERE status = {p}
-    """
-    params = ["active"]
+        query = f"""
+            SELECT id, animal_type, quantity, price,
+                   region, district, description
+            FROM ads
+            WHERE status = {p}
+        """
+        params = ["active"]
 
-    if animal_type:
-        query += f" AND animal_type = {p}"
-        params.append(animal_type)
-    if region:
-        query += f" AND region = {p}"
-        params.append(region)
-    if district:
-        query += f" AND district = {p}"
-        params.append(district)
+        if animal_type:
+            query += f" AND animal_type = {p}"
+            params.append(animal_type)
+        if region:
+            query += f" AND region = {p}"
+            params.append(region)
+        if district:
+            query += f" AND district = {p}"
+            params.append(district)
 
-    query += f" ORDER BY id DESC LIMIT {p}"
-    params.append(limit)
+        query += f" ORDER BY id DESC LIMIT {p}"
+        params.append(limit)
 
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
 
-    if max_price:
-        filtered = []
-        for row in rows:
-            price = parse_price_text(row[3])
-            if price > 0 and price <= max_price:
-                filtered.append(row)
-        return filtered
+        if max_price:
+            filtered = []
+            for row in rows:
+                price = parse_price_text(row[3])
+                if price > 0 and price <= max_price:
+                    filtered.append(row)
+            return filtered
 
-    return rows
+        return rows
 
 
 # ═══════════════════════════════════════
@@ -908,70 +901,69 @@ def search_ads_db(animal_type=None, region=None, district=None, max_price=None, 
 def search_all(animal_type=None, region=None, district=None, limit=10):
     """3 манбадан қидириш"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    result = {"ads": [], "market_prices": [], "stats": {}}
+        result = {"ads": [], "market_prices": [], "stats": {}}
 
-    # ═══ Эълонлар ═══
-    query_ads = f"""
-        SELECT id, animal_type, region, price,
-               district, description, quantity, user_id, msg_id
-        FROM ads
-        WHERE status = {p}
-    """
-    params_ads = ["active"]
-    if animal_type:
-        query_ads += f" AND animal_type = {p}"
-        params_ads.append(animal_type)
-    if region:
-        query_ads += f" AND region = {p}"
-        params_ads.append(region)
-    if district:
-        query_ads += f" AND district = {p}"
-        params_ads.append(district)
-    query_ads += f" ORDER BY id DESC LIMIT {p}"
-    params_ads.append(limit)
-    cursor.execute(query_ads, params_ads)
-    result["ads"] = cursor.fetchall()
+        # ═══ Эълонлар ═══
+        query_ads = f"""
+            SELECT id, animal_type, region, price,
+                   district, description, quantity, user_id, msg_id
+            FROM ads
+            WHERE status = {p}
+        """
+        params_ads = ["active"]
+        if animal_type:
+            query_ads += f" AND animal_type = {p}"
+            params_ads.append(animal_type)
+        if region:
+            query_ads += f" AND region = {p}"
+            params_ads.append(region)
+        if district:
+            query_ads += f" AND district = {p}"
+            params_ads.append(district)
+        query_ads += f" ORDER BY id DESC LIMIT {p}"
+        params_ads.append(limit)
+        cursor.execute(query_ads, params_ads)
+        result["ads"] = cursor.fetchall()
 
-    # ═══ Бозор нархлари ═══
-    query_mp = """
-        SELECT animal_type, region, price, created_at
-        FROM market_prices WHERE 1=1
-    """
-    params_mp = []
-    if animal_type:
-        query_mp += f" AND animal_type = {p}"
-        params_mp.append(animal_type)
-    if region:
-        query_mp += f" AND region = {p}"
-        params_mp.append(region)
-    query_mp += " ORDER BY created_at DESC LIMIT 100"
-    cursor.execute(query_mp, params_mp)
-    result["market_prices"] = cursor.fetchall()
+        # ═══ Бозор нархлари ═══
+        query_mp = """
+            SELECT animal_type, region, price, created_at
+            FROM market_prices WHERE 1=1
+        """
+        params_mp = []
+        if animal_type:
+            query_mp += f" AND animal_type = {p}"
+            params_mp.append(animal_type)
+        if region:
+            query_mp += f" AND region = {p}"
+            params_mp.append(region)
+        query_mp += " ORDER BY created_at DESC LIMIT 100"
+        cursor.execute(query_mp, params_mp)
+        result["market_prices"] = cursor.fetchall()
 
-    conn.close()
 
-    # ═══ Статистика ═══
-    all_prices = []
-    for ad in result["ads"]:
-        price = parse_price_text(ad[3])
-        if MIN_PRICE <= price <= MAX_PRICE:
-            all_prices.append(price)
-    for mp in result["market_prices"]:
-        if MIN_PRICE <= mp[2] <= MAX_PRICE:
-            all_prices.append(mp[2])
+        # ═══ Статистика ═══
+        all_prices = []
+        for ad in result["ads"]:
+            price = parse_price_text(ad[3])
+            if MIN_PRICE <= price <= MAX_PRICE:
+                all_prices.append(price)
+        for mp in result["market_prices"]:
+            if MIN_PRICE <= mp[2] <= MAX_PRICE:
+                all_prices.append(mp[2])
 
-    if all_prices:
-        result["stats"] = {
-            "count": len(all_prices),
-            "avg": sum(all_prices) / len(all_prices),
-            "min": min(all_prices),
-            "max": max(all_prices)
-        }
+        if all_prices:
+            result["stats"] = {
+                "count": len(all_prices),
+                "avg": sum(all_prices) / len(all_prices),
+                "min": min(all_prices),
+                "max": max(all_prices)
+            }
 
-    return result
+        return result
 
 
 # ═══════════════════════════════════════
@@ -980,62 +972,61 @@ def search_all(animal_type=None, region=None, district=None, limit=10):
 
 def get_full_statistics():
     """Тўлиқ статистика"""
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    stats = {}
+        stats = {}
 
-    cursor.execute("SELECT COUNT(*) FROM ads")
-    stats["total_ads"] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM ads")
+        stats["total_ads"] = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM ads WHERE status='active'")
-    stats["active_ads"] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM ads WHERE status='active'")
+        stats["active_ads"] = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM ads WHERE status='sold'")
-    stats["sold_ads"] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM ads WHERE status='sold'")
+        stats["sold_ads"] = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM users")
-    stats["total_users"] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM users")
+        stats["total_users"] = cursor.fetchone()[0]
 
-    cursor.execute("""
-        SELECT animal_type, COUNT(*) as cnt
-        FROM ads WHERE status='active'
-        GROUP BY animal_type ORDER BY cnt DESC
-    """)
-    stats["by_animal"] = cursor.fetchall()
+        cursor.execute("""
+            SELECT animal_type, COUNT(*) as cnt
+            FROM ads WHERE status='active'
+            GROUP BY animal_type ORDER BY cnt DESC
+        """)
+        stats["by_animal"] = cursor.fetchall()
 
-    cursor.execute("""
-        SELECT region, COUNT(*) as cnt
-        FROM ads WHERE status='active'
-        GROUP BY region ORDER BY cnt DESC
-    """)
-    stats["by_region"] = cursor.fetchall()
+        cursor.execute("""
+            SELECT region, COUNT(*) as cnt
+            FROM ads WHERE status='active'
+            GROUP BY region ORDER BY cnt DESC
+        """)
+        stats["by_region"] = cursor.fetchall()
 
-    cursor.execute("SELECT animal_type, price FROM ads WHERE status='active'")
-    raw_prices = cursor.fetchall()
+        cursor.execute("SELECT animal_type, price FROM ads WHERE status='active'")
+        raw_prices = cursor.fetchall()
 
-    price_by_animal = {}
-    for a_type, price_text in raw_prices:
-        price = parse_price_text(price_text)
-        if MIN_PRICE <= price <= MAX_PRICE:
-            if a_type not in price_by_animal:
-                price_by_animal[a_type] = []
-            price_by_animal[a_type].append(price)
+        price_by_animal = {}
+        for a_type, price_text in raw_prices:
+            price = parse_price_text(price_text)
+            if MIN_PRICE <= price <= MAX_PRICE:
+                if a_type not in price_by_animal:
+                    price_by_animal[a_type] = []
+                price_by_animal[a_type].append(price)
 
-    stats["avg_prices"] = {}
-    for a_type, prices in price_by_animal.items():
-        stats["avg_prices"][a_type] = {
-            "avg": sum(prices) / len(prices),
-            "min": min(prices),
-            "max": max(prices),
-            "count": len(prices)
-        }
+        stats["avg_prices"] = {}
+        for a_type, prices in price_by_animal.items():
+            stats["avg_prices"][a_type] = {
+                "avg": sum(prices) / len(prices),
+                "min": min(prices),
+                "max": max(prices),
+                "count": len(prices)
+            }
 
-    cursor.execute("SELECT COUNT(*) FROM market_prices")
-    stats["market_price_entries"] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM market_prices")
+        stats["market_price_entries"] = cursor.fetchone()[0]
 
-    conn.close()
-    return stats
+        return stats
 
 
 # ═══════════════════════════════════════
@@ -1158,72 +1149,69 @@ def match_price_index(text):
 
 def get_notification_users(animal_type, region, price, district=None):
     """Мос кузатувчиларни топиш — ҳайвон тури, вилоят, туман, нарх бўйича"""
-    conn = get_connection()
-    cursor = conn.cursor()
-    p = get_placeholder()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        p = get_placeholder()
 
-    if DATABASE_URL:
-        cursor.execute(f"""
-            SELECT user_id
-            FROM notifications
-            WHERE animal_type = {p}
-              AND region = {p}
-              AND min_price <= {p}
-              AND max_price >= {p}
-              AND is_active = TRUE
-              AND (district = 'Барчаси' OR district = {p})
-        """, (animal_type, region, price, price, district or 'Барчаси'))
-    else:
-        cursor.execute(f"""
-            SELECT user_id
-            FROM notifications
-            WHERE animal_type = {p}
-              AND region = {p}
-              AND min_price <= {p}
-              AND max_price >= {p}
-              AND is_active = 1
-              AND (district = 'Барчаси' OR district = {p})
-        """, (animal_type, region, price, price, district or 'Барчаси'))
+        if DATABASE_URL:
+            cursor.execute(f"""
+                SELECT user_id
+                FROM notifications
+                WHERE animal_type = {p}
+                  AND region = {p}
+                  AND min_price <= {p}
+                  AND max_price >= {p}
+                  AND is_active = TRUE
+                  AND (district = 'Барчаси' OR district = {p})
+            """, (animal_type, region, price, price, district or 'Барчаси'))
+        else:
+            cursor.execute(f"""
+                SELECT user_id
+                FROM notifications
+                WHERE animal_type = {p}
+                  AND region = {p}
+                  AND min_price <= {p}
+                  AND max_price >= {p}
+                  AND is_active = 1
+                  AND (district = 'Барчаси' OR district = {p})
+            """, (animal_type, region, price, price, district or 'Барчаси'))
 
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+        rows = cursor.fetchall()
+        return rows
 
 
 def get_user_notifications(user_id):
-    conn = get_connection()
-    cur = conn.cursor()
-    p = get_placeholder()
+    with db_connection() as conn:
+        cur = conn.cursor()
+        p = get_placeholder()
 
-    cur.execute(f"""
-        SELECT id, animal_type, region, district,
-               min_price, max_price
-        FROM notifications
-        WHERE user_id = {p}
-        ORDER BY id DESC
-    """, (user_id,))
+        cur.execute(f"""
+            SELECT id, animal_type, region, district,
+                   min_price, max_price
+            FROM notifications
+            WHERE user_id = {p}
+            ORDER BY id DESC
+        """, (user_id,))
 
-    rows = cur.fetchall()
-    conn.close()
-    return rows
+        rows = cur.fetchall()
+        return rows
 
 def delete_notification(notification_id):
 
-    conn = get_connection()
-    cur = conn.cursor()
+    with db_connection() as conn:
+        cur = conn.cursor()
 
-    p = get_placeholder()
+        p = get_placeholder()
 
-    cur.execute(
-        f"""
-        DELETE FROM notifications
-        WHERE id = {p}
-        """,
-        (notification_id,)
-    )
+        cur.execute(
+            f"""
+            DELETE FROM notifications
+            WHERE id = {p}
+            """,
+            (notification_id,)
+        )
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
 # ═══════════════════════════════════════
 # ЭЪЛОН ТАСДИҚЛАШ ТИЗИМИ
@@ -1232,17 +1220,16 @@ def delete_notification(notification_id):
 def get_pending_ad(ad_id):
     """Тасдиқ кутаётган эълонни олиш"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT id, user_id, animal_type, quantity, price,
-               description, region, district, mfy, phone, username,
-               msg_id, reviewed_by
-        FROM ads WHERE id = {p} AND status = {p}
-    """, (ad_id, 'pending'))
-    row = cursor.fetchone()
-    conn.close()
-    return row
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, user_id, animal_type, quantity, price,
+                   description, region, district, mfy, phone, username,
+                   msg_id, reviewed_by
+            FROM ads WHERE id = {p} AND status = {p}
+        """, (ad_id, 'pending'))
+        row = cursor.fetchone()
+        return row
 
 def approve_ad(ad_id, admin_id):
     """Эълонни тасдиқлаш — status='active', reviewed_by=admin_id"""
@@ -1378,27 +1365,26 @@ def get_rejection_count(user_id):
 
 def get_blocked_users():
     """Блокланган фойдаланувчилар рўйхати"""
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute("""
-            SELECT user_id, full_name, username,
-                   rejection_count, blocked_at
-            FROM users
-            WHERE is_blocked = TRUE
-            ORDER BY blocked_at DESC
-        """)
-    else:
-        cursor.execute("""
-            SELECT user_id, full_name, username,
-                   rejection_count, blocked_at
-            FROM users
-            WHERE is_blocked = 1
-            ORDER BY blocked_at DESC
-        """)
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute("""
+                SELECT user_id, full_name, username,
+                       rejection_count, blocked_at
+                FROM users
+                WHERE is_blocked = TRUE
+                ORDER BY blocked_at DESC
+            """)
+        else:
+            cursor.execute("""
+                SELECT user_id, full_name, username,
+                       rejection_count, blocked_at
+                FROM users
+                WHERE is_blocked = 1
+                ORDER BY blocked_at DESC
+            """)
+        rows = cursor.fetchall()
+        return rows
 
 # Админга юборилган хабарни бошқа Админ томонидан таҳрирлаш (тасдиқлаш ва рад қилиш кнопкаларини)
 
@@ -1520,34 +1506,33 @@ def clean_phone(phone: str) -> str:
 def get_price_range(animal_type):
     """Ҳайвон тури учун ўртача нарх"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    prices = []
+        prices = []
 
-    cursor.execute(f"""
-        SELECT price::bigint FROM ads
-        WHERE animal_type = {p} AND status = 'active'
-          AND price ~ '^\d+$'
-    """, (animal_type,))
-    for r in cursor.fetchall():
-        if r[0] and int(r[0]) > 0:
-            prices.append(int(r[0]))
+        cursor.execute(f"""
+            SELECT price::bigint FROM ads
+            WHERE animal_type = {p} AND status = 'active'
+              AND price ~ '^\d+$'
+        """, (animal_type,))
+        for r in cursor.fetchall():
+            if r[0] and int(r[0]) > 0:
+                prices.append(int(r[0]))
 
-    cursor.execute(f"""
-        SELECT price FROM market_prices
-        WHERE animal_type = {p}
-    """, (animal_type,))
-    for r in cursor.fetchall():
-        if r[0] and r[0] > 0:
-            prices.append(r[0])
+        cursor.execute(f"""
+            SELECT price FROM market_prices
+            WHERE animal_type = {p}
+        """, (animal_type,))
+        for r in cursor.fetchall():
+            if r[0] and r[0] > 0:
+                prices.append(r[0])
 
-    conn.close()
 
-    if not prices:
-        return 0
+        if not prices:
+            return 0
 
-    return sum(prices) // len(prices)
+        return sum(prices) // len(prices)
 
 
 # ═══════════════════════════════════════
@@ -1563,70 +1548,66 @@ def add_vet_suggestion(user_id, username, action_type, region, district,
     Қайтаради: янги ёзувнинг ID си.
     """
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        INSERT INTO vet_suggestions
-        (user_id, username, action_type, region, district, role_type,
-         fish, lavozim, tel, comment, status)
-        VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'pending')
-    """, (user_id, username, action_type, region, district, role_type,
-          fish, lavozim, tel, comment))
-    conn.commit()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            INSERT INTO vet_suggestions
+            (user_id, username, action_type, region, district, role_type,
+             fish, lavozim, tel, comment, status)
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'pending')
+        """, (user_id, username, action_type, region, district, role_type,
+              fish, lavozim, tel, comment))
+        conn.commit()
 
-    if DATABASE_URL:
-        cursor.execute("SELECT lastval()")
-    else:
-        cursor.execute("SELECT last_insert_rowid()")
-    new_id = cursor.fetchone()[0]
-    conn.close()
-    return new_id
+        if DATABASE_URL:
+            cursor.execute("SELECT lastval()")
+        else:
+            cursor.execute("SELECT last_insert_rowid()")
+        new_id = cursor.fetchone()[0]
+        return new_id
 
 
 def get_pending_vet_suggestions(limit=20):
     """Кутилаётган (pending) барча таклифлар рўйхати, эскидан янгигa."""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT id, user_id, username, action_type, region, district,
-               role_type, fish, lavozim, tel, comment, created_at
-        FROM vet_suggestions
-        WHERE status = {p}
-        ORDER BY id ASC
-        LIMIT {p}
-    """, ("pending", limit))
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, user_id, username, action_type, region, district,
+                   role_type, fish, lavozim, tel, comment, created_at
+            FROM vet_suggestions
+            WHERE status = {p}
+            ORDER BY id ASC
+            LIMIT {p}
+        """, ("pending", limit))
+        rows = cursor.fetchall()
+        return rows
 
 
 def get_vet_suggestion_by_id(suggestion_id):
     """Битта таклифни ID бўйича олиш."""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT id, user_id, username, action_type, region, district,
-               role_type, fish, lavozim, tel, comment, status,
-               admin_id, admin_comment, created_at
-        FROM vet_suggestions
-        WHERE id = {p}
-    """, (suggestion_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return row
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, user_id, username, action_type, region, district,
+                   role_type, fish, lavozim, tel, comment, status,
+                   admin_id, admin_comment, created_at
+            FROM vet_suggestions
+            WHERE id = {p}
+        """, (suggestion_id,))
+        row = cursor.fetchone()
+        return row
 
 
 def count_pending_vet_suggestions():
     """Кутилаётган таклифлар сони (админ менюсида кўрсатиш учун)."""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT COUNT(*) FROM vet_suggestions WHERE status = {p}", ("pending",))
-    count = cursor.fetchone()[0]
-    conn.close()
-    return count
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT COUNT(*) FROM vet_suggestions WHERE status = {p}", ("pending",))
+        count = cursor.fetchone()[0]
+        return count
 
 
 def review_vet_suggestion(suggestion_id, admin_id, approve: bool, admin_comment=None):
@@ -1636,26 +1617,25 @@ def review_vet_suggestion(suggestion_id, admin_id, approve: bool, admin_comment=
     approve=False -> status='rejected'
     """
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    new_status = "approved" if approve else "rejected"
+        new_status = "approved" if approve else "rejected"
 
-    if DATABASE_URL:
-        cursor.execute(f"""
-            UPDATE vet_suggestions
-            SET status = {p}, admin_id = {p}, admin_comment = {p}, reviewed_at = NOW()
-            WHERE id = {p}
-        """, (new_status, admin_id, admin_comment, suggestion_id))
-    else:
-        cursor.execute(f"""
-            UPDATE vet_suggestions
-            SET status = {p}, admin_id = {p}, admin_comment = {p}, reviewed_at = CURRENT_TIMESTAMP
-            WHERE id = {p}
-        """, (new_status, admin_id, admin_comment, suggestion_id))
+        if DATABASE_URL:
+            cursor.execute(f"""
+                UPDATE vet_suggestions
+                SET status = {p}, admin_id = {p}, admin_comment = {p}, reviewed_at = NOW()
+                WHERE id = {p}
+            """, (new_status, admin_id, admin_comment, suggestion_id))
+        else:
+            cursor.execute(f"""
+                UPDATE vet_suggestions
+                SET status = {p}, admin_id = {p}, admin_comment = {p}, reviewed_at = CURRENT_TIMESTAMP
+                WHERE id = {p}
+            """, (new_status, admin_id, admin_comment, suggestion_id))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
 
 def get_approved_vet_override(region, district, role_type):
@@ -1666,21 +1646,20 @@ def get_approved_vet_override(region, district, role_type):
     Топилмаса None қайтаради.
     """
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT fish, lavozim, tel
-        FROM vet_suggestions
-        WHERE status = {p} AND region = {p} AND district = {p} AND role_type = {p}
-        ORDER BY id DESC
-        LIMIT 1
-    """, ("approved", region, district, role_type))
-    row = cursor.fetchone()
-    conn.close()
-    if not row:
-        return None
-    fish, lavozim, tel = row
-    return {"fish": fish, "lavozim": lavozim, "tel": tel}
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT fish, lavozim, tel
+            FROM vet_suggestions
+            WHERE status = {p} AND region = {p} AND district = {p} AND role_type = {p}
+            ORDER BY id DESC
+            LIMIT 1
+        """, ("approved", region, district, role_type))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        fish, lavozim, tel = row
+        return {"fish": fish, "lavozim": lavozim, "tel": tel}
 
 
 def update_vet_suggestion_fields(suggestion_id, fish=None, lavozim=None, tel=None):
@@ -1689,32 +1668,30 @@ def update_vet_suggestion_fields(suggestion_id, fish=None, lavozim=None, tel=Non
     берилган майдонларни янгилайди (None бўлмаган майдонлар).
     """
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    sets = []
-    params = []
-    if fish is not None:
-        sets.append(f"fish = {p}")
-        params.append(fish)
-    if lavozim is not None:
-        sets.append(f"lavozim = {p}")
-        params.append(lavozim)
-    if tel is not None:
-        sets.append(f"tel = {p}")
-        params.append(tel)
+        sets = []
+        params = []
+        if fish is not None:
+            sets.append(f"fish = {p}")
+            params.append(fish)
+        if lavozim is not None:
+            sets.append(f"lavozim = {p}")
+            params.append(lavozim)
+        if tel is not None:
+            sets.append(f"tel = {p}")
+            params.append(tel)
 
-    if not sets:
-        conn.close()
-        return
+        if not sets:
+            return
 
-    params.append(suggestion_id)
-    cursor.execute(
-        f"UPDATE vet_suggestions SET {', '.join(sets)} WHERE id = {p}",
-        tuple(params)
-    )
-    conn.commit()
-    conn.close()
+        params.append(suggestion_id)
+        cursor.execute(
+            f"UPDATE vet_suggestions SET {', '.join(sets)} WHERE id = {p}",
+            tuple(params)
+        )
+        conn.commit()
 
 
 # ═══════════════════════════════════════
@@ -1723,58 +1700,57 @@ def update_vet_suggestion_fields(suggestion_id, fish=None, lavozim=None, tel=Non
 
 def _ensure_region_group_tables():
     """region_groups ва ad_group_posts жадвалларини яратади (мавжуд бўлмаса)."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS region_groups (
-                id SERIAL PRIMARY KEY,
-                chat_id BIGINT NOT NULL,
-                chat_title TEXT,
-                chat_username TEXT,
-                region TEXT NOT NULL,
-                is_active BOOLEAN DEFAULT TRUE,
-                added_at TIMESTAMP DEFAULT NOW(),
-                UNIQUE (chat_id, region)
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ad_group_posts (
-                id SERIAL PRIMARY KEY,
-                ad_id INTEGER NOT NULL,
-                chat_id BIGINT NOT NULL,
-                message_id BIGINT,
-                status TEXT DEFAULT 'pending',
-                reviewed_by BIGINT,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        """)
-    else:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS region_groups (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                chat_id INTEGER NOT NULL,
-                chat_title TEXT,
-                chat_username TEXT,
-                region TEXT NOT NULL,
-                is_active INTEGER DEFAULT 1,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE (chat_id, region)
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ad_group_posts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ad_id INTEGER NOT NULL,
-                chat_id INTEGER NOT NULL,
-                message_id INTEGER,
-                status TEXT DEFAULT 'pending',
-                reviewed_by INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS region_groups (
+                    id SERIAL PRIMARY KEY,
+                    chat_id BIGINT NOT NULL,
+                    chat_title TEXT,
+                    chat_username TEXT,
+                    region TEXT NOT NULL,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    added_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE (chat_id, region)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ad_group_posts (
+                    id SERIAL PRIMARY KEY,
+                    ad_id INTEGER NOT NULL,
+                    chat_id BIGINT NOT NULL,
+                    message_id BIGINT,
+                    status TEXT DEFAULT 'pending',
+                    reviewed_by BIGINT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS region_groups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER NOT NULL,
+                    chat_title TEXT,
+                    chat_username TEXT,
+                    region TEXT NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (chat_id, region)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ad_group_posts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ad_id INTEGER NOT NULL,
+                    chat_id INTEGER NOT NULL,
+                    message_id INTEGER,
+                    status TEXT DEFAULT 'pending',
+                    reviewed_by INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        conn.commit()
 
 
 # init_db() ишга тушганда бу жадваллар ҳам яратилиши учун:
@@ -1794,120 +1770,113 @@ def add_region_group(chat_id: int, chat_title: str, chat_username: str, region: 
     """Гуруҳни (chat_id) берилган вилоятга боғлайди. Мавжуд бўлса — такрорламайди."""
     _ensure_ready()
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute(f"""
-            INSERT INTO region_groups (chat_id, chat_title, chat_username, region, is_active)
-            VALUES ({p}, {p}, {p}, {p}, TRUE)
-            ON CONFLICT (chat_id, region) DO UPDATE SET
-                chat_title = EXCLUDED.chat_title,
-                chat_username = EXCLUDED.chat_username,
-                is_active = TRUE
-        """, (chat_id, chat_title, chat_username, region))
-    else:
-        cursor.execute(f"""
-            INSERT OR IGNORE INTO region_groups (chat_id, chat_title, chat_username, region, is_active)
-            VALUES ({p}, {p}, {p}, {p}, 1)
-        """, (chat_id, chat_title, chat_username, region))
-        cursor.execute(f"""
-            UPDATE region_groups SET chat_title = {p}, chat_username = {p}, is_active = 1
-            WHERE chat_id = {p} AND region = {p}
-        """, (chat_title, chat_username, chat_id, region))
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute(f"""
+                INSERT INTO region_groups (chat_id, chat_title, chat_username, region, is_active)
+                VALUES ({p}, {p}, {p}, {p}, TRUE)
+                ON CONFLICT (chat_id, region) DO UPDATE SET
+                    chat_title = EXCLUDED.chat_title,
+                    chat_username = EXCLUDED.chat_username,
+                    is_active = TRUE
+            """, (chat_id, chat_title, chat_username, region))
+        else:
+            cursor.execute(f"""
+                INSERT OR IGNORE INTO region_groups (chat_id, chat_title, chat_username, region, is_active)
+                VALUES ({p}, {p}, {p}, {p}, 1)
+            """, (chat_id, chat_title, chat_username, region))
+            cursor.execute(f"""
+                UPDATE region_groups SET chat_title = {p}, chat_username = {p}, is_active = 1
+                WHERE chat_id = {p} AND region = {p}
+            """, (chat_title, chat_username, chat_id, region))
+        conn.commit()
 
 
 def get_groups_for_region(region: str):
     """Берилган вилоятга боғланган, актив гуруҳлар рўйхати: [(chat_id, chat_title, chat_username), ...]"""
     _ensure_ready()
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute(f"""
-            SELECT chat_id, chat_title, chat_username FROM region_groups
-            WHERE region = {p} AND is_active = TRUE
-        """, (region,))
-    else:
-        cursor.execute(f"""
-            SELECT chat_id, chat_title, chat_username FROM region_groups
-            WHERE region = {p} AND is_active = 1
-        """, (region,))
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute(f"""
+                SELECT chat_id, chat_title, chat_username FROM region_groups
+                WHERE region = {p} AND is_active = TRUE
+            """, (region,))
+        else:
+            cursor.execute(f"""
+                SELECT chat_id, chat_title, chat_username FROM region_groups
+                WHERE region = {p} AND is_active = 1
+            """, (region,))
+        rows = cursor.fetchall()
+        return rows
 
 
 def deactivate_chat(chat_id: int):
     """Бот гуруҳдан чиқарилганда — шу chat_id'нинг барча боғланишларини ноактив қилади."""
     _ensure_ready()
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute(f"UPDATE region_groups SET is_active = FALSE WHERE chat_id = {p}", (chat_id,))
-    else:
-        cursor.execute(f"UPDATE region_groups SET is_active = 0 WHERE chat_id = {p}", (chat_id,))
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute(f"UPDATE region_groups SET is_active = FALSE WHERE chat_id = {p}", (chat_id,))
+        else:
+            cursor.execute(f"UPDATE region_groups SET is_active = 0 WHERE chat_id = {p}", (chat_id,))
+        conn.commit()
 
 
 def create_ad_group_post(ad_id: int, chat_id: int) -> int:
     """Эълон учун гуруҳга юбориладиган ёзувни pending ҳолатда яратади, ID қайтаради."""
     _ensure_ready()
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        INSERT INTO ad_group_posts (ad_id, chat_id, status)
-        VALUES ({p}, {p}, 'pending')
-    """, (ad_id, chat_id))
-    conn.commit()
-    if DATABASE_URL:
-        cursor.execute("SELECT lastval()")
-    else:
-        cursor.execute("SELECT last_insert_rowid()")
-    new_id = cursor.fetchone()[0]
-    conn.close()
-    return new_id
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            INSERT INTO ad_group_posts (ad_id, chat_id, status)
+            VALUES ({p}, {p}, 'pending')
+        """, (ad_id, chat_id))
+        conn.commit()
+        if DATABASE_URL:
+            cursor.execute("SELECT lastval()")
+        else:
+            cursor.execute("SELECT last_insert_rowid()")
+        new_id = cursor.fetchone()[0]
+        return new_id
 
 
 def set_ad_group_post_message(post_id: int, message_id: int):
     """Гуруҳга жойлангандан кейин, хабар ID сини сақлайди."""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"UPDATE ad_group_posts SET message_id = {p} WHERE id = {p}", (message_id, post_id))
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE ad_group_posts SET message_id = {p} WHERE id = {p}", (message_id, post_id))
+        conn.commit()
 
 
 def get_ad_group_post(post_id: int):
     """Битта ёзувни қайтаради: (id, ad_id, chat_id, message_id, status, reviewed_by)"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT id, ad_id, chat_id, message_id, status, reviewed_by
-        FROM ad_group_posts WHERE id = {p}
-    """, (post_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return row
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, ad_id, chat_id, message_id, status, reviewed_by
+            FROM ad_group_posts WHERE id = {p}
+        """, (post_id,))
+        row = cursor.fetchone()
+        return row
 
 
 def review_ad_group_post(post_id: int, admin_id: int, approve: bool):
     """Гуруҳ админи томонидан тасдиқлаш/рад этишни сақлайди."""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    new_status = "approved" if approve else "rejected"
-    cursor.execute(f"""
-        UPDATE ad_group_posts SET status = {p}, reviewed_by = {p} WHERE id = {p}
-    """, (new_status, admin_id, post_id))
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        new_status = "approved" if approve else "rejected"
+        cursor.execute(f"""
+            UPDATE ad_group_posts SET status = {p}, reviewed_by = {p} WHERE id = {p}
+        """, (new_status, admin_id, post_id))
+        conn.commit()
 
 
 def get_ad_group_links(ad_id: int):
@@ -1917,21 +1886,20 @@ def get_ad_group_links(ad_id: int):
     Приват гуруҳлар (username йўқ) — ҳавола бўлмагани учун рўйхатга кирмайди.
     """
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT DISTINCT gp.message_id, rg.chat_username
-        FROM ad_group_posts gp
-        JOIN region_groups rg ON gp.chat_id = rg.chat_id
-        WHERE gp.ad_id = {p} AND gp.status = {p} AND rg.chat_username IS NOT NULL
-    """, (ad_id, "approved"))
-    rows = cursor.fetchall()
-    conn.close()
-    links = []
-    for message_id, chat_username in rows:
-        if message_id and chat_username:
-            links.append(f"https://t.me/{chat_username}/{message_id}")
-    return links
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT DISTINCT gp.message_id, rg.chat_username
+            FROM ad_group_posts gp
+            JOIN region_groups rg ON gp.chat_id = rg.chat_id
+            WHERE gp.ad_id = {p} AND gp.status = {p} AND rg.chat_username IS NOT NULL
+        """, (ad_id, "approved"))
+        rows = cursor.fetchall()
+        links = []
+        for message_id, chat_username in rows:
+            if message_id and chat_username:
+                links.append(f"https://t.me/{chat_username}/{message_id}")
+        return links
 
 
 # ═══════════════════════════════════════
@@ -1955,32 +1923,31 @@ def force_block_user(user_id: int):
 
 
 def _ensure_block_log_table():
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS block_log (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT NOT NULL,
-                blocked_by BIGINT NOT NULL,
-                ad_id INTEGER,
-                reason TEXT,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        """)
-    else:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS block_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                blocked_by INTEGER NOT NULL,
-                ad_id INTEGER,
-                reason TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS block_log (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    blocked_by BIGINT NOT NULL,
+                    ad_id INTEGER,
+                    reason TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS block_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    blocked_by INTEGER NOT NULL,
+                    ad_id INTEGER,
+                    reason TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        conn.commit()
 
 
 _block_log_ready = False
@@ -1993,14 +1960,13 @@ def log_block(user_id: int, blocked_by: int, ad_id: int = None, reason: str = No
         _ensure_block_log_table()
         _block_log_ready = True
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        INSERT INTO block_log (user_id, blocked_by, ad_id, reason)
-        VALUES ({p}, {p}, {p}, {p})
-    """, (user_id, blocked_by, ad_id, reason))
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            INSERT INTO block_log (user_id, blocked_by, ad_id, reason)
+            VALUES ({p}, {p}, {p}, {p})
+        """, (user_id, blocked_by, ad_id, reason))
+        conn.commit()
 
 
 def get_blocks_by_admin(admin_id: int):
@@ -2010,18 +1976,17 @@ def get_blocks_by_admin(admin_id: int):
         _ensure_block_log_table()
         _block_log_ready = True
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT bl.user_id, bl.ad_id, bl.reason, bl.created_at, u.full_name, u.username
-        FROM block_log bl
-        LEFT JOIN users u ON bl.user_id = u.user_id
-        WHERE bl.blocked_by = {p}
-        ORDER BY bl.created_at DESC
-    """, (admin_id,))
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT bl.user_id, bl.ad_id, bl.reason, bl.created_at, u.full_name, u.username
+            FROM block_log bl
+            LEFT JOIN users u ON bl.user_id = u.user_id
+            WHERE bl.blocked_by = {p}
+            ORDER BY bl.created_at DESC
+        """, (admin_id,))
+        rows = cursor.fetchall()
+        return rows
 
 
 def get_all_active_group_chat_ids():
@@ -2031,64 +1996,61 @@ def get_all_active_group_chat_ids():
     Қайтаради: {chat_id: {"chat_title":..., "chat_username":..., "regions": [...]}}
     """
     _ensure_ready()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute("""
-            SELECT chat_id, chat_title, chat_username, region
-            FROM region_groups WHERE is_active = TRUE
-            ORDER BY chat_title
-        """)
-    else:
-        cursor.execute("""
-            SELECT chat_id, chat_title, chat_username, region
-            FROM region_groups WHERE is_active = 1
-            ORDER BY chat_title
-        """)
-    rows = cursor.fetchall()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute("""
+                SELECT chat_id, chat_title, chat_username, region
+                FROM region_groups WHERE is_active = TRUE
+                ORDER BY chat_title
+            """)
+        else:
+            cursor.execute("""
+                SELECT chat_id, chat_title, chat_username, region
+                FROM region_groups WHERE is_active = 1
+                ORDER BY chat_title
+            """)
+        rows = cursor.fetchall()
 
-    result = {}
-    for chat_id, chat_title, chat_username, region in rows:
-        if chat_id not in result:
-            result[chat_id] = {
-                "chat_title": chat_title,
-                "chat_username": chat_username,
-                "regions": []
-            }
-        result[chat_id]["regions"].append(region)
-    return result
+        result = {}
+        for chat_id, chat_title, chat_username, region in rows:
+            if chat_id not in result:
+                result[chat_id] = {
+                    "chat_title": chat_title,
+                    "chat_username": chat_username,
+                    "regions": []
+                }
+            result[chat_id]["regions"].append(region)
+        return result
 
 
 def get_regions_for_chat(chat_id: int):
     """Берилган гуруҳга (chat_id) ҳозирча боғланган, актив вилоятлар рўйхати."""
     _ensure_ready()
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute(f"""
-            SELECT region FROM region_groups
-            WHERE chat_id = {p} AND is_active = TRUE
-        """, (chat_id,))
-    else:
-        cursor.execute(f"""
-            SELECT region FROM region_groups
-            WHERE chat_id = {p} AND is_active = 1
-        """, (chat_id,))
-    rows = cursor.fetchall()
-    conn.close()
-    return [r[0] for r in rows]
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute(f"""
+                SELECT region FROM region_groups
+                WHERE chat_id = {p} AND is_active = TRUE
+            """, (chat_id,))
+        else:
+            cursor.execute(f"""
+                SELECT region FROM region_groups
+                WHERE chat_id = {p} AND is_active = 1
+            """, (chat_id,))
+        rows = cursor.fetchall()
+        return [r[0] for r in rows]
 
 
 def remove_region_group(chat_id: int, region: str):
     """Берилган гуруҳ-вилоят боғланишини ўчиради (фақат шу region, қолганлари сақланади)."""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"DELETE FROM region_groups WHERE chat_id = {p} AND region = {p}", (chat_id, region))
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"DELETE FROM region_groups WHERE chat_id = {p} AND region = {p}", (chat_id, region))
+        conn.commit()
 
 
 # ═══════════════════════════════════════
@@ -2096,34 +2058,33 @@ def remove_region_group(chat_id: int, region: str):
 # ═══════════════════════════════════════
 
 def _ensure_group_admins_table():
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS group_admins (
-                id SERIAL PRIMARY KEY,
-                chat_id BIGINT NOT NULL,
-                user_id BIGINT NOT NULL,
-                granted_by BIGINT,
-                is_active BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT NOW(),
-                UNIQUE (chat_id, user_id)
-            )
-        """)
-    else:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS group_admins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                chat_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
-                granted_by INTEGER,
-                is_active INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE (chat_id, user_id)
-            )
-        """)
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS group_admins (
+                    id SERIAL PRIMARY KEY,
+                    chat_id BIGINT NOT NULL,
+                    user_id BIGINT NOT NULL,
+                    granted_by BIGINT,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE (chat_id, user_id)
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS group_admins (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    granted_by INTEGER,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (chat_id, user_id)
+                )
+            """)
+        conn.commit()
 
 
 _group_admins_ready = False
@@ -2140,61 +2101,58 @@ def add_group_admin(chat_id: int, user_id: int, granted_by: int = None):
     """Берилган гуруҳ учун тасдиқлаш ваколатини беради (ёки қайта фаоллаштиради)."""
     _ensure_group_admins_ready()
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute(f"""
-            INSERT INTO group_admins (chat_id, user_id, granted_by, is_active)
-            VALUES ({p}, {p}, {p}, TRUE)
-            ON CONFLICT (chat_id, user_id) DO UPDATE SET
-                is_active = TRUE, granted_by = EXCLUDED.granted_by
-        """, (chat_id, user_id, granted_by))
-    else:
-        cursor.execute(f"""
-            INSERT OR IGNORE INTO group_admins (chat_id, user_id, granted_by, is_active)
-            VALUES ({p}, {p}, {p}, 1)
-        """, (chat_id, user_id, granted_by))
-        cursor.execute(f"""
-            UPDATE group_admins SET is_active = 1, granted_by = {p}
-            WHERE chat_id = {p} AND user_id = {p}
-        """, (granted_by, chat_id, user_id))
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute(f"""
+                INSERT INTO group_admins (chat_id, user_id, granted_by, is_active)
+                VALUES ({p}, {p}, {p}, TRUE)
+                ON CONFLICT (chat_id, user_id) DO UPDATE SET
+                    is_active = TRUE, granted_by = EXCLUDED.granted_by
+            """, (chat_id, user_id, granted_by))
+        else:
+            cursor.execute(f"""
+                INSERT OR IGNORE INTO group_admins (chat_id, user_id, granted_by, is_active)
+                VALUES ({p}, {p}, {p}, 1)
+            """, (chat_id, user_id, granted_by))
+            cursor.execute(f"""
+                UPDATE group_admins SET is_active = 1, granted_by = {p}
+                WHERE chat_id = {p} AND user_id = {p}
+            """, (granted_by, chat_id, user_id))
+        conn.commit()
 
 
 def remove_group_admin(chat_id: int, user_id: int):
     """Гуруҳ учун тасдиқлаш ваколатини олиб қўяди."""
     _ensure_group_admins_ready()
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute(f"""
-            UPDATE group_admins SET is_active = FALSE
-            WHERE chat_id = {p} AND user_id = {p}
-        """, (chat_id, user_id))
-    else:
-        cursor.execute(f"""
-            UPDATE group_admins SET is_active = 0
-            WHERE chat_id = {p} AND user_id = {p}
-        """, (chat_id, user_id))
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute(f"""
+                UPDATE group_admins SET is_active = FALSE
+                WHERE chat_id = {p} AND user_id = {p}
+            """, (chat_id, user_id))
+        else:
+            cursor.execute(f"""
+                UPDATE group_admins SET is_active = 0
+                WHERE chat_id = {p} AND user_id = {p}
+            """, (chat_id, user_id))
+        conn.commit()
 
 
 def get_group_admin_ids(chat_id: int):
     """Берилган гуруҳ учун тасдиqлаш ваколатига эга user_id'лар рўйхати."""
     _ensure_group_admins_ready()
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute(f"SELECT user_id FROM group_admins WHERE chat_id = {p} AND is_active = TRUE", (chat_id,))
-    else:
-        cursor.execute(f"SELECT user_id FROM group_admins WHERE chat_id = {p} AND is_active = 1", (chat_id,))
-    rows = cursor.fetchall()
-    conn.close()
-    return [r[0] for r in rows]
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute(f"SELECT user_id FROM group_admins WHERE chat_id = {p} AND is_active = TRUE", (chat_id,))
+        else:
+            cursor.execute(f"SELECT user_id FROM group_admins WHERE chat_id = {p} AND is_active = 1", (chat_id,))
+        rows = cursor.fetchall()
+        return [r[0] for r in rows]
 
 
 def is_group_admin(chat_id: int, user_id: int) -> bool:
@@ -2206,15 +2164,14 @@ def get_chats_managed_by(user_id: int):
     """Шу одам тасдиqлаш ваколатига эга бўлган БАРЧА гуруҳлар (chat_id рўйхати)."""
     _ensure_group_admins_ready()
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute(f"SELECT chat_id FROM group_admins WHERE user_id = {p} AND is_active = TRUE", (user_id,))
-    else:
-        cursor.execute(f"SELECT chat_id FROM group_admins WHERE user_id = {p} AND is_active = 1", (user_id,))
-    rows = cursor.fetchall()
-    conn.close()
-    return [r[0] for r in rows]
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute(f"SELECT chat_id FROM group_admins WHERE user_id = {p} AND is_active = TRUE", (user_id,))
+        else:
+            cursor.execute(f"SELECT chat_id FROM group_admins WHERE user_id = {p} AND is_active = 1", (user_id,))
+        rows = cursor.fetchall()
+        return [r[0] for r in rows]
 
 
 def get_ad_group_message_ids(ad_id: int):
@@ -2223,15 +2180,14 @@ def get_ad_group_message_ids(ad_id: int):
     Статусидан қатъи назар (эълон таҳрирланганда/ўчирилганда ҳаммасини тозалаш учун).
     """
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT chat_id, message_id FROM ad_group_posts
-        WHERE ad_id = {p} AND message_id IS NOT NULL
-    """, (ad_id,))
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT chat_id, message_id FROM ad_group_posts
+            WHERE ad_id = {p} AND message_id IS NOT NULL
+        """, (ad_id,))
+        rows = cursor.fetchall()
+        return rows
 
 
 # ═══════════════════════════════════════
@@ -2239,34 +2195,33 @@ def get_ad_group_message_ids(ad_id: int):
 # ═══════════════════════════════════════
 
 def _ensure_review_admins_table():
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS review_admins (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT UNIQUE NOT NULL,
-                full_name TEXT,
-                username TEXT,
-                added_by BIGINT,
-                is_active BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        """)
-    else:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS review_admins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER UNIQUE NOT NULL,
-                full_name TEXT,
-                username TEXT,
-                added_by INTEGER,
-                is_active INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS review_admins (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT UNIQUE NOT NULL,
+                    full_name TEXT,
+                    username TEXT,
+                    added_by BIGINT,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS review_admins (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER UNIQUE NOT NULL,
+                    full_name TEXT,
+                    username TEXT,
+                    added_by INTEGER,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        conn.commit()
 
 
 _review_admins_ready = False
@@ -2294,41 +2249,39 @@ def add_review_admin(user_id: int, full_name: str = None, username: str = None, 
     """Одамни яxлит review_admins ҳавзасига қўшади (ёки қайта фаоллаштиради)."""
     _ensure_review_admins_ready()
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute(f"""
-            INSERT INTO review_admins (user_id, full_name, username, added_by, is_active)
-            VALUES ({p}, {p}, {p}, {p}, TRUE)
-            ON CONFLICT (user_id) DO UPDATE SET
-                is_active = TRUE,
-                full_name = COALESCE(EXCLUDED.full_name, review_admins.full_name),
-                username = COALESCE(EXCLUDED.username, review_admins.username)
-        """, (user_id, full_name, username, added_by))
-    else:
-        cursor.execute(f"""
-            INSERT OR IGNORE INTO review_admins (user_id, full_name, username, added_by, is_active)
-            VALUES ({p}, {p}, {p}, {p}, 1)
-        """, (user_id, full_name, username, added_by))
-        cursor.execute(f"""
-            UPDATE review_admins SET is_active = 1 WHERE user_id = {p}
-        """, (user_id,))
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute(f"""
+                INSERT INTO review_admins (user_id, full_name, username, added_by, is_active)
+                VALUES ({p}, {p}, {p}, {p}, TRUE)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    is_active = TRUE,
+                    full_name = COALESCE(EXCLUDED.full_name, review_admins.full_name),
+                    username = COALESCE(EXCLUDED.username, review_admins.username)
+            """, (user_id, full_name, username, added_by))
+        else:
+            cursor.execute(f"""
+                INSERT OR IGNORE INTO review_admins (user_id, full_name, username, added_by, is_active)
+                VALUES ({p}, {p}, {p}, {p}, 1)
+            """, (user_id, full_name, username, added_by))
+            cursor.execute(f"""
+                UPDATE review_admins SET is_active = 1 WHERE user_id = {p}
+            """, (user_id,))
+        conn.commit()
 
 
 def remove_review_admin(user_id: int):
     """Одамни яxлит review_admins ҳавзасидан олиб ташлайди."""
     _ensure_review_admins_ready()
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute(f"UPDATE review_admins SET is_active = FALSE WHERE user_id = {p}", (user_id,))
-    else:
-        cursor.execute(f"UPDATE review_admins SET is_active = 0 WHERE user_id = {p}", (user_id,))
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute(f"UPDATE review_admins SET is_active = FALSE WHERE user_id = {p}", (user_id,))
+        else:
+            cursor.execute(f"UPDATE review_admins SET is_active = 0 WHERE user_id = {p}", (user_id,))
+        conn.commit()
 
 
 def get_all_review_admin_ids():
