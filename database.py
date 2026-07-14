@@ -1506,33 +1506,34 @@ def clean_phone(phone: str) -> str:
 def get_price_range(animal_type):
     """Ҳайвон тури учун ўртача нарх"""
     p = get_placeholder()
+    prices = []
     with db_connection() as conn:
         cursor = conn.cursor()
 
-        prices = []
-
+        # price матн сифатида сақланади (масалан "5 000 000" ёки "5 mln"),
+        # шунинг учун Постгрес/SQLite'га хос cast/regex ўрнига
+        # parse_price_text ишлатилади — иккала базада ҳам бир хил ишлайди.
         cursor.execute(f"""
-            SELECT price::bigint FROM ads
+            SELECT price FROM ads
             WHERE animal_type = {p} AND status = 'active'
-              AND price ~ '^\d+$'
         """, (animal_type,))
-        for r in cursor.fetchall():
-            if r[0] and int(r[0]) > 0:
-                prices.append(int(r[0]))
+        for (price_text,) in cursor.fetchall():
+            price = parse_price_text(price_text)
+            if price > 0:
+                prices.append(price)
 
         cursor.execute(f"""
             SELECT price FROM market_prices
             WHERE animal_type = {p}
         """, (animal_type,))
-        for r in cursor.fetchall():
-            if r[0] and r[0] > 0:
-                prices.append(r[0])
+        for (price,) in cursor.fetchall():
+            if price and price > 0:
+                prices.append(price)
 
+    if not prices:
+        return 0
 
-        if not prices:
-            return 0
-
-        return sum(prices) // len(prices)
+    return sum(prices) // len(prices)
 
 
 # ═══════════════════════════════════════
