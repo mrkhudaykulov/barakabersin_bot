@@ -41,7 +41,8 @@ from config import bot, BOT_TOKEN
 from database import (
     get_user_profile, save_user, get_connection, get_placeholder,
     contains_bad_word, AD_EXPIRE_DAYS, save_admin_review_message,
-    get_all_review_admin_ids
+    get_all_review_admin_ids, is_user_blocked, is_premium_user,
+    get_monthly_ad_count, MAX_ADS_PER_MONTH_REGULAR, MAX_ADS_PER_MONTH_PREMIUM
 )
 
 routes = web.RouteTableDef()
@@ -290,6 +291,21 @@ async def api_submit_ad(request: web.Request):
     user = verify_init_data(init_data)
     if not user:
         return _unauthorized()
+
+    if is_user_blocked(user["id"]):
+        return web.json_response(
+            {"ok": False, "error": "Сиз блоклангансиз. Эълон бериш ҳуқуқингиз чекланган."},
+            status=403
+        )
+
+    is_premium = is_premium_user(user["id"])
+    limit = MAX_ADS_PER_MONTH_PREMIUM if is_premium else MAX_ADS_PER_MONTH_REGULAR
+    monthly_count = get_monthly_ad_count(user["id"])
+    if monthly_count >= limit:
+        return web.json_response(
+            {"ok": False, "error": f"Ойлик лимит тугади ({monthly_count}/{limit})."},
+            status=403
+        )
 
     if oversized_files:
         return web.json_response(
