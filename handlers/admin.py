@@ -21,7 +21,7 @@ from keyboards import (
 from states import AdminStates
 
 router = Router()
-
+router.message.filter(F.chat.type == "private")
 
 
 
