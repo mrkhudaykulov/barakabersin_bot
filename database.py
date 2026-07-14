@@ -2082,3 +2082,146 @@ def remove_region_group(chat_id: int, region: str):
     cursor.execute(f"DELETE FROM region_groups WHERE chat_id = {p} AND region = {p}", (chat_id, region))
     conn.commit()
     conn.close()
+
+
+# ═══════════════════════════════════════
+# ГУРУҲ АДМИНЛАРИ — тасдиқлаш ваколати (Telegram admin emas, BIZNING ro'yxat)
+# ═══════════════════════════════════════
+
+def _ensure_group_admins_table():
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS group_admins (
+                id SERIAL PRIMARY KEY,
+                chat_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                granted_by BIGINT,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE (chat_id, user_id)
+            )
+        """)
+    else:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS group_admins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                granted_by INTEGER,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (chat_id, user_id)
+            )
+        """)
+    conn.commit()
+    conn.close()
+
+
+_group_admins_ready = False
+
+
+def _ensure_group_admins_ready():
+    global _group_admins_ready
+    if not _group_admins_ready:
+        _ensure_group_admins_table()
+        _group_admins_ready = True
+
+
+def add_group_admin(chat_id: int, user_id: int, granted_by: int = None):
+    """Берилган гуруҳ учун тасдиқлаш ваколатини беради (ёки қайта фаоллаштиради)."""
+    _ensure_group_admins_ready()
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute(f"""
+            INSERT INTO group_admins (chat_id, user_id, granted_by, is_active)
+            VALUES ({p}, {p}, {p}, TRUE)
+            ON CONFLICT (chat_id, user_id) DO UPDATE SET
+                is_active = TRUE, granted_by = EXCLUDED.granted_by
+        """, (chat_id, user_id, granted_by))
+    else:
+        cursor.execute(f"""
+            INSERT OR IGNORE INTO group_admins (chat_id, user_id, granted_by, is_active)
+            VALUES ({p}, {p}, {p}, 1)
+        """, (chat_id, user_id, granted_by))
+        cursor.execute(f"""
+            UPDATE group_admins SET is_active = 1, granted_by = {p}
+            WHERE chat_id = {p} AND user_id = {p}
+        """, (granted_by, chat_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def remove_group_admin(chat_id: int, user_id: int):
+    """Гуруҳ учун тасдиқлаш ваколатини олиб қўяди."""
+    _ensure_group_admins_ready()
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute(f"""
+            UPDATE group_admins SET is_active = FALSE
+            WHERE chat_id = {p} AND user_id = {p}
+        """, (chat_id, user_id))
+    else:
+        cursor.execute(f"""
+            UPDATE group_admins SET is_active = 0
+            WHERE chat_id = {p} AND user_id = {p}
+        """, (chat_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_group_admin_ids(chat_id: int):
+    """Берилган гуруҳ учун тасдиqлаш ваколатига эга user_id'лар рўйхати."""
+    _ensure_group_admins_ready()
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute(f"SELECT user_id FROM group_admins WHERE chat_id = {p} AND is_active = TRUE", (chat_id,))
+    else:
+        cursor.execute(f"SELECT user_id FROM group_admins WHERE chat_id = {p} AND is_active = 1", (chat_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def is_group_admin(chat_id: int, user_id: int) -> bool:
+    """Шу одам, шу гуруҳ учун тасдиqлаш ваколатига эгами?"""
+    return user_id in get_group_admin_ids(chat_id)
+
+
+def get_chats_managed_by(user_id: int):
+    """Шу одам тасдиqлаш ваколатига эга бўлган БАРЧА гуруҳлар (chat_id рўйхати)."""
+    _ensure_group_admins_ready()
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute(f"SELECT chat_id FROM group_admins WHERE user_id = {p} AND is_active = TRUE", (user_id,))
+    else:
+        cursor.execute(f"SELECT chat_id FROM group_admins WHERE user_id = {p} AND is_active = 1", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def get_ad_group_message_ids(ad_id: int):
+    """
+    Берилган эълоннинг ГУРУҲЛАРДАГИ барча хабарлари: [(chat_id, message_id), ...]
+    Статусидан қатъи назар (эълон таҳрирланганда/ўчирилганда ҳаммасини тозалаш учун).
+    """
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        SELECT chat_id, message_id FROM ad_group_posts
+        WHERE ad_id = {p} AND message_id IS NOT NULL
+    """, (ad_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
