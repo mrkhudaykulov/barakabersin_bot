@@ -1,18 +1,18 @@
 """
 groups.py
 
-Ботни гуруҳга қўшилганда — қайси вилоят(лар)га боғлашни сўрайди
-(inline тугмалар орқали, faqat guruh admin/egasi tanlashi mumkin).
+Ботни гуруҳга қўшилганда — қайси вилоят(лар)га боғлашни сўрайди.
+
+ТАСДИҚЛАШ ВАКОЛАТИ: Telegram'нинг ЖОНЛИ admin ро'йхатидан эмас, БИЗНИНГ
+`group_admins` жадвалидан текширилади. Бот гуруҳга қўшилганда, УНИ
+ҚЎШГАН ОДАМ автоматик равишда шу гуруҳ учун ваколатли деб белгиланади.
+Бош админ (ADMINS) буни исталган вақтда ўзгартириши/қўшимча одам
+қўшиши мумкин: /addgroupadmin ва /removegroupadmin буйруқлари орқали
+(гуруҳда, керакли одамнинг хабарига REPLY қилиб).
 
 Эълон яратилганда (ads.py'даги _finalize_ad'дан), шу вилоятга боғланган
-барча актив гуруҳларга ✅/❌ тугмали хабар юборилади. Ҳар бир гуруҳ ўз
-админи томонидан МУСТАҚИЛ тасдиқланади/рад этилади — каналдаги
-REVIEW_ADMINS тасдиғига ҳеч қандай алоқаси йўқ.
-
-МУҲИМ (тузатилган хато): ҳар бир callback handler'да `callback.answer()`
-БИРИНЧИ навбатда чақирилади — акс ҳолда, секин DB/Telegram сўровлари
-(get_chat_member, add_region_group) туфайли Telegram'нинг callback query
-муддати тугаб, "query is too old" хатоси чиқарди.
+барча актив гуруҳларга ✅/❌ тугмали хабар юборилади — КАНАЛДАГИ БИЛАН
+БИР ХИЛ форматда (ads.py'даги build_full_ad_caption орқали).
 """
 
 import logging
@@ -26,7 +26,8 @@ from keyboards import DISTRICTS
 from database import (
     add_region_group, remove_region_group, deactivate_chat, get_regions_for_chat,
     get_ad_group_post, review_ad_group_post,
-    get_all_active_group_chat_ids, get_blocks_by_admin
+    get_all_active_group_chat_ids, get_blocks_by_admin,
+    add_group_admin, remove_group_admin, is_group_admin, get_chats_managed_by,
 )
 
 router = Router()
@@ -36,19 +37,19 @@ REGIONS = list(DISTRICTS.keys())
 
 async def get_user_managed_groups(user_id: int):
     """
-    Фойдаланувчи (истаган одам) ҳақиқатан қайси боғланган гуруҳларда
-    админ/эга эканини Telegram'нинг ўзидан жонли текширади.
+    Фойдаланувчи ТАСДИҚЛАШ ВАКОЛАТИГА эга бўлган гуруҳлар — БИЗНИНГ
+    group_admins жадвалидан (Telegram API'га мурожаат қилинмайди, тезроқ).
     Қайтаради: [(chat_id, chat_title, regions_list), ...]
     """
+    chat_ids = get_chats_managed_by(user_id)
+    if not chat_ids:
+        return []
     all_groups = get_all_active_group_chat_ids()
     result = []
-    for chat_id, info in all_groups.items():
-        try:
-            member = await bot.get_chat_member(chat_id, user_id)
-            if member.status in ("administrator", "creator"):
-                result.append((chat_id, info["chat_title"], info["regions"]))
-        except Exception:
-            continue
+    for chat_id in chat_ids:
+        info = all_groups.get(chat_id)
+        if info:
+            result.append((chat_id, info["chat_title"], info["regions"]))
     return result
 
 
@@ -57,11 +58,12 @@ async def my_managed_groups(message: types.Message):
     groups = await get_user_managed_groups(message.from_user.id)
     if not groups:
         await message.answer(
-            "ℹ️ Сиз ҳозирча ҳеч қандай боғланган гуруҳда админ эмассиз."
+            "ℹ️ Сиз ҳозирча ҳеч қандай боғланган гуруҳ учун тасдиқлаш "
+            "ваколатига эга эмассиз."
         )
         return
 
-    text = "🏘 <b>Сиз админ бўлган гуруҳлар:</b>\n\n"
+    text = "🏘 <b>Сиз тасдиқлаш ваколатига эга гуруҳлар:</b>\n\n"
     for chat_id, chat_title, regions in groups:
         text += f"• <b>{chat_title}</b>\n   Вилоят(лар): {', '.join(regions)}\n\n"
     await message.answer(text, parse_mode="HTML")
@@ -130,8 +132,8 @@ def _build_region_inline_kb(selected_regions=None):
 @router.my_chat_member()
 async def on_bot_membership_changed(event: types.ChatMemberUpdated):
     """
-    my_chat_member Telegram'да ФАҚАТ ботнинг ўз ҳолати ўзгарганда келади —
-    бошқа фойдаланувчилар учун чақирилмайди.
+    my_chat_member Telegram'да ФАҚАТ ботнинг ўз ҳолати ўзгарганда келади.
+    `event.from_user` — БОТНИ ҚЎШГАН/ЧИҚАРГАН одам.
     """
     if event.chat.type not in ("group", "supergroup"):
         return
@@ -143,13 +145,17 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated):
     is_in = new_status in ("member", "administrator", "creator")
 
     if not was_in and is_in:
-        # Бот янги қўшилди
+        # Бот янги қўшилди — ҚЎШГАН ОДАМ автоматик тасдиқловчи бўлади
+        add_group_admin(event.chat.id, event.from_user.id, granted_by=None)
+
         kb = _build_region_inline_kb()
         try:
             await bot.send_message(
                 chat_id=event.chat.id,
                 text=(
                     "👋 Салом! Ботни ушбу гуруҳга қўшганингиз учун раҳмат.\n\n"
+                    f"✅ Сиз ({event.from_user.full_name}) шу гуруҳ учун "
+                    f"эълонларни тасдиқлаш ваколатига эга бўлдингиз.\n\n"
                     "Бу гуруҳни қайси вилоят(лар)га боғлаймиз? "
                     "Танланган вилоятдан эълон киритилса, шу гуруҳга ҳам юборилади.\n\n"
                     "(Бир нечта вилоят танлашингиз мумкин)"
@@ -168,17 +174,14 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated):
 async def viloyat_command(message: types.Message):
     """
     Гуруҳда исталган вақтда — вилоят(лар) боғлашни қайта очиш учун.
-    Фақат гуруҳларда ишлайди, ва фақат ўша гуруҳнинг ҳақиқий
-    админи/эгаси чақира олади. Аллақачон танланган вилоятлар ✅ билан
-    кўрсатилади.
+    Фақат ШУ ГУРУҲ учун тасдиқлаш ваколатига эга одам чақира олади.
     """
     if message.chat.type not in ("group", "supergroup"):
         await message.answer("ℹ️ Бу буйруқ фақат гуруҳларда ишлайди.")
         return
 
-    member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-    if member.status not in ("administrator", "creator"):
-        await message.answer("⚠️ Фақат гуруҳ админи вилоят(лар)ни созлай олади.")
+    if not is_group_admin(message.chat.id, message.from_user.id):
+        await message.answer("⚠️ Фақат шу гуруҳ учун тасдиқлаш ваколатига эга одам вилоят(лар)ни созлай олади.")
         return
 
     selected = set(get_regions_for_chat(message.chat.id))
@@ -190,6 +193,59 @@ async def viloyat_command(message: types.Message):
     )
 
 
+# ═══════════════════════════════════════
+# БОШ АДМИН — гуруҳ тасдиқловчиларини бошқариш
+# ═══════════════════════════════════════
+
+@router.message(Command("addgroupadmin"))
+async def add_group_admin_command(message: types.Message):
+    """
+    Бош админ (ADMINS) гуруҳда, керакли одамнинг хабарига REPLY қилиб
+    шу буйруқни ёзса — ўша одам шу гуруҳ учун тасдиқловчи бўлади.
+    """
+    from config import ADMINS
+    if message.from_user.id not in ADMINS:
+        return
+    if message.chat.type not in ("group", "supergroup"):
+        await message.answer("ℹ️ Бу буйруқ фақат гуруҳларда ишлайди.")
+        return
+    if not message.reply_to_message:
+        await message.answer(
+            "⚠️ Одамни белгилаш учун, унинг хабарига REPLY қилиб "
+            "«/addgroupadmin» деб ёзинг."
+        )
+        return
+
+    target = message.reply_to_message.from_user
+    add_group_admin(message.chat.id, target.id, granted_by=message.from_user.id)
+    await message.answer(
+        f"✅ {target.full_name} энди шу гуруҳ учун эълон тасдиқлаш ваколатига эга."
+    )
+
+
+@router.message(Command("removegroupadmin"))
+async def remove_group_admin_command(message: types.Message):
+    """Бош админ — ваколатни олиб қўяди (REPLY орқали)."""
+    from config import ADMINS
+    if message.from_user.id not in ADMINS:
+        return
+    if message.chat.type not in ("group", "supergroup"):
+        await message.answer("ℹ️ Бу буйруқ фақат гуруҳларда ишлайди.")
+        return
+    if not message.reply_to_message:
+        await message.answer(
+            "⚠️ Одамни белгилаш учун, унинг хабарига REPLY қилиб "
+            "«/removegroupadmin» деб ёзинг."
+        )
+        return
+
+    target = message.reply_to_message.from_user
+    remove_group_admin(message.chat.id, target.id)
+    await message.answer(
+        f"✅ {target.full_name} энди шу гуруҳ учун тасдиқлаш ваколатига эга ЭМАС."
+    )
+
+
 @router.callback_query(F.data.startswith("reggroup_"))
 async def region_group_callback(callback: types.CallbackQuery):
     # ═══ ТЕЗ ЖАВОБ — Telegram callback muddati tugashini oldini olish ═══
@@ -197,10 +253,8 @@ async def region_group_callback(callback: types.CallbackQuery):
 
     chat_id = callback.message.chat.id
 
-    # Фақат шу гуруҳнинг ҳақиқий админи/эгаси танлаши мумкин
-    member = await bot.get_chat_member(chat_id, callback.from_user.id)
-    if member.status not in ("administrator", "creator"):
-        await callback.message.answer("⚠️ Фақат гуруҳ админи танлаши мумкин.")
+    if not is_group_admin(chat_id, callback.from_user.id):
+        await callback.message.answer("⚠️ Фақат шу гуруҳ учун тасдиқлаш ваколатига эга одам танлаши мумкин.")
         return
 
     region = callback.data.replace("reggroup_", "")
@@ -255,9 +309,8 @@ async def group_approve_callback(callback: types.CallbackQuery):
         return
 
     chat_id = callback.message.chat.id
-    member = await bot.get_chat_member(chat_id, callback.from_user.id)
-    if member.status not in ("administrator", "creator"):
-        await callback.message.answer("⚠️ Фақат гуруҳ админи тасдиқлаши мумкин.")
+    if not is_group_admin(chat_id, callback.from_user.id):
+        await callback.message.answer("⚠️ Фақат шу гуруҳ учун тасдиқлаш ваколатига эга одам тасдиқлаши мумкин.")
         return
 
     review_ad_group_post(post_id, admin_id=callback.from_user.id, approve=True)
@@ -279,9 +332,8 @@ async def group_reject_callback(callback: types.CallbackQuery):
         return
 
     chat_id = callback.message.chat.id
-    member = await bot.get_chat_member(chat_id, callback.from_user.id)
-    if member.status not in ("administrator", "creator"):
-        await callback.message.answer("⚠️ Фақат гуруҳ админи рад эта олади.")
+    if not is_group_admin(chat_id, callback.from_user.id):
+        await callback.message.answer("⚠️ Фақат шу гуруҳ учун тасдиқлаш ваколатига эга одам рад эта олади.")
         return
 
     review_ad_group_post(post_id, admin_id=callback.from_user.id, approve=False)
