@@ -714,6 +714,8 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             ad_id=ad_id,
             data=data,
             media_list=media_list,
+            phone=phone,
+            user=user,
         )
 
     except Exception as e:
@@ -809,11 +811,44 @@ async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
 # ВИЛОЯТГА БОҒЛАНГАН ГУРУҲЛАРГА ЮБОРИШ
 # ═══════════════════════════════════════
 
-async def _send_to_region_groups(ad_id, data, media_list):
+def build_full_ad_caption(a_type, qty, price_display, desc, region, dist, mfy,
+                           phone, user_id, username, bot_username, is_review_admin=False):
     """
-    Эълоннинг вилоятига боғланган барча актив гуруҳларга юборади.
-    Ҳар бир гуруҳ ўз админи томонидан МУСТАҚИЛ тасдиқланади —
-    каналдаги REVIEW_ADMINS'га ҳеч қандай алоқаси йўқ.
+    Канал ва гуруҳларда БИР ХИЛ форматдаги эълон caption'ини қуради.
+    (approve_ad_callback'даги asl formatning o'zi — endi ikkalasida ham qayta ishlatiladi.)
+    """
+    caption = (
+        f"#️⃣ #{html.escape(a_type)}\n"
+        f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
+        f"💰 <b>Нархи:</b> {html.escape(price_display)}\n"
+        f"📝 <b>Изоҳ:</b> {html.escape(desc)}\n"
+        f"📍 <b>Манзил:</b> {html.escape(region)} в, "
+        f"{html.escape(dist)} т, "
+        f"{html.escape(mfy or 'Кўрсатилмаган')} МФЙ\n\n"
+        f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
+    )
+    if not is_review_admin:
+        if username and username.startswith("@"):
+            caption += f"💬 <b>Телеграм:</b> {username}\n"
+        else:
+            caption += (
+                f"💬 <b>Телеграм:</b> "
+                f"<a href='tg://user?id={user_id}'>Хабар ёзиш</a>\n"
+            )
+    caption += (
+        f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
+        f" | "
+        f"<a href='https://t.me/{bot_username}'>Бошқариш</a>"
+    )
+    return caption
+
+
+async def _send_to_region_groups(ad_id, data, media_list, phone, user):
+    """
+    Эълоннинг вилоятига боғланган барча актив гуруҳларга юборади —
+    КАНАЛДАГИ БИЛАН БИР ХИЛ форматда (build_full_ad_caption орқали).
+    Ҳар бир гуруҳ ўз (гуруҳ учун белгиланган) админи томонидан МУСТАҚИЛ
+    тасдиқланади — каналдаги REVIEW_ADMINS'га ҳеч қандай алоқаси йўқ.
     """
     from database import get_groups_for_region, create_ad_group_post, set_ad_group_post_message
 
@@ -821,14 +856,24 @@ async def _send_to_region_groups(ad_id, data, media_list):
     if not groups:
         return
 
-    group_caption = (
-        f"#️⃣ {html.escape(data['animal_type'])}\n"
-        f"🔢 {html.escape(data['quantity'])}\n"
-        f"💰 {html.escape(data.get('price_display', data['price']))}\n"
-        f"📝 {html.escape(data['description'])}\n"
-        f"📍 {html.escape(data['region'])} в, "
-        f"{html.escape(data['district'])} т, "
-        f"{html.escape(data.get('mfy') or 'Кўрсатилмаган')} МФЙ"
+    bot_info = await bot.get_me()
+    username = getattr(user, "username", None) or (user.get("username") if isinstance(user, dict) else None)
+    username = f"@{username}" if username else None
+    user_id = getattr(user, "id", None) or (user.get("id") if isinstance(user, dict) else None)
+
+    group_caption = build_full_ad_caption(
+        a_type=data['animal_type'],
+        qty=data['quantity'],
+        price_display=data.get('price_display', data['price']),
+        desc=data['description'],
+        region=data['region'],
+        dist=data['district'],
+        mfy=data.get('mfy'),
+        phone=phone,
+        user_id=user_id,
+        username=username,
+        bot_username=bot_info.username,
+        is_review_admin=(user_id in REVIEW_ADMINS if user_id else False),
     )
 
     for chat_id, chat_title, chat_username in groups:
@@ -908,30 +953,11 @@ async def approve_ad_callback(callback: types.CallbackQuery):
 
         bot_info = await bot.get_me()
 
-        price_display = html.escape(price_disp or price)
-        
-        caption = (
-            f"#️⃣ #{html.escape(a_type)}\n"
-            f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
-            f"💰 <b>Нархи:</b> {price_display}\n"
-            f"📝 <b>Изоҳ:</b> {html.escape(desc)}\n"
-            f"📍 <b>Манзил:</b> {html.escape(region)} в, "
-            f"{html.escape(dist)} т, "
-            f"{html.escape(mfy or 'Кўрсатилмаган')} МФЙ\n\n"
-            f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
-        )
-        if user_id not in REVIEW_ADMINS:
-            if username and username.startswith("@"):
-                caption += f"💬 <b>Телеграм:</b> {username}\n"
-            else:
-                caption += (
-                    f"💬 <b>Телеграм:</b> "
-                    f"<a href='tg://user?id={user_id}'>Хабар ёзиш</a>\n"
-                )
-        caption += (
-            f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
-            f" | "
-            f"<a href='https://t.me/{bot_info.username}'>Бошқариш</a>"
+        caption = build_full_ad_caption(
+            a_type=a_type, qty=qty, price_display=(price_disp or price), desc=desc,
+            region=region, dist=dist, mfy=mfy, phone=phone,
+            user_id=user_id, username=username, bot_username=bot_info.username,
+            is_review_admin=(user_id in REVIEW_ADMINS),
         )
         
         # Медиаларни олиш (Энди база очиқ пайтда ишлайди)
