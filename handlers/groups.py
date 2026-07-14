@@ -15,6 +15,7 @@ groups.py
 БИР ХИЛ форматда (ads.py'даги build_full_ad_caption орқали).
 """
 
+import html
 import logging
 
 from aiogram import Router, types, F
@@ -25,7 +26,6 @@ from config import bot
 from keyboards import DISTRICTS
 from database import (
     add_region_group, remove_region_group, deactivate_chat, get_regions_for_chat,
-    get_ad_group_post, review_ad_group_post,
     get_all_active_group_chat_ids, get_blocks_by_admin,
     add_group_admin, remove_group_admin, is_group_admin, get_chats_managed_by,
 )
@@ -145,7 +145,9 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated):
     is_in = new_status in ("member", "administrator", "creator")
 
     if not was_in and is_in:
-        # Бот янги қўшилди — ҚЎШГАН ОДАМ автоматик тасдиқловчи бўлади
+        # Бот янги қўшилди — ҚЎШГАН ОДАМ шу гуруҳнинг ВИЛОЯТ созламаларини
+        # бошқариш ваколатига эга бўлади (эълон тасдиқлаш ваколати ЭМАС —
+        # у энди бош админ орқали, алоҳида берилади).
         add_group_admin(event.chat.id, event.from_user.id, granted_by=None)
 
         kb = _build_region_inline_kb()
@@ -155,9 +157,9 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated):
                 text=(
                     "👋 Салом! Ботни ушбу гуруҳга қўшганингиз учун раҳмат.\n\n"
                     f"✅ Сиз ({event.from_user.full_name}) шу гуруҳ учун "
-                    f"эълонларни тасдиқлаш ваколатига эга бўлдингиз.\n\n"
+                    f"вилоят(лар)ни созлаш ваколатига эга бўлдингиз.\n\n"
                     "Бу гуруҳни қайси вилоят(лар)га боғлаймиз? "
-                    "Танланган вилоятдан эълон киритилса, шу гуруҳга ҳам юборилади.\n\n"
+                    "Танланган вилоятдан эълон тасдиқлансa, шу гуруҳга ҳам жойланади.\n\n"
                     "(Бир нечта вилоят танлашингиз мумкин)"
                 ),
                 reply_markup=kb
@@ -165,9 +167,150 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated):
         except Exception as e:
             logging.warning(f"Гуруҳга (chat_id={event.chat.id}) хабар юборилмади: {e}")
 
+        # ═══ БОШ АДМИНЛАРГА БИЛДИРИШНОМА ═══
+        await _notify_bosh_admins_about_new_group(event.chat, event.from_user)
+
     elif was_in and not is_in:
         # Бот чиқарилди/чиқиб кетди
         deactivate_chat(event.chat.id)
+
+
+async def _notify_bosh_admins_about_new_group(chat, adder):
+    """
+    Бот янги гуруҳга қўшилганда — бош ADMINS'га гуруҳ ва уни қўшган
+    одам ҳақида хабар юборади, "Review admin қилиб қўшиш" тугмаси билан.
+    """
+    from config import ADMINS
+
+    group_link = f"https://t.me/{chat.username}" if chat.username else "(приват, ҳаволаси йўқ)"
+    adder_username = f"@{adder.username}" if adder.username else "(username йўқ)"
+    adder_profile = f"tg://user?id={adder.id}"
+
+    text = (
+        f"🆕 <b>Бот янги гуруҳга қўшилди!</b>\n\n"
+        f"🏘 <b>Гуруҳ:</b> {html.escape(chat.title or '—')}\n"
+        f"🔗 <b>Ҳавола:</b> {group_link}\n\n"
+        f"👤 <b>Қўшган одам:</b> {html.escape(adder.full_name)}\n"
+        f"💬 <b>Username:</b> {adder_username}\n"
+        f"🆔 <b>ID:</b> <code>{adder.id}</code>\n"
+        f"🔗 <a href='{adder_profile}'>Профилга ўтиш</a>\n\n"
+        f"Шу одамни яxлит эълон тасдиқлаш ҳавзасига (review admin) қўшасизми?"
+    )
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="✅ Review admin қилиб қўшиш",
+            callback_data=f"addreviewadmin_{adder.id}"
+        )
+    ]])
+
+    for bosh_admin_id in ADMINS:
+        try:
+            await bot.send_message(
+                chat_id=bosh_admin_id, text=text,
+                parse_mode="HTML", reply_markup=kb
+            )
+        except Exception as e:
+            logging.warning(f"Бош админга ({bosh_admin_id}) билдиришнома юборилмади: {e}")
+
+
+@router.callback_query(F.data.startswith("addreviewadmin_"))
+async def add_review_admin_callback(callback: types.CallbackQuery):
+    """Бош админ тугмани босиб, одамни яxлит review_admins ҳавзасига қўшади."""
+    from config import ADMINS
+    from database import add_review_admin
+
+    if callback.from_user.id not in ADMINS:
+        await callback.answer("⛔ Сизга бу амал учун рухсат йўқ.", show_alert=True)
+        return
+
+    target_user_id = int(callback.data.replace("addreviewadmin_", ""))
+
+    full_name = None
+    username = None
+    try:
+        chat_info = await bot.get_chat(target_user_id)
+        full_name = chat_info.full_name
+        username = chat_info.username
+    except Exception:
+        pass
+
+    add_review_admin(
+        target_user_id, full_name=full_name, username=username,
+        added_by=callback.from_user.id
+    )
+
+    await callback.answer("✅ Қўшилди!")
+    try:
+        await callback.message.edit_text(
+            callback.message.text + "\n\n✅ <b>REVIEW ADMIN сифатида қўшилди.</b>",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
+
+
+@router.message(Command("reviewadmins"))
+async def list_review_admins_command(message: types.Message):
+    """
+    Бош админ учун — яxлит review_admins ҳавзасидаги барча одамлар
+    рўйхати, ҳар бирининг олдида «❌ Олиб ташлаш» тугмаси билан.
+    Исталган жойда (приват чат ёки гуруҳда) ишлайди.
+    """
+    from config import ADMINS
+    from database import get_all_review_admin_ids
+
+    if message.from_user.id not in ADMINS:
+        return
+
+    ids = get_all_review_admin_ids()
+    if not ids:
+        await message.answer("ℹ️ Review admins ҳавзаси ҳозирча бўш.")
+        return
+
+    await message.answer(f"👥 <b>Review admins ({len(ids)} та):</b>", parse_mode="HTML")
+
+    for uid in ids:
+        try:
+            chat_info = await bot.get_chat(uid)
+            label = chat_info.full_name
+            uname = f"@{chat_info.username}" if chat_info.username else ""
+        except Exception:
+            label = f"ID: {uid}"
+            uname = ""
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="❌ Олиб ташлаш", callback_data=f"removereviewadmin_{uid}")
+        ]])
+        await message.answer(
+            f"👤 {html.escape(label)} {uname}\n🆔 <code>{uid}</code>",
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+
+
+@router.callback_query(F.data.startswith("removereviewadmin_"))
+async def remove_review_admin_callback(callback: types.CallbackQuery):
+    """Бош админ — «❌ Олиб ташлаш» тугмаси орқали review_admins'дан чиқаради."""
+    from config import ADMINS
+    from database import remove_review_admin
+
+    if callback.from_user.id not in ADMINS:
+        await callback.answer("⛔ Сизга бу амал учун рухсат йўқ.", show_alert=True)
+        return
+
+    target_user_id = int(callback.data.replace("removereviewadmin_", ""))
+    remove_review_admin(target_user_id)
+
+    await callback.answer("✅ Олиб ташланди!")
+    try:
+        await callback.message.edit_text(
+            callback.message.text + "\n\n❌ <b>Ҳавзадан олиб ташланди.</b>",
+            parse_mode="HTML",
+            reply_markup=None
+        )
+    except Exception:
+        pass
 
 
 @router.message(Command("viloyat"))
@@ -294,50 +437,8 @@ async def region_group_callback(callback: types.CallbackQuery):
 
 
 # ═══════════════════════════════════════
-# ГУРУҲДАГИ ✅/❌ — HAR BIR GURUH MUSTAQIL
+# ЭСЛАТМА: Гуруҳдаги мустақил ✅/❌ тугмалари ва per-group moderatsiya
+# ОЛИБ ТАШЛАНДИ — энди эълон тасдиқлаш МАРКАЗЛАШГАН (review_admins орқали,
+# ads.py'да). Тасдиқлангандан кейин эълон АВТОМАТИК гуруҳга жойланади
+# (ads.py'даги post_ad_to_matching_groups орқали, тугмасиз, тайёр ҳолда).
 # ═══════════════════════════════════════
-
-@router.callback_query(F.data.startswith("gapprove_"))
-async def group_approve_callback(callback: types.CallbackQuery):
-    # ═══ ТЕЗ ЖАВОБ — birinchi navbatda ═══
-    await callback.answer()
-
-    post_id = int(callback.data.replace("gapprove_", ""))
-    post = get_ad_group_post(post_id)
-    if not post:
-        await callback.message.answer("⚠️ Топилмади (эҳтимол аллақачон кўриб чиқилган).")
-        return
-
-    chat_id = callback.message.chat.id
-    if not is_group_admin(chat_id, callback.from_user.id):
-        await callback.message.answer("⚠️ Фақат шу гуруҳ учун тасдиқлаш ваколатига эга одам тасдиқлаши мумкин.")
-        return
-
-    review_ad_group_post(post_id, admin_id=callback.from_user.id, approve=True)
-    try:
-        await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
-
-
-@router.callback_query(F.data.startswith("greject_"))
-async def group_reject_callback(callback: types.CallbackQuery):
-    # ═══ ТЕЗ ЖАВОБ — birinchi navbatda ═══
-    await callback.answer()
-
-    post_id = int(callback.data.replace("greject_", ""))
-    post = get_ad_group_post(post_id)
-    if not post:
-        await callback.message.answer("⚠️ Топилмади (эҳтимол аллақачон кўриб чиқилган).")
-        return
-
-    chat_id = callback.message.chat.id
-    if not is_group_admin(chat_id, callback.from_user.id):
-        await callback.message.answer("⚠️ Фақат шу гуруҳ учун тасдиқлаш ваколатига эга одам рад эта олади.")
-        return
-
-    review_ad_group_post(post_id, admin_id=callback.from_user.id, approve=False)
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
