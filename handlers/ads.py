@@ -1303,6 +1303,43 @@ async def _clear_all_admin_review_messages(ad_id: int):
     delete_admin_review_messages(ad_id)
 
 # ═══════════════════════════════════════
+# ГУРУҲЛАРДАГИ НУСХАЛАРНИ БОШQАРИШ (эълон ўзгарса/ўчса)
+# ═══════════════════════════════════════
+
+async def _delete_ad_from_all_groups(ad_id: int):
+    """Эълон ЎЧИРИЛГАНДА — гуруҳлардаги барча нусхаларини ҳам ўчиради."""
+    from database import get_ad_group_message_ids
+    rows = get_ad_group_message_ids(ad_id)
+    for chat_id, message_id in rows:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            logging.debug(f"Гуруҳ ({chat_id}) хабарини ўчиришда хато (эҳтимол аллақачон ўчирилган): {e}")
+
+
+async def _mark_ad_sold_in_all_groups(ad_id: int, a_type: str, qty: str, price: str, region: str, dist: str):
+    """Эълон 'Сотилди' деб белгиланганда — гуруҳлардаги нусхаларини ҳам янгилайди."""
+    from database import get_ad_group_message_ids
+    new_caption = (
+        f"🔴 <b>СОТИЛДИ!</b> 🔴\n\n"
+        f"#️⃣ #{html.escape(a_type)}\n"
+        f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
+        f"💰 <b>Нархи:</b> {html.escape(price)}\n"
+        f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т\n"
+        f"🤝 Харидорга барака берсин!"
+    )
+    rows = get_ad_group_message_ids(ad_id)
+    for chat_id, message_id in rows:
+        try:
+            await bot.edit_message_caption(
+                chat_id=chat_id, message_id=message_id,
+                caption=new_caption, parse_mode="HTML", reply_markup=None
+            )
+        except Exception as e:
+            logging.debug(f"Гуруҳ ({chat_id}) caption'ини янгилашда хато: {e}")
+
+
+# ═══════════════════════════════════════
 # 🗂 МЕНИНГ ЭЪЛОНЛАРИМ
 # ═══════════════════════════════════════
 
@@ -1457,6 +1494,9 @@ async def handle_ad_action(callback: types.CallbackQuery):
             else:
                 await callback.message.edit_text("✅ Эълон 'Сотилди' ҳолатига ўтказилди (каналдаги ИД топилмаганлиги сабабли).")
 
+            # ═══ ГУРУҲЛАРДАГИ НУСХАЛАРНИ ҲАМ ЯНГИЛАШ ═══
+            await _mark_ad_sold_in_all_groups(int(ad_id), a_type, qty, price, region, dist)
+
         elif action == "del":
             cursor.execute(f"UPDATE ads SET status = 'deleted' WHERE id = {p}", (ad_id,))
             conn.commit()
@@ -1467,6 +1507,9 @@ async def handle_ad_action(callback: types.CallbackQuery):
                 except Exception:
                     pass
             await callback.message.edit_text("❌ Эълон каналдан бутунлай ўчирилди.")
+
+            # ═══ ГУРУҲЛАРДАГИ НУСХАЛАРНИ ҲАМ ЎЧИРИШ ═══
+            await _delete_ad_from_all_groups(int(ad_id))
 
         elif action == "repost":
             if not is_premium_user(callback.from_user.id):
