@@ -41,7 +41,8 @@ from config import bot, BOT_TOKEN
 from database import (
     get_user_profile, save_user, get_connection, get_placeholder,
     contains_bad_word, AD_EXPIRE_DAYS, save_admin_review_message,
-    get_all_review_admin_ids
+    get_all_review_admin_ids, is_user_blocked, is_premium_user,
+    get_monthly_ad_count, MAX_ADS_PER_MONTH_REGULAR, MAX_ADS_PER_MONTH_PREMIUM
 )
 
 routes = web.RouteTableDef()
@@ -68,7 +69,7 @@ def verify_init_data(init_data: str) -> dict | None:
         logging.warning(f"[initData] parse_qsl хатоси: {e} | raw(120)={init_data[:120]!r}")
         return None
 
-    logging.info(f"[initData] Қабул қилинган калитлар: {sorted(parsed.keys())}")
+    logging.debug(f"[initData] Қабул қилинган калитлар: {sorted(parsed.keys())}")
 
     received_hash = parsed.pop("hash", None)
     if not received_hash:
@@ -77,23 +78,14 @@ def verify_init_data(init_data: str) -> dict | None:
 
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
 
-    token_len = len(BOT_TOKEN) if BOT_TOKEN else 0
-    token_preview = f"{BOT_TOKEN[:6]}...{BOT_TOKEN[-4:]}" if BOT_TOKEN and len(BOT_TOKEN) > 12 else "???"
-    logging.info(f"[initData] BOT_TOKEN узунлиги={token_len}, preview={token_preview}")
-
     secret_key = hmac.new(key=b"WebAppData", msg=BOT_TOKEN.encode(), digestmod=hashlib.sha256).digest()
     computed_hash = hmac.new(key=secret_key, msg=data_check_string.encode(), digestmod=hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(computed_hash, received_hash):
-        logging.warning(
-            f"[initData] HASH МОС ЭМАС!\n"
-            f"  received_hash={received_hash}\n"
-            f"  computed_hash={computed_hash}\n"
-            f"  data_check_string={data_check_string!r}"
-        )
+        logging.warning("[initData] HASH МОС ЭМАС — сўров рад этилди.")
         return None
 
-    logging.info("[initData] ✅ Имзо тўғри тасдиқланди.")
+    logging.debug("[initData] ✅ Имзо тўғри тасдиқланди.")
 
     user_raw = parsed.get("user")
     if not user_raw:
@@ -132,7 +124,7 @@ async def api_profile(request: web.Request):
     if not user:
         return _unauthorized()
 
-    profile = get_user_profile(user["id"])
+    profile = await get_user_profile(user["id"])
     bot_info = await bot.get_me()
     return web.json_response({
         "ok": True,
@@ -176,7 +168,7 @@ async def _send_to_reviewers_webapp(ad_id, fields, media_meta_list, user, phone)
         f"🆔 Эълон ID: {ad_id}"
     )
 
-    review_admin_ids = get_all_review_admin_ids()
+    review_admin_ids = await get_all_review_admin_ids()
     if not review_admin_ids:
         logging.error("review_admins бўш — эълонни ҳеч ким кўра олмайди!")
         return media_meta_list
@@ -201,7 +193,7 @@ async def _send_to_reviewers_webapp(ad_id, fields, media_meta_list, user, phone)
                 )
                 first_media["file_id"] = sent.photo[-1].file_id
 
-            save_admin_review_message(ad_id=ad_id, admin_id=first_admin,
+            await save_admin_review_message(ad_id=ad_id, admin_id=first_admin,
                                        message_id=sent.message_id, chat_id=first_admin)
         except Exception as e:
             logging.error(f"Биринчи админга ({first_admin}) юборишда хато: {e}")
@@ -211,7 +203,7 @@ async def _send_to_reviewers_webapp(ad_id, fields, media_meta_list, user, phone)
                 chat_id=first_admin, text=review_text,
                 parse_mode="Markdown", reply_markup=review_kb
             )
-            save_admin_review_message(ad_id=ad_id, admin_id=first_admin,
+            await save_admin_review_message(ad_id=ad_id, admin_id=first_admin,
                                        message_id=sent.message_id, chat_id=first_admin)
         except Exception as e:
             logging.error(f"Биринчи админга ({first_admin}) юборишда хато: {e}")
@@ -250,7 +242,7 @@ async def _send_to_reviewers_webapp(ad_id, fields, media_meta_list, user, phone)
                     chat_id=admin_id, text=review_text,
                     parse_mode="Markdown", reply_markup=review_kb
                 )
-            save_admin_review_message(ad_id=ad_id, admin_id=admin_id,
+            await save_admin_review_message(ad_id=ad_id, admin_id=admin_id,
                                        message_id=sent.message_id, chat_id=admin_id)
         except Exception as e:
             logging.error(f"Админ {admin_id} га юборишда хато: {e}")
@@ -290,6 +282,21 @@ async def api_submit_ad(request: web.Request):
     user = verify_init_data(init_data)
     if not user:
         return _unauthorized()
+
+    if await is_user_blocked(user["id"]):
+        return web.json_response(
+            {"ok": False, "error": "Сиз блоклангансиз. Эълон бериш ҳуқуқингиз чекланган."},
+            status=403
+        )
+
+    is_premium = await is_premium_user(user["id"])
+    limit = MAX_ADS_PER_MONTH_PREMIUM if is_premium else MAX_ADS_PER_MONTH_REGULAR
+    monthly_count = await get_monthly_ad_count(user["id"])
+    if monthly_count >= limit:
+        return web.json_response(
+            {"ok": False, "error": f"Ойлик лимит тугади ({monthly_count}/{limit})."},
+            status=403
+        )
 
     if oversized_files:
         return web.json_response(
@@ -336,45 +343,50 @@ async def api_submit_ad(request: web.Request):
     db_username = f"@{tg_username}" if tg_username else ""
 
     # ═══ БАЗАГА status='pending' БИЛАН САҚЛАШ ═══
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    def _insert_pending_ad_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            if os.getenv("DATABASE_URL"):
+                cursor.execute(f"""
+                    INSERT INTO ads
+                    (user_id, msg_id, animal_type, quantity, price,
+                     price_display, description, region, district, mfy, phone, username,
+                     status, expires_at)
+                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
+                            {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
+                    RETURNING id
+                """, (user["id"], '', animal_type, qty, price, price,
+                      description, region, district, mfy, phone, db_username, 'pending'))
+            else:
+                cursor.execute(f"""
+                    INSERT INTO ads
+                    (user_id, msg_id, animal_type, quantity, price,
+                     price_display, description, region, district, mfy, phone, username,
+                     status, expires_at)
+                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
+                            {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
+                    RETURNING id
+                """, (user["id"], '', animal_type, qty, price, price,
+                      description, region, district, mfy, phone, db_username, 'pending'))
 
-    try:
-        if os.getenv("DATABASE_URL"):
-            cursor.execute(f"""
-                INSERT INTO ads
-                (user_id, msg_id, animal_type, quantity, price,
-                 price_display, description, region, district, mfy, phone, username,
-                 status, expires_at)
-                VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
-                        {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
-                RETURNING id
-            """, (user["id"], '', animal_type, qty, price, price,
-                  description, region, district, mfy, phone, db_username, 'pending'))
-        else:
-            cursor.execute(f"""
-                INSERT INTO ads
-                (user_id, msg_id, animal_type, quantity, price,
-                 price_display, description, region, district, mfy, phone, username,
-                 status, expires_at)
-                VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
-                        {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
-                RETURNING id
-            """, (user["id"], '', animal_type, qty, price, price,
-                  description, region, district, mfy, phone, db_username, 'pending'))
+            new_ad_id = cursor.fetchone()[0]
+            conn.commit()
+            return new_ad_id
+        except Exception as e:
+            conn.rollback()
+            logging.error(f"Mini App: ads INSERT хатоси: {e}")
+            return None
+        finally:
+            conn.close()
 
-        ad_id = cursor.fetchone()[0]
-        conn.commit()
-    except Exception as e:
-        conn.rollback()
-        conn.close()
-        logging.error(f"Mini App: ads INSERT хатоси: {e}")
+    ad_id = await asyncio.to_thread(_insert_pending_ad_sync)
+    if ad_id is None:
         return web.json_response(
             {"ok": False, "error": "Базага сақлашда хатолик. Кейинроқ қайта уриниб кўринг."},
             status=500
         )
-    conn.close()
 
     # ═══ ФОЙДАЛАНУВЧИГА ДАРҲОЛ ЖАВОБ (kutish kerak bo'lmasin) ═══
     # Қолган БАРЧА секин иш (reviewer/guruhларга юбориш, ad_media, профиль,
@@ -419,17 +431,20 @@ async def _process_ad_after_insert(
     # review_admins tomonidan (ads.py'даги approve_ad_callback ичида) юборилади.
 
     # ═══ ad_media ЖАДВАЛИГА file_id'ЛАРНИ САҚЛАШ ═══
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    for media in media_files:
-        if media.get("file_id"):
-            cursor.execute(f"""
-                INSERT INTO ad_media (ad_id, media_type, file_id)
-                VALUES ({p}, {p}, {p})
-            """, (ad_id, media["type"], media["file_id"]))
-    conn.commit()
-    conn.close()
+    def _save_ad_media_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        for media in media_files:
+            if media.get("file_id"):
+                cursor.execute(f"""
+                    INSERT INTO ad_media (ad_id, media_type, file_id)
+                    VALUES ({p}, {p}, {p})
+                """, (ad_id, media["type"], media["file_id"]))
+        conn.commit()
+        conn.close()
+
+    await asyncio.to_thread(_save_ad_media_sync)
 
     # ═══ ФОЙДАЛАНУВЧИГА ХАБАР (bot orqali, chunki bu HTTP so'rov, message emas) ═══
     try:
@@ -448,7 +463,7 @@ async def _process_ad_after_insert(
         logging.warning(f"Фойдаланувчига хабар юборилмади: {e}")
 
     # ═══ ПРОФИЛНИ ЯНГИЛАШ (кейинги эълонда авто-тўлдирилсин) ═══
-    save_user(
+    await save_user(
         user_id=user["id"],
         full_name=user.get("first_name"),
         username=tg_username,

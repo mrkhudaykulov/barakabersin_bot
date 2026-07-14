@@ -19,11 +19,11 @@ async def handle_render_health_check(request):
 
 async def main_loop():
     # Маълумотлар базасини ишга тушириш (миграция ҳам шу ерда)
-    init_db()
+    await init_db()
 
     # config.py'даги REVIEW_ADMINS'ни DB'даги яxлит review_admins
     # ҳавзасига boshlang'ich sifatida qo'shib qo'yamiz (takrorlanmaydi)
-    seed_review_admins_from_config(set(ADMINS) | set(REVIEW_ADMINS))
+    await seed_review_admins_from_config(set(ADMINS) | set(REVIEW_ADMINS))
 
     # Барча handlerларни рўйхатдан ўтказиш
     register_all_handlers(dp)

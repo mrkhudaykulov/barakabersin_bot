@@ -1,3 +1,4 @@
+import asyncio
 import html
 import logging
 
@@ -84,7 +85,7 @@ async def start_ad(message: types.Message, state: FSMContext):
     await bot.send_chat_action(message.chat.id, "typing")
 
     # ═══ БЛОК ТЕКШИРИШ ═══
-    if is_user_blocked(message.from_user.id):
+    if await is_user_blocked(message.from_user.id):
         await message.answer(
             "🚫 *Сиз блоклангансиз!*\n\n"
             "Эълон бериш ҳуқуқингиз чекланган.\n"
@@ -98,10 +99,10 @@ async def start_ad(message: types.Message, state: FSMContext):
 
     # ═══ ОЙЛИК ЛИМИТ ТЕКШИРИШ ═══
     user_id = message.from_user.id
-    is_premium = is_premium_user(user_id)
+    is_premium = await is_premium_user(user_id)
     limit = MAX_ADS_PER_MONTH_PREMIUM if is_premium else MAX_ADS_PER_MONTH_REGULAR
 
-    monthly_count = get_monthly_ad_count(user_id)
+    monthly_count = await get_monthly_ad_count(user_id)
 
     if monthly_count >= limit:
         status_text = "Премиум" if is_premium else "оддий"
@@ -118,7 +119,7 @@ async def start_ad(message: types.Message, state: FSMContext):
     await state.clear()
     
     # Фойдаланувчини базага сақлаш (тез рўйхатга олиш)
-    save_user(
+    await save_user(
         user_id=message.from_user.id,
         full_name=message.from_user.full_name,
         username=message.from_user.username
@@ -232,7 +233,7 @@ async def process_type(message: types.Message, state: FSMContext):
     await state.update_data(animal_type=fixed)
 
     # ═══ ПРОФИЛДАН АВТО-ТЎЛДИРИШ ═══
-    profile = get_user_profile(message.from_user.id)
+    profile = await get_user_profile(message.from_user.id)
     if profile.get("region") and profile.get("district"):
         await state.update_data(
             region=profile["region"],
@@ -391,7 +392,7 @@ async def process_price(message: types.Message, state: FSMContext):
         per_unit_price = price_value
     elif qty_num > 1:
         animal = data.get("animal_type", "")
-        avg_price = get_price_range(animal)
+        avg_price = await get_price_range(animal)
         divided_price = price_value // qty_num
         if avg_price and divided_price < avg_price * 0.6:
             per_unit_price = price_value
@@ -436,7 +437,7 @@ async def process_description(message: types.Message, state: FSMContext):
     # ═══ ТЕЗ РЎЙХАТГА ОЛИШ: базада телефон борми? ═══
     data = await state.get_data()
     if not data.get("phone"):
-        saved_phone = get_user_phone(message.from_user.id)
+        saved_phone = await get_user_phone(message.from_user.id)
         if saved_phone:
             await state.update_data(phone=saved_phone)
         else:
@@ -555,7 +556,7 @@ async def process_phone(message: types.Message, state: FSMContext):
     phone = clean_phone(phone)
 
     # Телефонни базага сақлаш (кейинги эълонда тез рўйхатга олиш учун)
-    save_user(
+    await save_user(
         user_id=message.from_user.id,
         phone=phone
     )
@@ -574,7 +575,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
 
     # Профилни шу эълондаги охирги қийматлар билан янгилаб қўямиз
     # (кейинги эълонда яна шу маълумот авто-тўлдирилсин)
-    save_user(
+    await save_user(
         user_id=user.id,
         region=data.get('region'),
         district=data.get('district'),
@@ -627,7 +628,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         f"{mfy_display} МФЙ\n\n"
         f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
     )
-    if user.id not in get_all_review_admin_ids():
+    if user.id not in await get_all_review_admin_ids():
         caption += f"💬 <b>Телеграм:</b> {username_text}\n"
     caption += (
         f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
@@ -641,54 +642,58 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         db_username = f"@{user.username}" if user.username else ""
 
         # ═══ БАЗАГА САҚЛАШ — status = 'pending' ═══
-        p = get_placeholder()
-        conn = get_connection()
-        cursor = conn.cursor()
+        def _save_ad_sync():
+            p = get_placeholder()
+            conn = get_connection()
+            cursor = conn.cursor()
 
-        if __import__('os').getenv("DATABASE_URL"):
-            cursor.execute(f"""
-                INSERT INTO ads
-                (user_id, msg_id, animal_type, quantity, price,
-                 price_display, description, region, district, mfy, phone, username,
-                 status, expires_at)
-                VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
-                        {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
-                RETURNING id
-            """, (
-                user.id, '',
-                data['animal_type'], data['quantity'], data['price'],
-                data.get('price_display', data['price']),
-                data['description'], data['region'], data['district'],
-                data['mfy'], phone, db_username, 'pending'
-            ))
-        else:
-            cursor.execute(f"""
-                INSERT INTO ads
-                (user_id, msg_id, animal_type, quantity, price,
-                 price_display, description, region, district, mfy, phone, username,
-                 status, expires_at)
-                VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
-                        {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
-                RETURNING id
-            """, (
-                user.id, '',
-                data['animal_type'], data['quantity'], data['price'],
-                data.get('price_display', data['price']),
-                data['description'], data['region'], data['district'],
-                data['mfy'], phone, db_username, 'pending'
-            ))
-
-        ad_id = cursor.fetchone()[0]
-        # ═══ МЕДИАЛАРНИ ad_media ЖАДВАЛИГА САҚЛАШ
-        if media_list and ad_id:
-            for media in media_list:
+            if __import__('os').getenv("DATABASE_URL"):
                 cursor.execute(f"""
-                    INSERT INTO ad_media (ad_id, media_type, file_id)
-                    VALUES ({p}, {p}, {p})
-                """, (ad_id, media.get('type'), media.get('file_id')))
-                
-        conn.commit()
-        conn.close()
+                    INSERT INTO ads
+                    (user_id, msg_id, animal_type, quantity, price,
+                     price_display, description, region, district, mfy, phone, username,
+                     status, expires_at)
+                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
+                            {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
+                    RETURNING id
+                """, (
+                    user.id, '',
+                    data['animal_type'], data['quantity'], data['price'],
+                    data.get('price_display', data['price']),
+                    data['description'], data['region'], data['district'],
+                    data['mfy'], phone, db_username, 'pending'
+                ))
+            else:
+                cursor.execute(f"""
+                    INSERT INTO ads
+                    (user_id, msg_id, animal_type, quantity, price,
+                     price_display, description, region, district, mfy, phone, username,
+                     status, expires_at)
+                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
+                            {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
+                    RETURNING id
+                """, (
+                    user.id, '',
+                    data['animal_type'], data['quantity'], data['price'],
+                    data.get('price_display', data['price']),
+                    data['description'], data['region'], data['district'],
+                    data['mfy'], phone, db_username, 'pending'
+                ))
+
+            ad_id = cursor.fetchone()[0]
+            # ═══ МЕДИАЛАРНИ ad_media ЖАДВАЛИГА САҚЛАШ
+            if media_list and ad_id:
+                for media in media_list:
+                    cursor.execute(f"""
+                        INSERT INTO ad_media (ad_id, media_type, file_id)
+                        VALUES ({p}, {p}, {p})
+                    """, (ad_id, media.get('type'), media.get('file_id')))
+
+            conn.commit()
+            conn.close()
+            return ad_id
+
+        ad_id = await asyncio.to_thread(_save_ad_sync)
 
         # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══
         await message.answer(
@@ -755,7 +760,7 @@ async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
         f"🆔 Эълон ID: {ad_id}"
     )
  
-    for admin_id in get_all_review_admin_ids():
+    for admin_id in await get_all_review_admin_ids():
         try:
             if media_list:
                 first_media = media_list[0]
@@ -791,7 +796,7 @@ async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
                 )
  
             # ═══ Хабар ID сини базага сақлаш ═══
-            save_admin_review_message(
+            await save_admin_review_message(
                 ad_id=ad_id,
                 admin_id=admin_id,
                 message_id=sent.message_id,
@@ -847,7 +852,7 @@ def build_full_ad_caption(a_type, qty, price_display, desc, region, dist, mfy,
 async def get_public_group_links_for_region(region: str):
     """Шу вилоятга боғланган, PUBLIC (username'ли) гуруҳлар ҳаволалари рўйхати."""
     from database import get_groups_for_region
-    groups = get_groups_for_region(region)
+    groups = await get_groups_for_region(region)
     links = []
     for chat_id, chat_title, chat_username in groups:
         if chat_username:
@@ -866,7 +871,7 @@ async def post_ad_to_matching_groups(ad_id, region, caption, media_list):
     """
     from database import get_groups_for_region, create_ad_group_post, set_ad_group_post_message
 
-    groups = get_groups_for_region(region)
+    groups = await get_groups_for_region(region)
     results = []
 
     for chat_id, chat_title, chat_username in groups:
@@ -888,8 +893,8 @@ async def post_ad_to_matching_groups(ad_id, region, caption, media_list):
             else:
                 sent = await bot.send_message(chat_id=chat_id, text=caption, parse_mode="HTML")
 
-            post_id = create_ad_group_post(ad_id, chat_id)
-            set_ad_group_post_message(post_id, sent.message_id)
+            post_id = await create_ad_group_post(ad_id, chat_id)
+            await set_ad_group_post_message(post_id, sent.message_id)
 
             link = f"https://t.me/{chat_username}/{sent.message_id}" if chat_username else None
             results.append({
@@ -912,68 +917,73 @@ async def post_ad_to_matching_groups(ad_id, region, caption, media_list):
 @router.callback_query(F.data.startswith("approve_"))
 async def approve_ad_callback(callback: types.CallbackQuery):
     
-    if callback.from_user.id not in get_all_review_admin_ids():
+    if callback.from_user.id not in await get_all_review_admin_ids():
         await callback.answer("⛔ Сиз админ эмассиз!")
         return
 
     ad_id = int(callback.data.replace("approve_", ""))
 
-    success = approve_ad(ad_id, callback.from_user.id)
+    success = await approve_ad(ad_id, callback.from_user.id)
 
     if not success:
         await callback.answer("⚠️ Бу эълон бошқа админ томонидан тасдиқланган!")
         return
 
     # ═══ ЭЪЛОН МАЪЛУМОТЛАРИНИ ОЛИШ ═══
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute(f"""
-            SELECT user_id, animal_type, quantity, price,
-                   price_display, description, region, district, mfy, phone, username
-            FROM ads WHERE id = {p}
-        """, (ad_id,))
-        ad = cursor.fetchone()
+    def _fetch_ad_and_media_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"""
+                SELECT user_id, animal_type, quantity, price,
+                       price_display, description, region, district, mfy, phone, username
+                FROM ads WHERE id = {p}
+            """, (ad_id,))
+            ad_row = cursor.fetchone()
 
-        if not ad:
-            await callback.answer("❌ Эълон топилмади.")
-            return
+            if not ad_row:
+                return None, []
 
-        user_id, a_type, qty, price, price_disp, desc, region, dist, mfy, phone, username = ad
+            cursor.execute(
+                f"SELECT media_type, file_id FROM ad_media WHERE ad_id = {p}",
+                (ad_id,)
+            )
+            db_media_rows = cursor.fetchall()
+            return ad_row, db_media_rows
+        finally:
+            # Базадан ҳамма нарса ўқиб бўлингач, уланишни хавфсиз ёпамиз
+            conn.close()
 
-        bot_info = await bot.get_me()
-        group_links = await get_public_group_links_for_region(region)
+    ad, db_media = await asyncio.to_thread(_fetch_ad_and_media_sync)
 
-        caption = build_full_ad_caption(
-            a_type=a_type, qty=qty, price_display=(price_disp or price), desc=desc,
-            region=region, dist=dist, mfy=mfy, phone=phone,
-            user_id=user_id, username=username, bot_username=bot_info.username,
-            is_review_admin=(user_id in get_all_review_admin_ids()),
-            group_links=group_links,
-        )
-        
-        # Медиаларни олиш (Энди база очиқ пайтда ишлайди)
-        media_list = []
-        cursor.execute(
-            f"SELECT media_type, file_id FROM ad_media WHERE ad_id = {p}",
-            (ad_id,)
-        )
-        db_media = cursor.fetchall()
+    if not ad:
+        await callback.answer("❌ Эълон топилмади.")
+        return
 
-        for m_type, m_file_id in db_media:
-            media_list.append({"type": m_type, "file_id": m_file_id})
+    user_id, a_type, qty, price, price_disp, desc, region, dist, mfy, phone, username = ad
 
-        if not media_list:
-            if callback.message.photo:
-                media_list.append({"type": "photo", "file_id": callback.message.photo[-1].file_id})
-            elif callback.message.video:
-                media_list.append({"type": "video", "file_id": callback.message.video.file_id})
-                
-    finally:
-        # Базадан ҳамма нарса ўқиб бўлингач, уланишни хавфсиз ёпамиз
-        conn.close()
+    bot_info = await bot.get_me()
+    group_links = await get_public_group_links_for_region(region)
+
+    caption = build_full_ad_caption(
+        a_type=a_type, qty=qty, price_display=(price_disp or price), desc=desc,
+        region=region, dist=dist, mfy=mfy, phone=phone,
+        user_id=user_id, username=username, bot_username=bot_info.username,
+        is_review_admin=(user_id in await get_all_review_admin_ids()),
+        group_links=group_links,
+    )
+
+    # Медиаларни олиш (база ёпилгандан кейин, list'дан)
+    media_list = []
+    for m_type, m_file_id in db_media:
+        media_list.append({"type": m_type, "file_id": m_file_id})
+
+    if not media_list:
+        if callback.message.photo:
+            media_list.append({"type": "photo", "file_id": callback.message.photo[-1].file_id})
+        elif callback.message.video:
+            media_list.append({"type": "video", "file_id": callback.message.video.file_id})
     
     # ═══ КАНАЛГА ЮБОРИШ (АЛЬБОМ ЁКИ ОДДИЙ) ═══
     sent_msg_ids = []
@@ -1026,15 +1036,19 @@ async def approve_ad_callback(callback: types.CallbackQuery):
 
         # msg_id ни базага сақлаш (Сотилди тугмаси каналдаги постни таҳрирлаши учун)
         msg_ids_str = ",".join(sent_msg_ids)
-        p = get_placeholder()
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            f"UPDATE ads SET msg_id = {p} WHERE id = {p}",
-            (msg_ids_str, ad_id)
-        )
-        conn.commit()
-        conn.close()
+
+        def _save_msg_id_sync():
+            p = get_placeholder()
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                f"UPDATE ads SET msg_id = {p} WHERE id = {p}",
+                (msg_ids_str, ad_id)
+            )
+            conn.commit()
+            conn.close()
+
+        await asyncio.to_thread(_save_msg_id_sync)
 
     except Exception as e:
         logging.error(f"Каналга юборишда хато: {e}")
@@ -1053,7 +1067,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
     try:
         ad_price = parse_price_text(price)
 
-        users = get_notification_users(
+        users = await get_notification_users(
             animal_type=a_type,
             region=region,
             price=ad_price,
@@ -1147,37 +1161,40 @@ async def approve_ad_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("reject_"))
 async def reject_ad_callback(callback: types.CallbackQuery):
 
-    if callback.from_user.id not in get_all_review_admin_ids():
+    if callback.from_user.id not in await get_all_review_admin_ids():
         await callback.answer("⛔ Сиз админ эмассиз!")
         return
 
     ad_id = int(callback.data.replace("reject_", ""))
 
-    success = reject_ad(ad_id, callback.from_user.id)
+    success = await reject_ad(ad_id, callback.from_user.id)
 
     if not success:
         await callback.answer("⚠️ Бу эълон бошқа админ томонидан кўрилган!")
         return
 
-    # ═══ ФОЙДАЛАНУВЧИНИ ОЛИШ ═══
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        f"SELECT user_id, animal_type, region, price FROM ads WHERE id = {p}",
-        (ad_id,)
-    )
-    ad = cursor.fetchone()
+    # ═══ ФОЙДАЛАНУВЧИНИ ОЛИШ ВА БАЗАДАН ЎЧИРИШ ═══
+    def _reject_ad_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT user_id, animal_type, region, price FROM ads WHERE id = {p}",
+            (ad_id,)
+        )
+        ad_row = cursor.fetchone()
 
-    # ═══ БАЗАДАН ЎЧИРИШ ═══
-    cursor.execute(f"DELETE FROM ads WHERE id = {p}", (ad_id,))
-    conn.commit()
-    conn.close()
+        cursor.execute(f"DELETE FROM ads WHERE id = {p}", (ad_id,))
+        conn.commit()
+        conn.close()
+        return ad_row
+
+    ad = await asyncio.to_thread(_reject_ad_sync)
 
     # ═══ РАД СОНИНИ ОШИРИШ ВА БЛОК ТЕКШИРИШ ═══
     if ad:
         user_id, a_type, region, price = ad
-        count, blocked = increment_rejection(user_id)
+        count, blocked = await increment_rejection(user_id)
 
         # ═══ 1-ХОЛАТ: ФОЙДАЛАНУВЧИ БЛОККА ТУШДИ ═══
         if blocked:
@@ -1196,7 +1213,7 @@ async def reject_ad_callback(callback: types.CallbackQuery):
                 pass
 
             # Админларга фойдаланувчи блоклангани ҳақида хабар бериш
-            for admin_id in get_all_review_admin_ids():
+            for admin_id in await get_all_review_admin_ids():
                 if admin_id == callback.from_user.id:
                     continue
                 try:
@@ -1240,36 +1257,40 @@ async def reject_ad_callback(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("block_"))
 async def block_user_callback(callback: types.CallbackQuery):
-    if callback.from_user.id not in get_all_review_admin_ids():
+    if callback.from_user.id not in await get_all_review_admin_ids():
         await callback.answer("⛔ Сиз админ эмассиз!")
         return
 
     ad_id = int(callback.data.replace("block_", ""))
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        f"SELECT user_id, animal_type FROM ads WHERE id = {p}",
-        (ad_id,)
-    )
-    ad = cursor.fetchone()
+    def _block_fetch_and_delete_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT user_id, animal_type FROM ads WHERE id = {p}",
+            (ad_id,)
+        )
+        ad_row = cursor.fetchone()
+
+        if ad_row:
+            # ═══ ЭЪЛОННИ БАЗАДАН ЎЧИРИШ (rad etish bilan bir xil) ═══
+            cursor.execute(f"DELETE FROM ads WHERE id = {p}", (ad_id,))
+            conn.commit()
+        conn.close()
+        return ad_row
+
+    ad = await asyncio.to_thread(_block_fetch_and_delete_sync)
 
     if not ad:
         await callback.answer("⚠️ Бу эълон бошқа админ томонидан кўрилган!")
-        conn.close()
         return
 
     user_id, a_type = ad
 
-    # ═══ ЭЪЛОННИ БАЗАДАН ЎЧИРИШ (rad etish bilan bir xil) ═══
-    cursor.execute(f"DELETE FROM ads WHERE id = {p}", (ad_id,))
-    conn.commit()
-    conn.close()
-
     # ═══ ДАРҲОЛ БЛОКЛАШ (рад сонидан қатъи назар) ═══
-    force_block_user(user_id)
-    log_block(
+    await force_block_user(user_id)
+    await log_block(
         user_id=user_id,
         blocked_by=callback.from_user.id,
         ad_id=ad_id,
@@ -1306,13 +1327,13 @@ async def _clear_all_admin_review_messages(ad_id: int):
     review хабарини ЎЧИРАДИ (базадан эмас, faqat chatdan). Base'da ad
     saqlanaveradi, faqat admin_review_messages tracking tozalanadi.
     """
-    rows = get_admin_review_messages(ad_id)
+    rows = await get_admin_review_messages(ad_id)
     for admin_id, message_id, chat_id in rows:
         try:
             await bot.delete_message(chat_id=chat_id, message_id=message_id)
         except Exception as e:
             logging.debug(f"Админ {admin_id} хабарини ўчиришда хато (аллақачон ўчирилган бўлиши мумкин): {e}")
-    delete_admin_review_messages(ad_id)
+    await delete_admin_review_messages(ad_id)
 
 # ═══════════════════════════════════════
 # ГУРУҲЛАРДАГИ НУСХАЛАРНИ БОШQАРИШ (эълон ўзгарса/ўчса)
@@ -1321,7 +1342,7 @@ async def _clear_all_admin_review_messages(ad_id: int):
 async def _delete_ad_from_all_groups(ad_id: int):
     """Эълон ЎЧИРИЛГАНДА — гуруҳлардаги барча нусхаларини ҳам ўчиради."""
     from database import get_ad_group_message_ids
-    rows = get_ad_group_message_ids(ad_id)
+    rows = await get_ad_group_message_ids(ad_id)
     for chat_id, message_id in rows:
         try:
             await bot.delete_message(chat_id=chat_id, message_id=message_id)
@@ -1340,7 +1361,7 @@ async def _mark_ad_sold_in_all_groups(ad_id: int, a_type: str, qty: str, price: 
         f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т\n"
         f"🤝 Харидорга барака берсин!"
     )
-    rows = get_ad_group_message_ids(ad_id)
+    rows = await get_ad_group_message_ids(ad_id)
     for chat_id, message_id in rows:
         try:
             await bot.edit_message_caption(
@@ -1357,31 +1378,35 @@ async def _mark_ad_sold_in_all_groups(ad_id: int, a_type: str, qty: str, price: 
 
 @router.message(F.text == "🗂 Менинг эълонларим")
 async def my_ads(message: types.Message):
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if __import__('os').getenv("DATABASE_URL"):
-        cursor.execute(f"""
-            SELECT id, animal_type, price, status,
-                   expires_at,
-                   EXTRACT(DAY FROM expires_at - NOW())::int AS days_left,
-                   msg_id
-            FROM ads
-            WHERE user_id = {p} AND status = {p}
-            ORDER BY id DESC
-        """, (message.from_user.id, 'active'))
-    else:
-        cursor.execute(f"""
-            SELECT id, animal_type, price, status,
-                   expires_at,
-                   CAST(julianday(expires_at) - julianday('now') AS INTEGER) AS days_left,
-                   msg_id
-            FROM ads
-            WHERE user_id = {p} AND status = {p}
-            ORDER BY id DESC
-        """, (message.from_user.id, 'active'))
-    ads = cursor.fetchall()
-    conn.close()
+    def _fetch_my_ads_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        if __import__('os').getenv("DATABASE_URL"):
+            cursor.execute(f"""
+                SELECT id, animal_type, price, status,
+                       expires_at,
+                       EXTRACT(DAY FROM expires_at - NOW())::int AS days_left,
+                       msg_id
+                FROM ads
+                WHERE user_id = {p} AND status = {p}
+                ORDER BY id DESC
+            """, (message.from_user.id, 'active'))
+        else:
+            cursor.execute(f"""
+                SELECT id, animal_type, price, status,
+                       expires_at,
+                       CAST(julianday(expires_at) - julianday('now') AS INTEGER) AS days_left,
+                       msg_id
+                FROM ads
+                WHERE user_id = {p} AND status = {p}
+                ORDER BY id DESC
+            """, (message.from_user.id, 'active'))
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
+
+    ads = await asyncio.to_thread(_fetch_my_ads_sync)
 
     if not ads:
         await message.answer("Сизда ҳозирча актив эълонлар йўқ.")
@@ -1410,7 +1435,7 @@ async def my_ads(message: types.Message):
             ]
         ]
         if days_left is not None and days_left <= 2:
-            if is_premium_user(message.from_user.id):
+            if await is_premium_user(message.from_user.id):
                 buttons.append([
                     InlineKeyboardButton(
                         text="🔄 Каналга қайта жойлаш",
@@ -1431,7 +1456,7 @@ async def my_ads(message: types.Message):
             f"{channel_link}"
         )
 
-        if first_msg_id and is_premium_user(message.from_user.id):
+        if first_msg_id and await is_premium_user(message.from_user.id):
             # Премиум — ҳавола preview билан кўринади
             await message.answer(
                 ad_text,
@@ -1462,150 +1487,169 @@ async def handle_ad_action(callback: types.CallbackQuery):
     action = parts[0]
     ad_id = parts[1]
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute(f"""
-            SELECT user_id, msg_id, animal_type, quantity, price, region, district, mfy, phone, username
-            FROM ads WHERE id = {p}
-        """, (int(ad_id),))
-        ad = cursor.fetchone()
-
-        if not ad:
-            await callback.answer("Эълон топилмади.")
-            return
-            
-        ad_owner_id = ad[0]
-        if callback.from_user.id != ad_owner_id:
-            await callback.answer("⛔ Сиз бу эълон эгаси эмассиз!")
-            return
-
-        msg_ids_str, a_type, qty, price, region, dist, mfy, phone, username = ad[1:]    
-        msg_ids = [int(mid) for mid in str(msg_ids_str).split(",") if mid.strip().isdigit()]
-
-        if action == "sold":
-            cursor.execute(f"UPDATE ads SET status = 'sold' WHERE id = {p}", (ad_id,))
-            conn.commit()
-
-            if msg_ids:
-                new_caption = (
-                    f"🔴 <b>СОТИЛДИ!</b> 🔴\n\n"
-                    f"#️⃣ #{html.escape(a_type)}\n"
-                    f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
-                    f"💰 <b>Нархи:</b> {html.escape(price)}\n"
-                    f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т\n"
-                    f"🤝 Харидорга барака берсин!"
-                )
-                try:
-                    await bot.edit_message_caption(chat_id=CHANNEL_ID, message_id=msg_ids[0], caption=new_caption, parse_mode="HTML")
-                    await callback.message.edit_text("✅ Каналда 'Сотилди' деб белгиланди.")
-                except Exception:
-                    await callback.answer("Постни таҳрирлаб бўлмади.")
-            else:
-                await callback.message.edit_text("✅ Эълон 'Сотилди' ҳолатига ўтказилди (каналдаги ИД топилмаганлиги сабабли).")
-
-            # ═══ ГУРУҲЛАРДАГИ НУСХАЛАРНИ ҲАМ ЯНГИЛАШ ═══
-            await _mark_ad_sold_in_all_groups(int(ad_id), a_type, qty, price, region, dist)
-
-        elif action == "del":
-            cursor.execute(f"UPDATE ads SET status = 'deleted' WHERE id = {p}", (ad_id,))
-            conn.commit()
-
-            for msg_id in msg_ids:
-                try:
-                    await bot.delete_message(chat_id=CHANNEL_ID, message_id=msg_id)
-                except Exception:
-                    pass
-            await callback.message.edit_text("❌ Эълон каналдан бутунлай ўчирилди.")
-
-            # ═══ ГУРУҲЛАРДАГИ НУСХАЛАРНИ ҲАМ ЎЧИРИШ ═══
-            await _delete_ad_from_all_groups(int(ad_id))
-
-        elif action == "repost":
-            if not is_premium_user(callback.from_user.id):
-                await callback.answer("⛔ Бу функция фақат Премиум эгалари учун!", show_alert=True)
-                return
-
-            # Алоҳида сўровлар учун жорий уланишни ёпиб турамиз
+    def _fetch_ad_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"""
+                SELECT user_id, msg_id, animal_type, quantity, price, region, district, mfy, phone, username
+                FROM ads WHERE id = {p}
+            """, (int(ad_id),))
+            return cursor.fetchone()
+        finally:
             conn.close()
 
-            media_list_db = []
+    ad = await asyncio.to_thread(_fetch_ad_sync)
+
+    if not ad:
+        await callback.answer("Эълон топилмади.")
+        return
+
+    ad_owner_id = ad[0]
+    if callback.from_user.id != ad_owner_id:
+        await callback.answer("⛔ Сиз бу эълон эгаси эмассиз!")
+        return
+
+    msg_ids_str, a_type, qty, price, region, dist, mfy, phone, username = ad[1:]
+    msg_ids = [int(mid) for mid in str(msg_ids_str).split(",") if mid.strip().isdigit()]
+
+    if action == "sold":
+        def _mark_sold_sync():
+            p = get_placeholder()
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(f"UPDATE ads SET status = 'sold' WHERE id = {p}", (ad_id,))
+            conn.commit()
+            conn.close()
+
+        await asyncio.to_thread(_mark_sold_sync)
+
+        if msg_ids:
+            new_caption = (
+                f"🔴 <b>СОТИЛДИ!</b> 🔴\n\n"
+                f"#️⃣ #{html.escape(a_type)}\n"
+                f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
+                f"💰 <b>Нархи:</b> {html.escape(price)}\n"
+                f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т\n"
+                f"🤝 Харидорга барака берсин!"
+            )
+            try:
+                await bot.edit_message_caption(chat_id=CHANNEL_ID, message_id=msg_ids[0], caption=new_caption, parse_mode="HTML")
+                await callback.message.edit_text("✅ Каналда 'Сотилди' деб белгиланди.")
+            except Exception:
+                await callback.answer("Постни таҳрирлаб бўлмади.")
+        else:
+            await callback.message.edit_text("✅ Эълон 'Сотилди' ҳолатига ўтказилди (каналдаги ИД топилмаганлиги сабабли).")
+
+        # ═══ ГУРУҲЛАРДАГИ НУСХАЛАРНИ ҲАМ ЯНГИЛАШ ═══
+        await _mark_ad_sold_in_all_groups(int(ad_id), a_type, qty, price, region, dist)
+
+    elif action == "del":
+        def _mark_deleted_sync():
+            p = get_placeholder()
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(f"UPDATE ads SET status = 'deleted' WHERE id = {p}", (ad_id,))
+            conn.commit()
+            conn.close()
+
+        await asyncio.to_thread(_mark_deleted_sync)
+
+        for msg_id in msg_ids:
+            try:
+                await bot.delete_message(chat_id=CHANNEL_ID, message_id=msg_id)
+            except Exception:
+                pass
+        await callback.message.edit_text("❌ Эълон каналдан бутунлай ўчирилди.")
+
+        # ═══ ГУРУҲЛАРДАГИ НУСХАЛАРНИ ҲАМ ЎЧИРИШ ═══
+        await _delete_ad_from_all_groups(int(ad_id))
+
+    elif action == "repost":
+        if not await is_premium_user(callback.from_user.id):
+            await callback.answer("⛔ Бу функция фақат Премиум эгалари учун!", show_alert=True)
+            return
+
+        def _fetch_media_sync():
+            p = get_placeholder()
             conn2 = get_connection()
             cur2 = conn2.cursor()
             cur2.execute(
-                f"SELECT media_type, file_id FROM ad_media WHERE ad_id = {get_placeholder()} ORDER BY id",
+                f"SELECT media_type, file_id FROM ad_media WHERE ad_id = {p} ORDER BY id",
                 (int(ad_id),)
             )
-            media_list_db = cur2.fetchall()
+            rows = cur2.fetchall()
             conn2.close()
+            return rows
 
-            new_caption = (
-                f"#️⃣ <b>#{html.escape(a_type)}</b>\n"
-                f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
-                f"💰 <b>Нархи:</b> {html.escape(price)}\n"
-                f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т, {html.escape(mfy or 'Кўрсатилмаган')} МФЙ\n"
-                f"\n📞 {html.escape(phone)}\n"
-                f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
-                f" | "
-                f"<a href='https://t.me/{bot_info.username}'>Бошқариш</a>"
-            )
+        media_list_db = await asyncio.to_thread(_fetch_media_sync)
+        bot_info = await bot.get_me()
 
-            new_msg_ids = []
-            try:
-                if media_list_db:
-                    if len(media_list_db) == 1:
-                        m_type, f_id = media_list_db[0]
-                        if m_type == "photo":
-                            sent = await bot.send_photo(CHANNEL_ID, photo=f_id, caption=new_caption, parse_mode="HTML")
-                        else:
-                            sent = await bot.send_video(CHANNEL_ID, video=f_id, caption=new_caption, parse_mode="HTML")
-                        new_msg_ids.append(str(sent.message_id))
+        new_caption = (
+            f"#️⃣ <b>#{html.escape(a_type)}</b>\n"
+            f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
+            f"💰 <b>Нархи:</b> {html.escape(price)}\n"
+            f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т, {html.escape(mfy or 'Кўрсатилмаган')} МФЙ\n"
+            f"\n📞 {html.escape(phone)}\n"
+            f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
+            f" | "
+            f"<a href='https://t.me/{bot_info.username}'>Бошқариш</a>"
+        )
+
+        new_msg_ids = []
+        try:
+            if media_list_db:
+                if len(media_list_db) == 1:
+                    m_type, f_id = media_list_db[0]
+                    if m_type == "photo":
+                        sent = await bot.send_photo(CHANNEL_ID, photo=f_id, caption=new_caption, parse_mode="HTML")
                     else:
-                        media_group = []
-                        for i, (m_type, f_id) in enumerate(media_list_db):
-                            cap = new_caption if i == 0 else None
-                            if m_type == "photo":
-                                media_group.append(InputMediaPhoto(media=f_id, caption=cap, parse_mode="HTML"))
-                            else:
-                                media_group.append(InputMediaVideo(media=f_id, caption=cap, parse_mode="HTML"))
-                        sent_msgs = await bot.send_media_group(CHANNEL_ID, media=media_group)
-                        new_msg_ids = [str(m.message_id) for m in sent_msgs]
-                else:
-                    sent = await bot.send_message(CHANNEL_ID, text=new_caption, parse_mode="HTML")
+                        sent = await bot.send_video(CHANNEL_ID, video=f_id, caption=new_caption, parse_mode="HTML")
                     new_msg_ids.append(str(sent.message_id))
+                else:
+                    media_group = []
+                    for i, (m_type, f_id) in enumerate(media_list_db):
+                        cap = new_caption if i == 0 else None
+                        if m_type == "photo":
+                            media_group.append(InputMediaPhoto(media=f_id, caption=cap, parse_mode="HTML"))
+                        else:
+                            media_group.append(InputMediaVideo(media=f_id, caption=cap, parse_mode="HTML"))
+                    sent_msgs = await bot.send_media_group(CHANNEL_ID, media=media_group)
+                    new_msg_ids = [str(m.message_id) for m in sent_msgs]
+            else:
+                sent = await bot.send_message(CHANNEL_ID, text=new_caption, parse_mode="HTML")
+                new_msg_ids.append(str(sent.message_id))
 
-                for old_msg_id in msg_ids:
-                    try:
-                        await bot.delete_message(chat_id=CHANNEL_ID, message_id=old_msg_id)
-                    except Exception:
-                        pass
+            for old_msg_id in msg_ids:
+                try:
+                    await bot.delete_message(chat_id=CHANNEL_ID, message_id=old_msg_id)
+                except Exception:
+                    pass
 
-                new_msg_str = ",".join(new_msg_ids)
-                repost_ad(int(ad_id))
+            new_msg_str = ",".join(new_msg_ids)
+            await repost_ad(int(ad_id))
+
+            def _save_new_msg_id_sync():
+                p = get_placeholder()
                 conn3 = get_connection()
                 cur3 = conn3.cursor()
                 cur3.execute(
-                    f"UPDATE ads SET msg_id = {get_placeholder()} WHERE id = {get_placeholder()}",
+                    f"UPDATE ads SET msg_id = {p} WHERE id = {p}",
                     (new_msg_str, int(ad_id))
                 )
                 conn3.commit()
                 conn3.close()
 
-                await callback.message.edit_text(
-                    f"✅ <b>{html.escape(a_type)}</b> эълони каналга қайта жойланди!\n\n"
-                    f"📅 Яна <b>7 кун</b> актив бўлади.",
-                    parse_mode="HTML"
-                )
-                await callback.answer("Қайта жойланди! ✅")
+            await asyncio.to_thread(_save_new_msg_id_sync)
 
-            except Exception as e:
-                logging.error(f"Repost xato: {e}")
-                await callback.answer("Хатолик юз берди.", show_alert=True)
-    finally:
-        # try-finally блоки орқали connection нинг ёпилиши 100% кафолатланади
-        try:
-            conn.close()
-        except Exception:
-            pass
+            await callback.message.edit_text(
+                f"✅ <b>{html.escape(a_type)}</b> эълони каналга қайта жойланди!\n\n"
+                f"📅 Яна <b>7 кун</b> актив бўлади.",
+                parse_mode="HTML"
+            )
+            await callback.answer("Қайта жойланди! ✅")
+
+        except Exception as e:
+            logging.error(f"Repost xato: {e}")
+            await callback.answer("Хатолик юз берди.", show_alert=True)
