@@ -1584,6 +1584,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
             return rows
 
         media_list_db = await asyncio.to_thread(_fetch_media_sync)
+        bot_info = await bot.get_me()
 
         new_caption = (
             f"#️⃣ <b>#{html.escape(a_type)}</b>\n"
