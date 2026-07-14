@@ -27,6 +27,7 @@ from database import get_connection, get_placeholder, save_user, get_user_profil
 from config import ADMINS
 
 router = Router()
+router.message.filter(F.chat.type == "private")  # гуруҳларда мену/кнопкалар КЎРИНМАСИН
 
 def _get_home_kb(user_id: int):
     """Фойдаланувчи турига мос бош меню клавиатураси."""
