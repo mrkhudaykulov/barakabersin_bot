@@ -426,7 +426,7 @@ async def _process_ad_after_insert(
             "district": district,
             "mfy": mfy,
         }
-        await _send_to_region_groups(ad_id, group_data, media_files)
+        await _send_to_region_groups(ad_id, group_data, media_files, phone=phone, user=user)
     except Exception as e:
         logging.error(f"Mini App: guruhlarga yuborishda xato: {e}")
 
