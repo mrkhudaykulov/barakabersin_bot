@@ -36,6 +36,7 @@ from database import (
 )
 
 router = Router()
+router.message.filter(F.chat.type == "private")  # гуруҳларда мену/кнопкалар КЎРИНМАСИН (callback'larga tegmaydi)
 
 
 def _get_keyboard_texts(keyboard) -> set:
@@ -693,7 +694,8 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         await message.answer(
             f"📩 *Эълонингиз қабул қилинди!*\n\n"
             f"Эълонингиз қисқача кўриб чиқилади.\n"
-            f"Тасдиқлангандан кейин @internetmolbozor каналга автомат жойланади.\n\n"
+            f"Тасдиқлангандан кейин @internetmolbozor каналга, шунингдек "
+            f"тегишли вилоят гуруҳ(лар)ига автомат жойланади.\n\n"
             f"⏳ Одатда бир неча дақиқа ичида жавоб оласиз.",
             parse_mode="Markdown",
             reply_markup=main_menu()
@@ -860,12 +862,12 @@ async def post_ad_to_matching_groups(ad_id, region, caption, media_list):
     БИЛАН АЙНАН БИР ХИЛ (олдиндан тайёрланган) caption+media юборади.
     Гуруҳда алоҳида тасдиқлаш тугмаси ЙЎҚ — бу аллақачон марказий
     равишда тасдиқланган эълон, гуруҳ эса фақат жойлаш манзили.
-    Қайтаради: гуруҳларга нечта муваффақиятли юборилгани (сони).
+    Қайтаради: [{"chat_title":.., "chat_username":.., "message_id":.., "link": .. yoki None}, ...]
     """
     from database import get_groups_for_region, create_ad_group_post, set_ad_group_post_message
 
     groups = get_groups_for_region(region)
-    sent_count = 0
+    results = []
 
     for chat_id, chat_title, chat_username in groups:
         try:
@@ -888,12 +890,19 @@ async def post_ad_to_matching_groups(ad_id, region, caption, media_list):
 
             post_id = create_ad_group_post(ad_id, chat_id)
             set_ad_group_post_message(post_id, sent.message_id)
-            sent_count += 1
+
+            link = f"https://t.me/{chat_username}/{sent.message_id}" if chat_username else None
+            results.append({
+                "chat_title": chat_title,
+                "chat_username": chat_username,
+                "message_id": sent.message_id,
+                "link": link,
+            })
 
         except Exception as e:
             logging.error(f"Гуруҳ {chat_title} ({chat_id}) га юборишда хато: {e}")
 
-    return sent_count
+    return results
 
 
 # ═══════════════════════════════════════
@@ -1033,9 +1042,9 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         return
 
     # ═══ ВИЛОЯТГА БОҒЛАНГАН ГУРУҲЛАРГА ЮБОРИШ (энди — тасдиқлангандан кейин, БИР ХИЛ caption) ═══
-    groups_sent_count = 0
+    groups_sent_results = []
     try:
-        groups_sent_count = await post_ad_to_matching_groups(ad_id, region, caption, media_list)
+        groups_sent_results = await post_ad_to_matching_groups(ad_id, region, caption, media_list)
     except Exception as e:
         logging.error(f"Гуруҳларга юборишда хато: {e}")
         
@@ -1091,10 +1100,16 @@ async def approve_ad_callback(callback: types.CallbackQuery):
     try:
         post_link = f"https://t.me/internetmolbozor/{sent.message_id}"
 
-        group_line = (
-            f"🏘 Шунингдек, {groups_sent_count} та вилоят гуруҳига ҳам жойланди.\n\n"
-            if groups_sent_count > 0 else ""
-        )
+        group_line = ""
+        if groups_sent_results:
+            group_lines_list = []
+            for g in groups_sent_results:
+                safe_title = html.escape(g['chat_title'] or 'Гуруҳ')
+                if g["link"]:
+                    group_lines_list.append(f"🏘 <a href='{g['link']}'>{safe_title}</a>")
+                else:
+                    group_lines_list.append(f"🏘 {safe_title} (приват гуруҳ)")
+            group_line = "\n".join(group_lines_list) + "\n\n"
 
         await bot.send_message(
             chat_id=user_id,
