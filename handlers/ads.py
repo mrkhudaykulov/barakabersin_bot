@@ -8,7 +8,7 @@ from aiogram.types import (
     InputMediaPhoto, InputMediaVideo
 )
 
-from config import bot, CHANNEL_ID, REVIEW_ADMINS, WEBAPP_URL
+from config import bot, CHANNEL_ID, WEBAPP_URL
 from states import AdStates
 from keyboards import (
     main_menu, cancel_keyboard, photo_confirm_keyboard,
@@ -32,7 +32,7 @@ from database import (
     MAX_ADS_PER_MONTH_REGULAR,
     MAX_ADS_PER_MONTH_PREMIUM,
     clean_phone, get_price_range,
-    force_block_user, log_block
+    force_block_user, log_block, get_all_review_admin_ids
 )
 
 router = Router()
@@ -626,7 +626,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         f"{mfy_display} МФЙ\n\n"
         f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
     )
-    if user.id not in REVIEW_ADMINS:
+    if user.id not in get_all_review_admin_ids():
         caption += f"💬 <b>Телеграм:</b> {username_text}\n"
     caption += (
         f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
@@ -708,15 +708,8 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             user=user,
             phone=phone
         )
-
-        # ═══ ВИЛОЯТГА БОҒЛАНГАН ГУРУҲЛАРГА ЮБОРИШ ═══
-        await _send_to_region_groups(
-            ad_id=ad_id,
-            data=data,
-            media_list=media_list,
-            phone=phone,
-            user=user,
-        )
+        # ДИҚҚАТ: Гуруҳларга ЭНДИ фақат тасдиқлангандан кейин
+        # (approve_ad_callback ичида) юборилади — марказлашган занжир.
 
     except Exception as e:
         logging.error(f"Эълон жойлашда хато: {e}")
@@ -760,7 +753,7 @@ async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
         f"🆔 Эълон ID: {ad_id}"
     )
  
-    for admin_id in REVIEW_ADMINS:
+    for admin_id in get_all_review_admin_ids():
         try:
             if media_list:
                 first_media = media_list[0]
@@ -812,10 +805,12 @@ async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
 # ═══════════════════════════════════════
 
 def build_full_ad_caption(a_type, qty, price_display, desc, region, dist, mfy,
-                           phone, user_id, username, bot_username, is_review_admin=False):
+                           phone, user_id, username, bot_username, is_review_admin=False,
+                           group_links=None):
     """
     Канал ва гуруҳларда БИР ХИЛ форматдаги эълон caption'ини қуради.
-    (approve_ad_callback'даги asl formatning o'zi — endi ikkalasida ham qayta ishlatiladi.)
+    `group_links` — шу вилоятга боғланган PUBLIC гуруҳлар ҳаволалари
+    рўйхати (агар бўлса, footer'да "Гуруҳ" сифатида кўринади).
     """
     caption = (
         f"#️⃣ #{html.escape(a_type)}\n"
@@ -835,82 +830,70 @@ def build_full_ad_caption(a_type, qty, price_display, desc, region, dist, mfy,
                 f"💬 <b>Телеграм:</b> "
                 f"<a href='tg://user?id={user_id}'>Хабар ёзиш</a>\n"
             )
-    caption += (
-        f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
-        f" | "
-        f"<a href='https://t.me/{bot_username}'>Бошқариш</a>"
-    )
+
+    footer_parts = []
+    if group_links:
+        for glink in group_links:
+            footer_parts.append(f"<a href='{glink}'>Гуруҳ</a>")
+    footer_parts.append(f"<a href='https://t.me/internetmolbozor'>Канал</a>")
+    footer_parts.append(f"<a href='https://t.me/{bot_username}'>Бот</a>")
+    caption += "\n" + " | ".join(footer_parts)
+
     return caption
 
 
-async def _send_to_region_groups(ad_id, data, media_list, phone, user):
+async def get_public_group_links_for_region(region: str):
+    """Шу вилоятга боғланган, PUBLIC (username'ли) гуруҳлар ҳаволалари рўйхати."""
+    from database import get_groups_for_region
+    groups = get_groups_for_region(region)
+    links = []
+    for chat_id, chat_title, chat_username in groups:
+        if chat_username:
+            links.append(f"https://t.me/{chat_username}")
+    return links
+
+
+async def post_ad_to_matching_groups(ad_id, region, caption, media_list):
     """
-    Эълоннинг вилоятига боғланган барча актив гуруҳларга юборади —
-    КАНАЛДАГИ БИЛАН БИР ХИЛ форматда (build_full_ad_caption орқали).
-    Ҳар бир гуруҳ ўз (гуруҳ учун белгиланган) админи томонидан МУСТАҚИЛ
-    тасдиқланади — каналдаги REVIEW_ADMINS'га ҳеч қандай алоқаси йўқ.
+    ЭЪЛОН ТАСДИҚЛАНГАНДАН КЕЙИН (markazlashgan review_admins tomonidan)
+    чақирилади — шу вилоятга боғланган БАРЧА актив гуруҳларга, КАНАЛДАГИ
+    БИЛАН АЙНАН БИР ХИЛ (олдиндан тайёрланган) caption+media юборади.
+    Гуруҳда алоҳида тасдиқлаш тугмаси ЙЎҚ — бу аллақачон марказий
+    равишда тасдиқланган эълон, гуруҳ эса фақат жойлаш манзили.
+    Қайтаради: гуруҳларга нечта муваффақиятли юборилгани (сони).
     """
     from database import get_groups_for_region, create_ad_group_post, set_ad_group_post_message
 
-    groups = get_groups_for_region(data.get('region'))
-    if not groups:
-        return
-
-    bot_info = await bot.get_me()
-    username = getattr(user, "username", None) or (user.get("username") if isinstance(user, dict) else None)
-    username = f"@{username}" if username else None
-    user_id = getattr(user, "id", None) or (user.get("id") if isinstance(user, dict) else None)
-
-    group_caption = build_full_ad_caption(
-        a_type=data['animal_type'],
-        qty=data['quantity'],
-        price_display=data.get('price_display', data['price']),
-        desc=data['description'],
-        region=data['region'],
-        dist=data['district'],
-        mfy=data.get('mfy'),
-        phone=phone,
-        user_id=user_id,
-        username=username,
-        bot_username=bot_info.username,
-        is_review_admin=(user_id in REVIEW_ADMINS if user_id else False),
-    )
+    groups = get_groups_for_region(region)
+    sent_count = 0
 
     for chat_id, chat_title, chat_username in groups:
         try:
-            post_id = create_ad_group_post(ad_id, chat_id)
-            group_kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="✅ Тасдиқлаш", callback_data=f"gapprove_{post_id}"),
-                InlineKeyboardButton(text="❌ Ўчириш", callback_data=f"greject_{post_id}")
-            ]])
-
             if media_list:
                 first_media = media_list[0]
                 if first_media["type"] == "photo":
                     sent = await bot.send_photo(
                         chat_id=chat_id, photo=first_media["file_id"],
-                        caption=group_caption, parse_mode="HTML", reply_markup=group_kb
+                        caption=caption, parse_mode="HTML"
                     )
                 elif first_media["type"] == "video":
                     sent = await bot.send_video(
                         chat_id=chat_id, video=first_media["file_id"],
-                        caption=group_caption, parse_mode="HTML", reply_markup=group_kb
+                        caption=caption, parse_mode="HTML"
                     )
                 else:
-                    sent = await bot.send_message(
-                        chat_id=chat_id, text=group_caption,
-                        parse_mode="HTML", reply_markup=group_kb
-                    )
+                    sent = await bot.send_message(chat_id=chat_id, text=caption, parse_mode="HTML")
             else:
-                sent = await bot.send_message(
-                    chat_id=chat_id, text=group_caption,
-                    parse_mode="HTML", reply_markup=group_kb
-                )
+                sent = await bot.send_message(chat_id=chat_id, text=caption, parse_mode="HTML")
 
+            post_id = create_ad_group_post(ad_id, chat_id)
             set_ad_group_post_message(post_id, sent.message_id)
+            sent_count += 1
 
         except Exception as e:
             logging.error(f"Гуруҳ {chat_title} ({chat_id}) га юборишда хато: {e}")
+
+    return sent_count
 
 
 # ═══════════════════════════════════════
@@ -920,7 +903,7 @@ async def _send_to_region_groups(ad_id, data, media_list, phone, user):
 @router.callback_query(F.data.startswith("approve_"))
 async def approve_ad_callback(callback: types.CallbackQuery):
     
-    if callback.from_user.id not in REVIEW_ADMINS:
+    if callback.from_user.id not in get_all_review_admin_ids():
         await callback.answer("⛔ Сиз админ эмассиз!")
         return
 
@@ -952,12 +935,14 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         user_id, a_type, qty, price, price_disp, desc, region, dist, mfy, phone, username = ad
 
         bot_info = await bot.get_me()
+        group_links = await get_public_group_links_for_region(region)
 
         caption = build_full_ad_caption(
             a_type=a_type, qty=qty, price_display=(price_disp or price), desc=desc,
             region=region, dist=dist, mfy=mfy, phone=phone,
             user_id=user_id, username=username, bot_username=bot_info.username,
-            is_review_admin=(user_id in REVIEW_ADMINS),
+            is_review_admin=(user_id in get_all_review_admin_ids()),
+            group_links=group_links,
         )
         
         # Медиаларни олиш (Энди база очиқ пайтда ишлайди)
@@ -1046,6 +1031,13 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         logging.error(f"Каналга юборишда хато: {e}")
         await callback.answer("⚠️ Каналга юборишда хатолик бўлди.")
         return
+
+    # ═══ ВИЛОЯТГА БОҒЛАНГАН ГУРУҲЛАРГА ЮБОРИШ (энди — тасдиқлангандан кейин, БИР ХИЛ caption) ═══
+    groups_sent_count = 0
+    try:
+        groups_sent_count = await post_ad_to_matching_groups(ad_id, region, caption, media_list)
+    except Exception as e:
+        logging.error(f"Гуруҳларга юборишда хато: {e}")
         
 
     # ═══ ХАБАРДОРЛИК ТИЗИМИ (КАНАЛГА ЮБОРИЛГАНДАН KEYIN) ═══
@@ -1099,6 +1091,11 @@ async def approve_ad_callback(callback: types.CallbackQuery):
     try:
         post_link = f"https://t.me/internetmolbozor/{sent.message_id}"
 
+        group_line = (
+            f"🏘 Шунингдек, {groups_sent_count} та вилоят гуруҳига ҳам жойланди.\n\n"
+            if groups_sent_count > 0 else ""
+        )
+
         await bot.send_message(
             chat_id=user_id,
             text=(
@@ -1107,6 +1104,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
                 f"📍 {region}\n"
                 f"💰 {price}\n\n"
                 f"📢 <a href='{post_link}'>Каналда кўринг</a>\n\n"
+                f"{group_line}"
                 f"📅 Эълон <b>{AD_EXPIRE_DAYS} кун</b> актив бўлади."
             ),
             parse_mode="HTML"
@@ -1133,9 +1131,8 @@ async def approve_ad_callback(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("reject_"))
 async def reject_ad_callback(callback: types.CallbackQuery):
-    from config import REVIEW_ADMINS
 
-    if callback.from_user.id not in REVIEW_ADMINS:
+    if callback.from_user.id not in get_all_review_admin_ids():
         await callback.answer("⛔ Сиз админ эмассиз!")
         return
 
@@ -1184,7 +1181,7 @@ async def reject_ad_callback(callback: types.CallbackQuery):
                 pass
 
             # Админларга фойдаланувчи блоклангани ҳақида хабар бериш
-            for admin_id in REVIEW_ADMINS:
+            for admin_id in get_all_review_admin_ids():
                 if admin_id == callback.from_user.id:
                     continue
                 try:
@@ -1228,7 +1225,7 @@ async def reject_ad_callback(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("block_"))
 async def block_user_callback(callback: types.CallbackQuery):
-    if callback.from_user.id not in REVIEW_ADMINS:
+    if callback.from_user.id not in get_all_review_admin_ids():
         await callback.answer("⛔ Сиз админ эмассиз!")
         return
 
