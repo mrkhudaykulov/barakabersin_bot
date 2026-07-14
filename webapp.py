@@ -69,7 +69,7 @@ def verify_init_data(init_data: str) -> dict | None:
         logging.warning(f"[initData] parse_qsl хатоси: {e} | raw(120)={init_data[:120]!r}")
         return None
 
-    logging.info(f"[initData] Қабул қилинган калитлар: {sorted(parsed.keys())}")
+    logging.debug(f"[initData] Қабул қилинган калитлар: {sorted(parsed.keys())}")
 
     received_hash = parsed.pop("hash", None)
     if not received_hash:
@@ -78,23 +78,14 @@ def verify_init_data(init_data: str) -> dict | None:
 
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
 
-    token_len = len(BOT_TOKEN) if BOT_TOKEN else 0
-    token_preview = f"{BOT_TOKEN[:6]}...{BOT_TOKEN[-4:]}" if BOT_TOKEN and len(BOT_TOKEN) > 12 else "???"
-    logging.info(f"[initData] BOT_TOKEN узунлиги={token_len}, preview={token_preview}")
-
     secret_key = hmac.new(key=b"WebAppData", msg=BOT_TOKEN.encode(), digestmod=hashlib.sha256).digest()
     computed_hash = hmac.new(key=secret_key, msg=data_check_string.encode(), digestmod=hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(computed_hash, received_hash):
-        logging.warning(
-            f"[initData] HASH МОС ЭМАС!\n"
-            f"  received_hash={received_hash}\n"
-            f"  computed_hash={computed_hash}\n"
-            f"  data_check_string={data_check_string!r}"
-        )
+        logging.warning("[initData] HASH МОС ЭМАС — сўров рад этилди.")
         return None
 
-    logging.info("[initData] ✅ Имзо тўғри тасдиқланди.")
+    logging.debug("[initData] ✅ Имзо тўғри тасдиқланди.")
 
     user_raw = parsed.get("user")
     if not user_raw:
