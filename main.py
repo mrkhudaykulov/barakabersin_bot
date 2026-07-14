@@ -4,8 +4,8 @@ import logging
 from aiohttp import web
 import os
 
-from config import bot, dp
-from database import init_db
+from config import bot, dp, ADMINS, REVIEW_ADMINS
+from database import init_db, seed_review_admins_from_config
 from handlers import register_all_handlers
 from handlers.scheduler import start_scheduler
 from webapp import register_webapp_routes
@@ -20,6 +20,10 @@ async def handle_render_health_check(request):
 async def main_loop():
     # Маълумотлар базасини ишга тушириш (миграция ҳам шу ерда)
     init_db()
+
+    # config.py'даги REVIEW_ADMINS'ни DB'даги яxлит review_admins
+    # ҳавзасига boshlang'ich sifatida qo'shib qo'yamiz (takrorlanmaydi)
+    seed_review_admins_from_config(set(ADMINS) | set(REVIEW_ADMINS))
 
     # Барча handlerларни рўйхатдан ўтказиш
     register_all_handlers(dp)
