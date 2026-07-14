@@ -37,7 +37,7 @@ MAX_NOTIFICATIONS_REGULAR = 1
 
 
 router = Router()
-
+router.message.filter(F.chat.type == "private")
 
 # ═══════════════════════════════════════
 # ТЕКШИРУВ ФУНКЦИЯЛАРИ — БИР ЖОЙДА
