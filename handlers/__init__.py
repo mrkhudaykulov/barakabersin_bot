@@ -17,5 +17,6 @@ def register_all_handlers(dp: Dispatcher):
     dp.include_router(search.router)
     dp.include_router(ads.router)
     dp.include_router(admin.router)
+    dp.include_router(admin.fallback_router)
     dp.include_router(notify.router)
     dp.include_router(groups.router)
