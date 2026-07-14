@@ -11,6 +11,7 @@ from keyboards import (
 )
 
 router = Router()
+router.message.filter(F.chat.type == "private")
 
 ANIMAL_EMOJI = {
     "🐂 Буқа": "Буқа",
