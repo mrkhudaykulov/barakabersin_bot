@@ -1,6 +1,7 @@
 import re
 import os
 import logging
+from contextlib import contextmanager
 
 
 # ═══════════════════════════════════════
@@ -18,6 +19,24 @@ def get_connection():
     else:
         import sqlite3
         return sqlite3.connect("chorva.db")
+
+
+@contextmanager
+def db_connection():
+    """
+    `conn = get_connection()` o'rniga ishlatiladi — xato chiqsa ham
+    (masalan cursor.execute ichida) connection har doim yopilishini
+    kafolatlaydi:
+
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            ...
+    """
+    conn = get_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def get_placeholder():
@@ -448,43 +467,42 @@ def save_user(user_id: int, full_name: str = None, username: str = None, phone: 
               region: str = None, district: str = None, mfy: str = None):
     """Фойдаланувчини базага сақлаш ёки янгилаш"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    if DATABASE_URL:
-        cursor.execute(f"""
-            INSERT INTO users (user_id, full_name, username, phone, region, district, mfy)
-            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p})
-            ON CONFLICT (user_id) DO UPDATE SET
-                full_name = COALESCE(EXCLUDED.full_name, users.full_name),
-                username  = COALESCE(EXCLUDED.username, users.username),
-                phone     = COALESCE(EXCLUDED.phone, users.phone),
-                region    = COALESCE(EXCLUDED.region, users.region),
-                district  = COALESCE(EXCLUDED.district, users.district),
-                mfy       = COALESCE(EXCLUDED.mfy, users.mfy)
-        """, (user_id, full_name, username, phone, region, district, mfy))
-    else:
-        cursor.execute(f"""
-            INSERT OR IGNORE INTO users (user_id, full_name, username, phone, region, district, mfy)
-            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p})
-        """, (user_id, full_name, username, phone, region, district, mfy))
+        if DATABASE_URL:
+            cursor.execute(f"""
+                INSERT INTO users (user_id, full_name, username, phone, region, district, mfy)
+                VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p})
+                ON CONFLICT (user_id) DO UPDATE SET
+                    full_name = COALESCE(EXCLUDED.full_name, users.full_name),
+                    username  = COALESCE(EXCLUDED.username, users.username),
+                    phone     = COALESCE(EXCLUDED.phone, users.phone),
+                    region    = COALESCE(EXCLUDED.region, users.region),
+                    district  = COALESCE(EXCLUDED.district, users.district),
+                    mfy       = COALESCE(EXCLUDED.mfy, users.mfy)
+            """, (user_id, full_name, username, phone, region, district, mfy))
+        else:
+            cursor.execute(f"""
+                INSERT OR IGNORE INTO users (user_id, full_name, username, phone, region, district, mfy)
+                VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p})
+            """, (user_id, full_name, username, phone, region, district, mfy))
 
-        # Мавжуд фойдаланувчини янгилаш
-        if full_name:
-            cursor.execute(f"UPDATE users SET full_name = {p} WHERE user_id = {p}", (full_name, user_id))
-        if username:
-            cursor.execute(f"UPDATE users SET username = {p} WHERE user_id = {p}", (username, user_id))
-        if phone:
-            cursor.execute(f"UPDATE users SET phone = {p} WHERE user_id = {p}", (phone, user_id))
-        if region:
-            cursor.execute(f"UPDATE users SET region = {p} WHERE user_id = {p}", (region, user_id))
-        if district:
-            cursor.execute(f"UPDATE users SET district = {p} WHERE user_id = {p}", (district, user_id))
-        if mfy:
-            cursor.execute(f"UPDATE users SET mfy = {p} WHERE user_id = {p}", (mfy, user_id))
+            # Мавжуд фойдаланувчини янгилаш
+            if full_name:
+                cursor.execute(f"UPDATE users SET full_name = {p} WHERE user_id = {p}", (full_name, user_id))
+            if username:
+                cursor.execute(f"UPDATE users SET username = {p} WHERE user_id = {p}", (username, user_id))
+            if phone:
+                cursor.execute(f"UPDATE users SET phone = {p} WHERE user_id = {p}", (phone, user_id))
+            if region:
+                cursor.execute(f"UPDATE users SET region = {p} WHERE user_id = {p}", (region, user_id))
+            if district:
+                cursor.execute(f"UPDATE users SET district = {p} WHERE user_id = {p}", (district, user_id))
+            if mfy:
+                cursor.execute(f"UPDATE users SET mfy = {p} WHERE user_id = {p}", (mfy, user_id))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
 
 def get_user_profile(user_id: int) -> dict:
@@ -494,14 +512,13 @@ def get_user_profile(user_id: int) -> dict:
     Mini App'да авто-тўлдириш учун ишлатилади.
     """
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        f"SELECT phone, region, district, mfy FROM users WHERE user_id = {p}",
-        (user_id,)
-    )
-    row = cursor.fetchone()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT phone, region, district, mfy FROM users WHERE user_id = {p}",
+            (user_id,)
+        )
+        row = cursor.fetchone()
     if not row:
         return {"phone": None, "region": None, "district": None, "mfy": None}
     phone, region, district, mfy = row
@@ -511,11 +528,10 @@ def get_user_profile(user_id: int) -> dict:
 def get_user_phone(user_id: int) -> str | None:
     """Базадан фойдаланувчи телефонини олиш"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT phone FROM users WHERE user_id = {p}", (user_id,))
-    row = cursor.fetchone()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT phone FROM users WHERE user_id = {p}", (user_id,))
+        row = cursor.fetchone()
     return row[0] if row and row[0] else None
 
 
@@ -1231,32 +1247,30 @@ def get_pending_ad(ad_id):
 def approve_ad(ad_id, admin_id):
     """Эълонни тасдиқлаш — status='active', reviewed_by=admin_id"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        UPDATE ads
-        SET status = {p}, reviewed_by = {p}
-        WHERE id = {p} AND status = {p}
-    """, ('active', admin_id, ad_id, 'pending'))
-    affected = cursor.rowcount
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            UPDATE ads
+            SET status = {p}, reviewed_by = {p}
+            WHERE id = {p} AND status = {p}
+        """, ('active', admin_id, ad_id, 'pending'))
+        affected = cursor.rowcount
+        conn.commit()
     return affected > 0  # True = тасдиқланди, False = бошқа админ аввал тасдиқлаган
 
 
 def reject_ad(ad_id, admin_id, reason=""):
     """Эълонни рад қилиш"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        UPDATE ads
-        SET status = {p}, reviewed_by = {p}
-        WHERE id = {p} AND status = {p}
-    """, ('rejected', admin_id, ad_id, 'pending'))
-    affected = cursor.rowcount
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            UPDATE ads
+            SET status = {p}, reviewed_by = {p}
+            WHERE id = {p} AND status = {p}
+        """, ('rejected', admin_id, ad_id, 'pending'))
+        affected = cursor.rowcount
+        conn.commit()
     return affected > 0
 
 
@@ -1270,14 +1284,13 @@ MAX_REJECTIONS = 4  # Шунча марта рад қилинса блоклан
 def is_user_blocked(user_id):
     """Фойдаланувчи блокланганми?"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        f"SELECT is_blocked FROM users WHERE user_id = {p}",
-        (user_id,)
-    )
-    row = cursor.fetchone()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT is_blocked FROM users WHERE user_id = {p}",
+            (user_id,)
+        )
+        row = cursor.fetchone()
     if row:
         if DATABASE_URL:
             return row[0] == True
@@ -1289,80 +1302,77 @@ def is_user_blocked(user_id):
 def increment_rejection(user_id):
     """Рад қилиш сонини ошириш. 4 марта бўлса блоклаш."""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    # Рад сонини ошириш
-    cursor.execute(f"""
-        UPDATE users
-        SET rejection_count = rejection_count + 1
-        WHERE user_id = {p}
-    """, (user_id,))
+        # Рад сонини ошириш
+        cursor.execute(f"""
+            UPDATE users
+            SET rejection_count = rejection_count + 1
+            WHERE user_id = {p}
+        """, (user_id,))
 
-    # Янги қийматни олиш
-    cursor.execute(
-        f"SELECT rejection_count FROM users WHERE user_id = {p}",
-        (user_id,)
-    )
-    row = cursor.fetchone()
-    count = row[0] if row else 0
+        # Янги қийматни олиш
+        cursor.execute(
+            f"SELECT rejection_count FROM users WHERE user_id = {p}",
+            (user_id,)
+        )
+        row = cursor.fetchone()
+        count = row[0] if row else 0
 
-    # Блоклаш текшириш
-    blocked = False
-    if count >= MAX_REJECTIONS:
-        if DATABASE_URL:
-            cursor.execute(f"""
-                UPDATE users
-                SET is_blocked = TRUE, blocked_at = NOW()
-                WHERE user_id = {p}
-            """, (user_id,))
-        else:
-            cursor.execute(f"""
-                UPDATE users
-                SET is_blocked = 1, blocked_at = datetime('now')
-                WHERE user_id = {p}
-            """, (user_id,))
-        blocked = True
+        # Блоклаш текшириш
+        blocked = False
+        if count >= MAX_REJECTIONS:
+            if DATABASE_URL:
+                cursor.execute(f"""
+                    UPDATE users
+                    SET is_blocked = TRUE, blocked_at = NOW()
+                    WHERE user_id = {p}
+                """, (user_id,))
+            else:
+                cursor.execute(f"""
+                    UPDATE users
+                    SET is_blocked = 1, blocked_at = datetime('now')
+                    WHERE user_id = {p}
+                """, (user_id,))
+            blocked = True
 
-    conn.commit()
-    conn.close()
+        conn.commit()
     return count, blocked
 
 
 def unblock_user(user_id):
     """Фойдаланувчини блокдан чиқариш"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute(f"""
-            UPDATE users
-            SET is_blocked = FALSE, rejection_count = 0,
-                blocked_at = NULL
-            WHERE user_id = {p}
-        """, (user_id,))
-    else:
-        cursor.execute(f"""
-            UPDATE users
-            SET is_blocked = 0, rejection_count = 0,
-                blocked_at = NULL
-            WHERE user_id = {p}
-        """, (user_id,))
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute(f"""
+                UPDATE users
+                SET is_blocked = FALSE, rejection_count = 0,
+                    blocked_at = NULL
+                WHERE user_id = {p}
+            """, (user_id,))
+        else:
+            cursor.execute(f"""
+                UPDATE users
+                SET is_blocked = 0, rejection_count = 0,
+                    blocked_at = NULL
+                WHERE user_id = {p}
+            """, (user_id,))
+        conn.commit()
 
 
 def get_rejection_count(user_id):
     """Рад қилишлар сонини олиш"""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        f"SELECT rejection_count FROM users WHERE user_id = {p}",
-        (user_id,)
-    )
-    row = cursor.fetchone()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT rejection_count FROM users WHERE user_id = {p}",
+            (user_id,)
+        )
+        row = cursor.fetchone()
     return row[0] if row else 0
 
 
@@ -1454,14 +1464,13 @@ def delete_admin_review_messages(ad_id: int):
 
 def is_premium_user(user_id: int) -> bool:
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        f"SELECT is_premium FROM users WHERE user_id = {p}",
-        (user_id,)
-    )
-    row = cursor.fetchone()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT is_premium FROM users WHERE user_id = {p}",
+            (user_id,)
+        )
+        row = cursor.fetchone()
     if not row:
         return False
     return bool(row[0])
@@ -1481,24 +1490,23 @@ def get_monthly_ad_count(user_id: int) -> int:
     Барчаси саналади — ўчириш лимитни тикламайди.
     """
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    if DATABASE_URL:
-        cursor.execute(f"""
-            SELECT COUNT(*) FROM ads
-            WHERE user_id = {p}
-              AND created_at >= DATE_TRUNC('month', NOW())
-        """, (user_id,))
-    else:
-        cursor.execute(f"""
-            SELECT COUNT(*) FROM ads
-            WHERE user_id = {p}
-              AND created_at >= DATE('now', 'start of month')
-        """, (user_id,))
+        if DATABASE_URL:
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM ads
+                WHERE user_id = {p}
+                  AND created_at >= DATE_TRUNC('month', NOW())
+            """, (user_id,))
+        else:
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM ads
+                WHERE user_id = {p}
+                  AND created_at >= DATE('now', 'start of month')
+            """, (user_id,))
 
-    count = cursor.fetchone()[0]
-    conn.close()
+        count = cursor.fetchone()[0]
     return count
 # Телефон рақамини тозалаш
 def clean_phone(phone: str) -> str:
@@ -1933,18 +1941,17 @@ def get_ad_group_links(ad_id: int):
 def force_block_user(user_id: int):
     """Фойдаланувчини рад сонидан қатъи назар, ДАРҲОЛ блоклайди."""
     p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute(f"""
-            UPDATE users SET is_blocked = TRUE, blocked_at = NOW() WHERE user_id = {p}
-        """, (user_id,))
-    else:
-        cursor.execute(f"""
-            UPDATE users SET is_blocked = 1, blocked_at = CURRENT_TIMESTAMP WHERE user_id = {p}
-        """, (user_id,))
-    conn.commit()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute(f"""
+                UPDATE users SET is_blocked = TRUE, blocked_at = NOW() WHERE user_id = {p}
+            """, (user_id,))
+        else:
+            cursor.execute(f"""
+                UPDATE users SET is_blocked = 1, blocked_at = CURRENT_TIMESTAMP WHERE user_id = {p}
+            """, (user_id,))
+        conn.commit()
 
 
 def _ensure_block_log_table():
@@ -2327,14 +2334,13 @@ def remove_review_admin(user_id: int):
 def get_all_review_admin_ids():
     """Барча актив review_admins ID'лари рўйхати."""
     _ensure_review_admins_ready()
-    conn = get_connection()
-    cursor = conn.cursor()
-    if DATABASE_URL:
-        cursor.execute("SELECT user_id FROM review_admins WHERE is_active = TRUE")
-    else:
-        cursor.execute("SELECT user_id FROM review_admins WHERE is_active = 1")
-    rows = cursor.fetchall()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute("SELECT user_id FROM review_admins WHERE is_active = TRUE")
+        else:
+            cursor.execute("SELECT user_id FROM review_admins WHERE is_active = 1")
+        rows = cursor.fetchall()
     return [r[0] for r in rows]
 
 
