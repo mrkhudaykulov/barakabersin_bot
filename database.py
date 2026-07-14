@@ -2225,3 +2225,118 @@ def get_ad_group_message_ids(ad_id: int):
     rows = cursor.fetchall()
     conn.close()
     return rows
+
+
+# ═══════════════════════════════════════
+# REVIEW ADMINS — яxлит (unified) тасдиqлаш ҳавзаси (DB-backed, config.py'dan dinamik)
+# ═══════════════════════════════════════
+
+def _ensure_review_admins_table():
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS review_admins (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT UNIQUE NOT NULL,
+                full_name TEXT,
+                username TEXT,
+                added_by BIGINT,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+    else:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS review_admins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER UNIQUE NOT NULL,
+                full_name TEXT,
+                username TEXT,
+                added_by INTEGER,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+    conn.commit()
+    conn.close()
+
+
+_review_admins_ready = False
+
+
+def _ensure_review_admins_ready():
+    global _review_admins_ready
+    if not _review_admins_ready:
+        _ensure_review_admins_table()
+        _review_admins_ready = True
+
+
+def seed_review_admins_from_config(config_admin_ids):
+    """
+    main.py ишга тушганда БИР МАРТА чақирилади — config.py'даги
+    REVIEW_ADMINS рўйхатини DB'га 'boshlang'ich' сифатида қўшади
+    (агар аллақачон бор бўлса — такрорламайди).
+    """
+    _ensure_review_admins_ready()
+    for uid in config_admin_ids:
+        add_review_admin(uid, full_name=None, username=None, added_by=None)
+
+
+def add_review_admin(user_id: int, full_name: str = None, username: str = None, added_by: int = None):
+    """Одамни яxлит review_admins ҳавзасига қўшади (ёки қайта фаоллаштиради)."""
+    _ensure_review_admins_ready()
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute(f"""
+            INSERT INTO review_admins (user_id, full_name, username, added_by, is_active)
+            VALUES ({p}, {p}, {p}, {p}, TRUE)
+            ON CONFLICT (user_id) DO UPDATE SET
+                is_active = TRUE,
+                full_name = COALESCE(EXCLUDED.full_name, review_admins.full_name),
+                username = COALESCE(EXCLUDED.username, review_admins.username)
+        """, (user_id, full_name, username, added_by))
+    else:
+        cursor.execute(f"""
+            INSERT OR IGNORE INTO review_admins (user_id, full_name, username, added_by, is_active)
+            VALUES ({p}, {p}, {p}, {p}, 1)
+        """, (user_id, full_name, username, added_by))
+        cursor.execute(f"""
+            UPDATE review_admins SET is_active = 1 WHERE user_id = {p}
+        """, (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def remove_review_admin(user_id: int):
+    """Одамни яxлит review_admins ҳавзасидан олиб ташлайди."""
+    _ensure_review_admins_ready()
+    p = get_placeholder()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute(f"UPDATE review_admins SET is_active = FALSE WHERE user_id = {p}", (user_id,))
+    else:
+        cursor.execute(f"UPDATE review_admins SET is_active = 0 WHERE user_id = {p}", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_all_review_admin_ids():
+    """Барча актив review_admins ID'лари рўйхати."""
+    _ensure_review_admins_ready()
+    conn = get_connection()
+    cursor = conn.cursor()
+    if DATABASE_URL:
+        cursor.execute("SELECT user_id FROM review_admins WHERE is_active = TRUE")
+    else:
+        cursor.execute("SELECT user_id FROM review_admins WHERE is_active = 1")
+    rows = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def is_review_admin(user_id: int) -> bool:
+    return user_id in get_all_review_admin_ids()
