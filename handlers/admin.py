@@ -729,6 +729,30 @@ async def ask_clear_prices(message: types.Message, state: FSMContext):
     )
 
 
+@router.message(Command("clearprices_confirm"))
+async def do_clear_prices(message: types.Message, state: FSMContext):
+    def _clear_prices_sync():
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM market_prices")
+        cnt = cursor.fetchone()[0]
+        if cnt > 0:
+            cursor.execute("DELETE FROM market_prices")
+            conn.commit()
+        conn.close()
+        return cnt
+
+    count = await asyncio.to_thread(_clear_prices_sync)
+
+    if count == 0:
+        await message.answer("❌ Базада нархлар йўқ.")
+        return
+
+    await message.answer(f"🗑 Барчаси ўчирилди — *{count} та* нарх маълумоти.", parse_mode="Markdown")
+    await state.set_state(AdminStates.prices_menu)
+    await message.answer("💰 Давом этинг:", reply_markup=admin_prices_keyboard())
+
+
 # ═══════════════════════════════════════
 # 🚫 БЛОК МЕНЮСИ
 # ═══════════════════════════════════════
