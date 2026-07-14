@@ -87,7 +87,7 @@ async def search_district(message: types.Message, state: FSMContext):
 
     # ═══ ЛИМИТ ═══
     user_id = message.from_user.id
-    if is_premium_user(user_id):
+    if await is_premium_user(user_id):
         search_limit = 50
         user_label = "Премиум"
     else:
@@ -101,7 +101,7 @@ async def search_district(message: types.Message, state: FSMContext):
         f"district='{search_district_val}', limit={search_limit}"
     )
 
-    results = search_all(
+    results = await search_all(
         animal_type=search_animal,
         region=search_region_val,
         district=search_district_val,
@@ -224,7 +224,7 @@ async def search_district(message: types.Message, state: FSMContext):
                     text += f'   <a href="{ad_link}">👁кўриш (канал)</a>'
 
                 # ═══ Вилоят гуруҳларидаги ҳаволалар (агар бор бўлса) ═══
-                group_links = get_ad_group_links(ad_id)
+                group_links = await get_ad_group_links(ad_id)
                 for idx, glink in enumerate(group_links, 1):
                     text += f'\n   <a href="{glink}">👁кўриш (гуруҳ {idx})</a>'
 
@@ -254,7 +254,7 @@ async def search_district(message: types.Message, state: FSMContext):
         )
 
     # Оддий фойдаланувчига премиум таклифи
-    if not is_premium_user(message.from_user.id) and len(results["ads"]) >= 5:
+    if not await is_premium_user(message.from_user.id) and len(results["ads"]) >= 5:
         await message.answer(
             "💎 *Кўпроқ натижа кўриш учун Премиум аъзо бўлинг!*\n\n"
             "Оддий: 5 та | Премиум: 50 та натижа",

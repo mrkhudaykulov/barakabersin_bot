@@ -25,13 +25,13 @@ def is_admin(user_id: int) -> bool:
     return user_id in ADMINS
 
 
-def _get_current_data(region, district, role_type):
+async def _get_current_data(region, district, role_type):
     """
     Ушбу туман/лавозим учун ҲОЗИРГИ (амалдаги) маълумотни қайтаради:
     аввал тасдиқланган override, бўлмаса статик vet_contacts_data.
     Топилмаса None.
     """
-    override = get_approved_vet_override(region, district, role_type)
+    override = await get_approved_vet_override(region, district, role_type)
     if override:
         return override
 
@@ -53,7 +53,7 @@ def _get_current_data(region, district, role_type):
         return None
 
 
-def _format_suggestion(row) -> str:
+async def _format_suggestion(row) -> str:
     """Кутилаётган таклифни, ўзгартириш бўлса эски маълумот билан солиштириб форматлайди."""
     (sid, user_id, username, action_type, region, district,
      role_type, fish, lavozim, tel, comment, created_at) = row
@@ -72,7 +72,7 @@ def _format_suggestion(row) -> str:
 
     # Агар ЎЗГАРТИРИШ таклифи бўлса — эски маълумотни ёнма-ён кўрсатамиз
     if action_type == "ozgartirish":
-        old = _get_current_data(region, district, role_type)
+        old = await _get_current_data(region, district, role_type)
         text += f"\n{'─' * 25}\n"
         if old:
             text += (
@@ -103,7 +103,7 @@ def _format_suggestion(row) -> str:
 
 async def _show_next_pending(message: types.Message, state: FSMContext):
     """Навбатдаги кутилаётган таклифни кўрсатади."""
-    pending = get_pending_vet_suggestions(limit=1)
+    pending = await get_pending_vet_suggestions(limit=1)
     if not pending:
         await message.answer(
             "✅ Кутилаётган таклифлар йўқ.",
@@ -117,7 +117,7 @@ async def _show_next_pending(message: types.Message, state: FSMContext):
     await state.update_data(current_suggestion_id=sid)
     await state.set_state(VetAdminStates.reviewing)
 
-    text = _format_suggestion(row)
+    text = await _format_suggestion(row)
     await message.answer(text, parse_mode="HTML", reply_markup=vet_admin_review_keyboard())
 
 
@@ -131,7 +131,7 @@ async def vet_admin_start(message: types.Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
 
-    count = count_pending_vet_suggestions()
+    count = await count_pending_vet_suggestions()
     if count == 0:
         await message.answer(
             "✅ Ҳозирда кутилаётган ветеринария таклифлари йўқ.",
@@ -158,14 +158,14 @@ async def vet_admin_approve(message: types.Message, state: FSMContext):
         await _show_next_pending(message, state)
         return
 
-    row = get_vet_suggestion_by_id(sid)
+    row = await get_vet_suggestion_by_id(sid)
     if not row:
         await message.answer("⚠️ Таклиф топилмади ёки аллақачон кўриб чиқилган.")
         await _show_next_pending(message, state)
         return
 
     requester_id = row[1]
-    review_vet_suggestion(sid, admin_id=message.from_user.id, approve=True)
+    await review_vet_suggestion(sid, admin_id=message.from_user.id, approve=True)
     await message.answer(f"✅ Таклиф №{sid} тасдиқланди.")
 
     try:
@@ -213,7 +213,7 @@ async def vet_admin_reject_confirm(message: types.Message, state: FSMContext):
         await _show_next_pending(message, state)
         return
 
-    row = get_vet_suggestion_by_id(sid)
+    row = await get_vet_suggestion_by_id(sid)
     if not row:
         await message.answer("⚠️ Таклиф топилмади.")
         await _show_next_pending(message, state)
@@ -221,7 +221,7 @@ async def vet_admin_reject_confirm(message: types.Message, state: FSMContext):
 
     requester_id = row[1]
     reason = None if message.text.strip() == "-" else message.text.strip()
-    review_vet_suggestion(sid, admin_id=message.from_user.id, approve=False, admin_comment=reason)
+    await review_vet_suggestion(sid, admin_id=message.from_user.id, approve=False, admin_comment=reason)
     await message.answer(f"❌ Таклиф №{sid} рад этилди.")
 
     try:
@@ -246,7 +246,7 @@ async def vet_admin_edit_menu(message: types.Message, state: FSMContext):
 
     data = await state.get_data()
     sid = data.get("current_suggestion_id")
-    row = get_vet_suggestion_by_id(sid) if sid else None
+    row = await get_vet_suggestion_by_id(sid) if sid else None
     if not row:
         await message.answer("⚠️ Таклиф топилмади.")
         await _show_next_pending(message, state)
@@ -284,7 +284,7 @@ async def vet_admin_edit_fish_save(message: types.Message, state: FSMContext):
 
     data = await state.get_data()
     sid = data.get("current_suggestion_id")
-    update_vet_suggestion_fields(sid, fish=message.text.strip())
+    await update_vet_suggestion_fields(sid, fish=message.text.strip())
     await state.set_state(VetAdminStates.reviewing)
     await message.answer("✅ Ф.И.Ш янгиланди.", reply_markup=vet_admin_edit_keyboard())
 
@@ -308,7 +308,7 @@ async def vet_admin_edit_lavozim_save(message: types.Message, state: FSMContext)
 
     data = await state.get_data()
     sid = data.get("current_suggestion_id")
-    update_vet_suggestion_fields(sid, lavozim=message.text.strip())
+    await update_vet_suggestion_fields(sid, lavozim=message.text.strip())
     await state.set_state(VetAdminStates.reviewing)
     await message.answer("✅ Лавозим янгиланди.", reply_markup=vet_admin_edit_keyboard())
 
@@ -332,7 +332,7 @@ async def vet_admin_edit_tel_save(message: types.Message, state: FSMContext):
 
     data = await state.get_data()
     sid = data.get("current_suggestion_id")
-    update_vet_suggestion_fields(sid, tel=message.text.strip())
+    await update_vet_suggestion_fields(sid, tel=message.text.strip())
     await state.set_state(VetAdminStates.reviewing)
     await message.answer("✅ Телефон янгиланди.", reply_markup=vet_admin_edit_keyboard())
 
@@ -344,12 +344,12 @@ async def vet_admin_edit_done(message: types.Message, state: FSMContext):
         return
     data = await state.get_data()
     sid = data.get("current_suggestion_id")
-    row = get_vet_suggestion_by_id(sid) if sid else None
+    row = await get_vet_suggestion_by_id(sid) if sid else None
     if not row:
         await _show_next_pending(message, state)
         return
     await message.answer("✅ Таҳрир сақланди. Янгиланган таклиф:")
-    text = _format_suggestion(row)
+    text = await _format_suggestion(row)
     await message.answer(text, parse_mode="HTML", reply_markup=vet_admin_review_keyboard())
 
 
@@ -360,11 +360,11 @@ async def vet_admin_edit_back(message: types.Message, state: FSMContext):
         return
     data = await state.get_data()
     sid = data.get("current_suggestion_id")
-    row = get_vet_suggestion_by_id(sid) if sid else None
+    row = await get_vet_suggestion_by_id(sid) if sid else None
     if not row:
         await _show_next_pending(message, state)
         return
-    text = _format_suggestion(row)
+    text = await _format_suggestion(row)
     await message.answer(text, parse_mode="HTML", reply_markup=vet_admin_review_keyboard())
 
 
@@ -376,7 +376,7 @@ async def vet_admin_edit_back(message: types.Message, state: FSMContext):
 async def vet_admin_skip(message: types.Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    pending = get_pending_vet_suggestions(limit=2)
+    pending = await get_pending_vet_suggestions(limit=2)
     if len(pending) <= 1:
         await message.answer("ℹ️ Бошқа кутилаётган таклиф йўқ.", reply_markup=main_menu_admin())
         await state.clear()
@@ -385,5 +385,5 @@ async def vet_admin_skip(message: types.Message, state: FSMContext):
     row = pending[1]
     sid = row[0]
     await state.update_data(current_suggestion_id=sid)
-    text = _format_suggestion(row)
+    text = await _format_suggestion(row)
     await message.answer(text, parse_mode="HTML", reply_markup=vet_admin_review_keyboard())
