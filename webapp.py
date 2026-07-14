@@ -37,10 +37,11 @@ from urllib.parse import parse_qsl
 from aiohttp import web
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
 
-from config import bot, BOT_TOKEN, REVIEW_ADMINS
+from config import bot, BOT_TOKEN
 from database import (
     get_user_profile, save_user, get_connection, get_placeholder,
-    contains_bad_word, AD_EXPIRE_DAYS, save_admin_review_message
+    contains_bad_word, AD_EXPIRE_DAYS, save_admin_review_message,
+    get_all_review_admin_ids
 )
 
 routes = web.RouteTableDef()
@@ -175,11 +176,12 @@ async def _send_to_reviewers_webapp(ad_id, fields, media_meta_list, user, phone)
         f"🆔 Эълон ID: {ad_id}"
     )
 
-    if not REVIEW_ADMINS:
-        logging.error("REVIEW_ADMINS бўш — эълонни ҳеч ким кўра олмайди!")
+    review_admin_ids = get_all_review_admin_ids()
+    if not review_admin_ids:
+        logging.error("review_admins бўш — эълонни ҳеч ким кўра олмайди!")
         return media_meta_list
 
-    first_admin = REVIEW_ADMINS[0]
+    first_admin = review_admin_ids[0]
 
     # ═══ 1. Биринчи медиани биринчи админга юклаб, file_id олиш ═══
     if media_meta_list:
@@ -229,7 +231,7 @@ async def _send_to_reviewers_webapp(ad_id, fields, media_meta_list, user, phone)
             logging.error(f"Қўшимча медиа file_id олишда хато: {e}")
 
     # ═══ 3. Қолган REVIEW_ADMINS'га (агар бир нечта бўлса) file_id орқали юбориш ═══
-    for admin_id in REVIEW_ADMINS[1:]:
+    for admin_id in review_admin_ids[1:]:
         try:
             if media_meta_list and media_meta_list[0].get("file_id"):
                 first_media = media_meta_list[0]
@@ -413,22 +415,8 @@ async def _process_ad_after_insert(
         media_files = await _send_to_reviewers_webapp(ad_id, fields_clean, media_files, user, phone)
     except Exception as e:
         logging.error(f"Mini App: reviewer'larga yuborishda xato: {e}")
-
-    # ═══ ВИЛОЯТГА БОҒЛАНГАН ГУРУҲЛАРГА ЮБОРИШ (ads.py'даги мантиq bilan bir xil) ═══
-    try:
-        from handlers.ads import _send_to_region_groups
-        group_data = {
-            "animal_type": animal_type,
-            "quantity": qty,
-            "price": price,
-            "description": description,
-            "region": region,
-            "district": district,
-            "mfy": mfy,
-        }
-        await _send_to_region_groups(ad_id, group_data, media_files, phone=phone, user=user)
-    except Exception as e:
-        logging.error(f"Mini App: guruhlarga yuborishda xato: {e}")
+    # ДИҚҚАТ: Гуруҳларга ЭНДИ фақат тасдиқлангандан кейин, markazlashgan
+    # review_admins tomonidan (ads.py'даги approve_ad_callback ичида) юборилади.
 
     # ═══ ad_media ЖАДВАЛИГА file_id'ЛАРНИ САҚЛАШ ═══
     p = get_placeholder()
