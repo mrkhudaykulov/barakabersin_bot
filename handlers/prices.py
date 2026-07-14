@@ -1,3 +1,4 @@
+import asyncio
 import sqlite3
 
 from aiogram import Router, types, F
@@ -58,28 +59,32 @@ async def price_index_show(message: types.Message, state: FSMContext):
         )
         return
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    def _fetch_price_index_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    # Эълонлардан
-    cursor.execute(f"""
-        SELECT region, price
-        FROM ads
-        WHERE status = 'active'
-          AND animal_type = {p}
-    """, (animal_type,))
-    ad_rows = cursor.fetchall()
+        # Эълонлардан
+        cursor.execute(f"""
+            SELECT region, price
+            FROM ads
+            WHERE status = 'active'
+              AND animal_type = {p}
+        """, (animal_type,))
+        ads_result = cursor.fetchall()
 
-    # Бозор нархларидан
-    cursor.execute(f"""
-        SELECT region, price
-        FROM market_prices
-        WHERE animal_type = {p}
-    """, (animal_type,))
-    mp_rows = cursor.fetchall()
+        # Бозор нархларидан
+        cursor.execute(f"""
+            SELECT region, price
+            FROM market_prices
+            WHERE animal_type = {p}
+        """, (animal_type,))
+        mp_result = cursor.fetchall()
 
-    conn.close()
+        conn.close()
+        return ads_result, mp_result
+
+    ad_rows, mp_rows = await asyncio.to_thread(_fetch_price_index_sync)
 
     region_data = {}
 
@@ -151,20 +156,23 @@ async def price_index_show(message: types.Message, state: FSMContext):
 
 @router.message(F.text == "📊 Барчаси")
 async def price_index_all(message: types.Message):
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
+    def _fetch_all_prices_sync():
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    cursor.execute(f"""
-        SELECT animal_type, price
-        FROM ads WHERE status = 'active'
-    """)
-    ad_rows = cursor.fetchall()
+        cursor.execute("""
+            SELECT animal_type, price
+            FROM ads WHERE status = 'active'
+        """)
+        ads_result = cursor.fetchall()
 
-    cursor.execute("SELECT animal_type, price FROM market_prices")
-    mp_rows = cursor.fetchall()
+        cursor.execute("SELECT animal_type, price FROM market_prices")
+        mp_result = cursor.fetchall()
 
-    conn.close()
+        conn.close()
+        return ads_result, mp_result
+
+    ad_rows, mp_rows = await asyncio.to_thread(_fetch_all_prices_sync)
 
     if not ad_rows and not mp_rows:
         await message.answer(
@@ -382,15 +390,18 @@ async def market_price_save(message: types.Message, state: FSMContext):
         await state.clear()
         return
 
-    p = get_placeholder()
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        INSERT INTO market_prices (user_id, animal_type, region, price)
-        VALUES ({p}, {p}, {p}, {p})
-    """, (message.from_user.id, animal, region, price_value))
-    conn.commit()
-    conn.close()
+    def _save_market_price_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            INSERT INTO market_prices (user_id, animal_type, region, price)
+            VALUES ({p}, {p}, {p}, {p})
+        """, (message.from_user.id, animal, region, price_value))
+        conn.commit()
+        conn.close()
+
+    await asyncio.to_thread(_save_market_price_sync)
 
     await message.answer(
         f"✅ *Нарх сақланди!*\n\n"
