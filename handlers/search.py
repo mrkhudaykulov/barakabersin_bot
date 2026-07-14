@@ -21,6 +21,7 @@ def is_all_districts(text):
     return "Барчаси" in text
     
 router = Router()
+router.message.filter(F.chat.type == "private")  # гуруҳларда мену/кнопкалар КЎРИНМАСИН
 
 
 @router.message(F.text == "🔍 Эълон қидириш")
