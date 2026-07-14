@@ -11,7 +11,7 @@ from keyboards import (
 )
 
 router = Router()
-
+router.message.filter(F.chat.type == "private")
 
 @router.message(F.text == "🧮 Ферма калькулятори")
 async def calc_main_menu(message: types.Message, state: FSMContext):
