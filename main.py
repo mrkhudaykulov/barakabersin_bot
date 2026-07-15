@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from aiohttp import web
+from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
 import os
 
 from config import bot, dp, ADMINS, REVIEW_ADMINS
@@ -17,6 +18,30 @@ async def handle_render_health_check(request):
     return web.Response(text="Бот муваффақиятли ишламоқда!")
 
 
+async def setup_bot_commands():
+    """
+    "/" менюсида ҳар чат турига ФАҚАТ шу ерда ишлайдиган буйруқлар кўринсин —
+    масалан /start гуруҳда кўринмасин (у private-only handler, guruhda
+    bosilsa hech narsa qilmaydi).
+    """
+    await bot.set_my_commands(
+        commands=[
+            BotCommand(command="start", description="Ботни бошлаш"),
+            BotCommand(command="reviewadmins", description="Тасдиқловчи админлар рўйхати"),
+        ],
+        scope=BotCommandScopeAllPrivateChats()
+    )
+    await bot.set_my_commands(
+        commands=[
+            BotCommand(command="viloyat", description="Гуруҳга вилоят(лар) боғлаш"),
+            BotCommand(command="addgroupadmin", description="Гуруҳ тасдиқловчисини қўшиш (reply орқали)"),
+            BotCommand(command="removegroupadmin", description="Гуруҳ тасдиқловчисини олиб ташлаш (reply орқали)"),
+            BotCommand(command="reviewadmins", description="Тасдиқловчи админлар рўйхати"),
+        ],
+        scope=BotCommandScopeAllGroupChats()
+    )
+
+
 async def main_loop():
     # Маълумотлар базасини ишга тушириш (миграция ҳам шу ерда)
     await init_db()
@@ -27,6 +52,9 @@ async def main_loop():
 
     # Барча handlerларни рўйхатдан ўтказиш
     register_all_handlers(dp)
+
+    # "/" менюсини чат турига қараб тўғрилаш
+    await setup_bot_commands()
 
     # Веб-сервер (Render портини банд қилиш учун + Mini App backend)
     app = web.Application(client_max_size=250 * 1024 * 1024)  # 250MB — бир нечта 50MB'лик видео учун жой
