@@ -41,7 +41,10 @@ async def setup_bot_commands():
             logging.warning(f"Админ {admin_id} учун эски буйруқлар тозаланмади: {e}")
 
     await bot.set_my_commands(
-        commands=[BotCommand(command="start", description="Ботни бошлаш")],
+        commands=[
+            BotCommand(command="start", description="Ботни бошлаш"),
+            BotCommand(command="help", description="Йўриқнома"),
+        ],
         scope=BotCommandScopeAllPrivateChats()
     )
 
