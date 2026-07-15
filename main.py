@@ -2,7 +2,10 @@ import asyncio
 import logging
 
 from aiohttp import web
-from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
+from aiogram.types import (
+    BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats,
+    BotCommandScopeChat
+)
 import os
 
 from config import bot, dp, ADMINS, REVIEW_ADMINS
@@ -20,26 +23,34 @@ async def handle_render_health_check(request):
 
 async def setup_bot_commands():
     """
-    "/" менюсида ҳар чат турига ФАҚАТ шу ерда ишлайдиган буйруқлар кўринсин —
-    масалан /start гуруҳда кўринмасин (у private-only handler, guruhda
-    bosilsa hech narsa qilmaydi).
+    "/" менюси:
+      - Гуруҳларда — ҳеч қандай буйруқ кўринмасин (лекин ёзилса, ишлайверади —
+        handlers/groups.py'даги /viloyat, /addgroupadmin ва ҳ.к. фильтрланмаган).
+      - Оддий фойдаланувчи (приват чат) — фақат /start.
+      - Бош админ (config.ADMINS) — приват чатида ТЎЛИҚ буйруқлар рўйхати,
+        BotCommandScopeChat орқали шахсан унинг chat_id'сига ўрнатилади.
     """
+    await bot.set_my_commands(commands=[], scope=BotCommandScopeAllGroupChats())
+
     await bot.set_my_commands(
-        commands=[
-            BotCommand(command="start", description="Ботни бошлаш"),
-            BotCommand(command="reviewadmins", description="Тасдиқловчи админлар рўйхати"),
-        ],
+        commands=[BotCommand(command="start", description="Ботни бошлаш")],
         scope=BotCommandScopeAllPrivateChats()
     )
-    await bot.set_my_commands(
-        commands=[
-            BotCommand(command="viloyat", description="Гуруҳга вилоят(лар) боғлаш"),
-            BotCommand(command="addgroupadmin", description="Гуруҳ тасдиқловчисини қўшиш (reply орқали)"),
-            BotCommand(command="removegroupadmin", description="Гуруҳ тасдиқловчисини олиб ташлаш (reply орқали)"),
-            BotCommand(command="reviewadmins", description="Тасдиқловчи админлар рўйхати"),
-        ],
-        scope=BotCommandScopeAllGroupChats()
-    )
+
+    admin_commands = [
+        BotCommand(command="start", description="Ботни бошлаш"),
+        BotCommand(command="vetadmin", description="Вет таклифларини кўриш"),
+        BotCommand(command="reviewadmins", description="Тасдиқловчи админлар рўйхати"),
+        BotCommand(command="clearprices_confirm", description="Барча бозор нархларини ўчириш"),
+    ]
+    for admin_id in ADMINS:
+        try:
+            await bot.set_my_commands(
+                commands=admin_commands,
+                scope=BotCommandScopeChat(chat_id=admin_id)
+            )
+        except Exception as e:
+            logging.warning(f"Админ {admin_id} учун буйруқлар ўрнатилмади: {e}")
 
 
 async def main_loop():
