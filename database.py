@@ -1203,7 +1203,7 @@ def _sync_get_notification_users(animal_type, region, price, district=None):
             cursor.execute(f"""
                 SELECT user_id
                 FROM notifications
-                WHERE animal_type = {p}
+                WHERE (animal_type = 'Барчаси' OR animal_type = {p})
                   AND region = {p}
                   AND min_price <= {p}
                   AND max_price >= {p}
@@ -1214,7 +1214,7 @@ def _sync_get_notification_users(animal_type, region, price, district=None):
             cursor.execute(f"""
                 SELECT user_id
                 FROM notifications
-                WHERE animal_type = {p}
+                WHERE (animal_type = 'Барчаси' OR animal_type = {p})
                   AND region = {p}
                   AND min_price <= {p}
                   AND max_price >= {p}
