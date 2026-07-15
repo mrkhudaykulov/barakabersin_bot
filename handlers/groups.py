@@ -15,6 +15,7 @@ groups.py
 БИР ХИЛ форматда (ads.py'даги build_full_ad_caption орқали).
 """
 
+import asyncio
 import html
 import logging
 
@@ -531,16 +532,23 @@ async def remove_group_admin_command(message: types.Message):
 
 @router.callback_query(F.data.startswith("reggroup_"))
 async def region_group_callback(callback: types.CallbackQuery):
-    # ═══ ТЕЗ ЖАВОБ — Telegram callback muddati tugashini oldini olish ═══
+    # ═══ ТЕЗ ЖАВОБ — Telegram callback muddati tugashини oldini olish ═══
     await callback.answer()
 
     chat_id = callback.message.chat.id
+    region = callback.data.replace("reggroup_", "")
 
-    if not await is_group_admin(chat_id, callback.from_user.id):
+    # ═══ Рухсат текшируви ва жорий вилоятлар рўйхатини ПАРАЛЛЕЛ оламиз —
+    # кетма-кет 4 та алоҳида DB сўрови ўрнига, тугма босилгандан тортиб
+    # хабар янгилангунча кечикиш сезиларли қисқаради ═══
+    is_admin, current_regions = await asyncio.gather(
+        is_group_admin(chat_id, callback.from_user.id),
+        get_regions_for_chat(chat_id),
+    )
+
+    if not is_admin:
         await callback.message.answer("⚠️ Фақат шу гуруҳ учун тасдиқлаш ваколатига эга одам танлаши мумкин.")
         return
-
-    region = callback.data.replace("reggroup_", "")
 
     if region == "done":
         try:
@@ -552,14 +560,14 @@ async def region_group_callback(callback: types.CallbackQuery):
     chat_title = callback.message.chat.title
     chat_username = callback.message.chat.username
 
-    already_selected = region in await get_regions_for_chat(chat_id)
-    if already_selected:
+    selected = set(current_regions)
+    if region in selected:
         await remove_region_group(chat_id, region)
+        selected.discard(region)
     else:
         await add_region_group(chat_id, chat_title, chat_username, region)
+        selected.add(region)
 
-    # ═══ Ҳозиргача танланган БАРЧА вилоятларни олиб, ✅ билан ЎРНИДА янгилаймиз ═══
-    selected = set(await get_regions_for_chat(chat_id))
     new_text = (
         f"✅ Танланганлар: {', '.join(sorted(selected)) if selected else '(ҳали йўқ)'}\n\n"
         f"Яна вилоят қўшмоқчи бўлсангиз танланг, ёки якунлаш учун "
