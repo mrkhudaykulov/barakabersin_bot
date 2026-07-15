@@ -71,8 +71,8 @@ DISTRICTS = {
 
 def main_menu():
     buttons = [
-        [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
         [KeyboardButton(text="🌐 Тез эълон бериш (янги!)")],
+        [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
         [KeyboardButton(text="📊 Бозор таҳлили"), KeyboardButton(text="🗂 Менинг эълонларим")],
         [KeyboardButton(text="🩺 Ветеринария"), KeyboardButton(text="🔔 Хабардор қил")],
     ]
@@ -286,8 +286,8 @@ def notification_districts_keyboard(region):
 def main_menu_admin():
     """Админ учун бош меню"""
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
         [KeyboardButton(text="🌐 Тез эълон бериш (янги!)")],
+        [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
         [KeyboardButton(text="📊 Бозор таҳлили"), KeyboardButton(text="🗂 Менинг эълонларим")],
         [KeyboardButton(text="🩺 Ветеринария"), KeyboardButton(text="🔔 Хабардор қил")],
         [KeyboardButton(text="🔐 Админ панел")]
