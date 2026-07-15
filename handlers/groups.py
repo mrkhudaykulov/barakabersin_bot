@@ -28,6 +28,7 @@ from database import (
     add_region_group, remove_region_group, deactivate_chat, get_regions_for_chat,
     get_all_active_group_chat_ids, get_blocks_by_admin,
     add_group_admin, remove_group_admin, is_group_admin, get_chats_managed_by,
+    get_group_admin_ids,
 )
 
 router = Router()
@@ -96,13 +97,47 @@ async def all_connected_groups(message: types.Message):
         return
 
     text = f"🏘 <b>Уланган гуруҳлар ({len(all_groups)} та):</b>\n\n"
+    buttons = []
     for chat_id, info in all_groups.items():
         uname = f"@{info['chat_username']}" if info["chat_username"] else "приват"
         text += (
             f"• <b>{info['chat_title']}</b> ({uname})\n"
             f"   Вилоят(лар): {', '.join(info['regions'])}\n\n"
         )
-    await message.answer(text, parse_mode="HTML")
+        buttons.append([InlineKeyboardButton(
+            text=f"❌ Ўчириш: {info['chat_title']}",
+            callback_data=f"rmgroup_{chat_id}"
+        )])
+    text += (
+        "\n<i>Агар бир гуруҳ рўйхатда такрорланиб турса (масалан, "
+        "оддий гуруҳ супергуруҳга айлантирилгандан кейин) — "
+        "эскисини қуйидаги тугма орқали ўчириб ташланг.</i>"
+    )
+    await message.answer(
+        text, parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+
+@router.callback_query(F.data.startswith("rmgroup_"))
+async def remove_connected_group_callback(callback: types.CallbackQuery):
+    """Фақат бош админлар учун — рўйхатдаги бир гуруҳ ёзувини фаолсизлантиради."""
+    from config import ADMINS
+    if callback.from_user.id not in ADMINS:
+        await callback.answer("⛔ Сизга бу амал учун рухсат йўқ.", show_alert=True)
+        return
+
+    chat_id = int(callback.data.replace("rmgroup_", ""))
+    await deactivate_chat(chat_id)
+    await callback.answer("✅ Ўчирилди.")
+    try:
+        await callback.message.edit_text(
+            callback.message.text + "\n\n🗑 <i>Юқоридаги гуруҳлардан бири ўчирилди — рўйхатни "
+            "янгилаш учун \"🏘 Уланган гуруҳлар\"ни қайта босинг.</i>",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
 
 
 def _build_region_inline_kb(selected_regions=None):
@@ -173,6 +208,29 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated):
     elif was_in and not is_in:
         # Бот чиқарилди/чиқиб кетди
         await deactivate_chat(event.chat.id)
+
+
+@router.message(F.migrate_to_chat_id)
+async def on_group_migrated_to_supergroup(message: types.Message):
+    """
+    Оддий гуруҳ супергуруҳга айлантирилганда Telegram янги chat_id беради —
+    эскиси ортда "ўлик" қолиб, дублик ёзувга олиб келади. Шу ерда эски
+    chat_id'даги вилоят(лар) ва гуруҳ-админлар янги chat_id'га кўчирилади,
+    эскиси эса фаолсизлантирилади.
+    """
+    old_chat_id = message.chat.id
+    new_chat_id = message.migrate_to_chat_id
+
+    regions = await get_regions_for_chat(old_chat_id)
+    if regions:
+        for region in regions:
+            await add_region_group(new_chat_id, message.chat.title, message.chat.username, region)
+
+    for admin_id in await get_group_admin_ids(old_chat_id):
+        await add_group_admin(new_chat_id, admin_id, granted_by=None)
+
+    await deactivate_chat(old_chat_id)
+    logging.info(f"Гуруҳ супергуруҳга айлантирилди: {old_chat_id} -> {new_chat_id}, вилоятлар кўчирилди: {regions}")
 
 
 async def _notify_bosh_admins_about_new_group(chat, adder):

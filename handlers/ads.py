@@ -486,7 +486,8 @@ async def _show_profile_summary(message: types.Message, state: FSMContext):
         f"🏡 <b>МФЙ:</b> {mfy}\n"
         f"📞 <b>Телефон:</b> {phone}\n\n"
         f"⚠️ Диққат! ТЕЛЕФОН рақамингиз ва фойдаланувчи номингиз "
-        f"эълонда, @internetmolbozor каналида кўринади.\n\n"
+        f"эълонда, @internetmolbozor каналида ва тегишли вилоят "
+        f"гуруҳ(лар)ида кўринади.\n\n"
         f"Тўғри бўлса тасдиқланг, ёки ўзгартирмоқчи бўлган "
         f"майдонни танланг:",
         parse_mode="HTML",
@@ -872,9 +873,8 @@ async def post_ad_to_matching_groups(ad_id, region, caption, media_list):
     from database import get_groups_for_region, create_ad_group_post, set_ad_group_post_message
 
     groups = await get_groups_for_region(region)
-    results = []
 
-    for chat_id, chat_title, chat_username in groups:
+    async def _post_to_one_group(chat_id, chat_title, chat_username):
         try:
             if media_list:
                 first_media = media_list[0]
@@ -897,17 +897,21 @@ async def post_ad_to_matching_groups(ad_id, region, caption, media_list):
             await set_ad_group_post_message(post_id, sent.message_id)
 
             link = f"https://t.me/{chat_username}/{sent.message_id}" if chat_username else None
-            results.append({
+            return {
                 "chat_title": chat_title,
                 "chat_username": chat_username,
                 "message_id": sent.message_id,
                 "link": link,
-            })
-
+            }
         except Exception as e:
             logging.error(f"Гуруҳ {chat_title} ({chat_id}) га юборишда хато: {e}")
+            return None
 
-    return results
+    # Ҳар бир гуруҳга ПАРАЛЛЕЛ юборамиз — кетма-кет юборилса, ҳар бир
+    # гуруҳ учун алоҳида Telegram round-trip кутиш админни узоқ ушлаб турарди.
+    tasks = [_post_to_one_group(chat_id, chat_title, chat_username) for chat_id, chat_title, chat_username in groups]
+    results = await asyncio.gather(*tasks) if tasks else []
+    return [r for r in results if r is not None]
 
 
 # ═══════════════════════════════════════
@@ -928,6 +932,11 @@ async def approve_ad_callback(callback: types.CallbackQuery):
     if not success:
         await callback.answer("⚠️ Бу эълон бошқа админ томонидан тасдиқланган!")
         return
+
+    # ═══ ТУГМАДАГИ "кутиш" ҳолатини дарҳол олиб ташлаймиз — қолган иш
+    # (каналга/гуруҳларга жойлаш, хабардорлик) фонда давом этади, лекин
+    # админ буни кутиб ўтирмайди ва тугма "осилиб қолгандек" кўринмайди ═══
+    await callback.answer("✅ Тасдиқланди! Жараён давом этмоқда...")
 
     # ═══ ЭЪЛОН МАЪЛУМОТЛАРИНИ ОЛИШ ═══
     def _fetch_ad_and_media_sync():
@@ -1073,6 +1082,11 @@ async def approve_ad_callback(callback: types.CallbackQuery):
             price=ad_price,
             district=dist
         )
+        logging.info(
+            f"Хабардорлик: ad_id={ad_id} animal_type={a_type!r} region={region!r} "
+            f"district={dist!r} price={price!r} -> ad_price={ad_price} | "
+            f"мос кузатувчилар: {len(users)}"
+        )
 
         post_link = (
             f"https://t.me/internetmolbozor/"
@@ -1086,10 +1100,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         )
 
         if not contains_bad_word(notify_text):
-            for row in users:
-                target_user_id = row[0]
-                if target_user_id == user_id:
-                    continue
+            async def _notify_one(target_user_id):
                 try:
                     await bot.send_message(
                         target_user_id,
@@ -1100,15 +1111,26 @@ async def approve_ad_callback(callback: types.CallbackQuery):
                         f"📲 Кўриш:\n{post_link}",
                         parse_mode="Markdown"
                     )
-                except Exception:
-                    pass
+                    return True
+                except Exception as e:
+                    logging.warning(
+                        f"Хабардорлик: user_id={target_user_id}'га юборилмади (ad_id={ad_id}): {e}"
+                    )
+                    return False
+
+            # Кузатувчиларга ПАРАЛЛЕЛ юборамиз (кетма-кет юборилса, кузатувчилар
+            # кўп бўлганда тасдиқлаш жараёни узоқ давом этарди).
+            target_ids = [row[0] for row in users if row[0] != user_id]
+            outcomes = await asyncio.gather(*[_notify_one(uid) for uid in target_ids]) if target_ids else []
+            sent_count = sum(1 for ok in outcomes if ok)
+            logging.info(f"Хабардорлик: ad_id={ad_id} — {sent_count}/{len(users)} та юборилди")
         else:
             logging.warning(
                 f"Ножўя эълон хабардан тўсилди: ad_id={ad_id}"
             )
 
     except Exception as e:
-        logging.error(f"Notification error: {e}")
+        logging.error(f"Notification error (ad_id={ad_id}): {e}")
 
     # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══       
     try:
@@ -1150,8 +1172,6 @@ async def approve_ad_callback(callback: types.CallbackQuery):
 
     # ═══ БАРЧА АДМИНЛАРДАГИ REVIEW ХАБАРНИ ЎЧИРИШ (базада эмас, faqat chatdan) ═══
     await _clear_all_admin_review_messages(ad_id)
-
-    await callback.answer("✅ Тасдиқланди!")
 
 
 # ═══════════════════════════════════════
@@ -1328,11 +1348,15 @@ async def _clear_all_admin_review_messages(ad_id: int):
     saqlanaveradi, faqat admin_review_messages tracking tozalanadi.
     """
     rows = await get_admin_review_messages(ad_id)
-    for admin_id, message_id, chat_id in rows:
+
+    async def _delete_one(admin_id, message_id, chat_id):
         try:
             await bot.delete_message(chat_id=chat_id, message_id=message_id)
         except Exception as e:
             logging.debug(f"Админ {admin_id} хабарини ўчиришда хато (аллақачон ўчирилган бўлиши мумкин): {e}")
+
+    if rows:
+        await asyncio.gather(*[_delete_one(admin_id, message_id, chat_id) for admin_id, message_id, chat_id in rows])
     await delete_admin_review_messages(ad_id)
 
 # ═══════════════════════════════════════

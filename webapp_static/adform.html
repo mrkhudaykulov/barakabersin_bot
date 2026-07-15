@@ -560,7 +560,7 @@
     <div class="toast-card">
       <div class="toast-emoji" id="toastEmoji">✅</div>
       <div class="toast-title" id="toastTitle">Эълон юборилди!</div>
-      <div class="toast-text" id="toastText">Эълонингиз қабул қилинди, админ тасдиқлагач каналга жойланади.</div>
+      <div class="toast-text" id="toastText">Эълонингиз қабул қилинди, админ тасдиқлагач каналга ва тегишли вилоят гуруҳ(лар)ига жойланади.</div>
       <button class="toast-close" id="toastClose">Тушунарли</button>
     </div>
   </div>
@@ -941,7 +941,7 @@
       const data = await res.json();
 
       if (data.ok){
-        showToast(true, 'Эълонингиз қабул қилинди, админ тасдиқлагач каналга жойланади.');
+        showToast(true, 'Эълонингиз қабул қилинди, админ тасдиқлагач каналга ва тегишли вилоят гуруҳ(лар)ига жойланади.');
       } else {
         showToast(false, data.error || 'Номаълум хатолик юз берди. Қайта уриниб кўринг.');
         submitBtn.disabled = false;
