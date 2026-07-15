@@ -4,6 +4,7 @@ import logging
 
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
+from aiogram.exceptions import TelegramMigrateToChat
 from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo,
     InputMediaPhoto, InputMediaVideo
@@ -870,28 +871,53 @@ async def post_ad_to_matching_groups(ad_id, region, caption, media_list):
     равишда тасдиқланган эълон, гуруҳ эса фақат жойлаш манзили.
     Қайтаради: [{"chat_title":.., "chat_username":.., "message_id":.., "link": .. yoki None}, ...]
     """
-    from database import get_groups_for_region, create_ad_group_post, set_ad_group_post_message
+    from database import (
+        get_groups_for_region, create_ad_group_post, set_ad_group_post_message,
+        get_regions_for_chat, add_region_group, deactivate_chat,
+        get_group_admin_ids, add_group_admin,
+    )
 
     groups = await get_groups_for_region(region)
 
+    async def _send_to_chat(chat_id):
+        if media_list:
+            first_media = media_list[0]
+            if first_media["type"] == "photo":
+                return await bot.send_photo(
+                    chat_id=chat_id, photo=first_media["file_id"],
+                    caption=caption, parse_mode="HTML"
+                )
+            elif first_media["type"] == "video":
+                return await bot.send_video(
+                    chat_id=chat_id, video=first_media["file_id"],
+                    caption=caption, parse_mode="HTML"
+                )
+        return await bot.send_message(chat_id=chat_id, text=caption, parse_mode="HTML")
+
+    async def _migrate_group(old_chat_id, new_chat_id, chat_title, chat_username):
+        """
+        Гуруҳ хабар юбориш ПАЙТИДА супергуруҳга айлантирилгани маълум бўлса
+        (Telegram шу хатони қайтаради) — region_groups/group_admins'ни янги
+        chat_id'га кўчирамиз, эскисини фаолсизлантирамиз. Шундай қилиб
+        кейинги эълонлар тўғри chat_id'га кетади, ва хатолик такрорланмайди.
+        """
+        regions = await get_regions_for_chat(old_chat_id)
+        for r in regions:
+            await add_region_group(new_chat_id, chat_title, chat_username, r)
+        for admin_id in await get_group_admin_ids(old_chat_id):
+            await add_group_admin(new_chat_id, admin_id, granted_by=None)
+        await deactivate_chat(old_chat_id)
+        logging.info(f"Гуруҳ {chat_title} ({old_chat_id}) юбориш пайтида супергуруҳга кўчирилди -> {new_chat_id}")
+
     async def _post_to_one_group(chat_id, chat_title, chat_username):
         try:
-            if media_list:
-                first_media = media_list[0]
-                if first_media["type"] == "photo":
-                    sent = await bot.send_photo(
-                        chat_id=chat_id, photo=first_media["file_id"],
-                        caption=caption, parse_mode="HTML"
-                    )
-                elif first_media["type"] == "video":
-                    sent = await bot.send_video(
-                        chat_id=chat_id, video=first_media["file_id"],
-                        caption=caption, parse_mode="HTML"
-                    )
-                else:
-                    sent = await bot.send_message(chat_id=chat_id, text=caption, parse_mode="HTML")
-            else:
-                sent = await bot.send_message(chat_id=chat_id, text=caption, parse_mode="HTML")
+            try:
+                sent = await _send_to_chat(chat_id)
+            except TelegramMigrateToChat as mig:
+                new_chat_id = mig.migrate_to_chat_id
+                await _migrate_group(chat_id, new_chat_id, chat_title, chat_username)
+                chat_id = new_chat_id
+                sent = await _send_to_chat(chat_id)
 
             post_id = await create_ad_group_post(ad_id, chat_id)
             await set_ad_group_post_message(post_id, sent.message_id)
