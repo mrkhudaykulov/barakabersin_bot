@@ -19,7 +19,7 @@ import html
 import logging
 
 from aiogram import Router, types, F
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import bot
@@ -185,17 +185,49 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated):
         # у энди бош админ орқали, алоҳида берилади).
         await add_group_admin(event.chat.id, event.from_user.id, granted_by=None)
 
+        try:
+            await bot.send_message(
+                chat_id=event.chat.id,
+                text=(
+                    "🐄🐑🐐 <b>Чорва Бозор боти шу гуруҳга қўшилди!</b> 🐫🐴🐓\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "👋 Салом ҳаммага! Мен эмас, чорва мол-ҳол эълонларини "
+                    "автоматик жойлайдиган ботман. Мана нима қила оламан:\n\n"
+
+                    "📢 <b>Эълонларни автомат жойлайман</b>\n"
+                    "Сиз танлаган вилоят(лар)га тегишли, админ томонидан "
+                    "тасдиқланган эълонлар шу гуруҳга ўзи келиб тушади — "
+                    "ҳеч ким қўлда жойлаштиришнинг ҳожати йўқ. 🖇\n\n"
+
+                    "🛡 <b>Гуруҳ бошқаруви</b> (шу гуруҳ учун вилоят "
+                    "созлаш ваколатига эга одамлар учун):\n"
+                    "• /viloyat — боғланган вилоят(лар)ни исталган "
+                    "вақтда ўзгартириш;\n\n"
+
+                    "🛡 <b>Бош админ учун</b> (reply орқали):\n"
+                    "• /addgroupadmin — кимгадир эълон тасдиқлаш "
+                    "ваколатини бериш;\n"
+                    "• /removegroupadmin — ваколатни олиб қўйиш;\n"
+                    "• /reviewadmins — яxлит тасдиқловчилар рўйхати.\n\n"
+
+                    "👇 Аввало, бу гуруҳни қайси вилоят(лар)га боғлаймиз? "
+                    "Пастдаги тугмалардан танланг (бир нечтасини танлаш "
+                    "мумкин):"
+                ),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logging.warning(f"Гуруҳга (chat_id={event.chat.id}) хабар юборилмади: {e}")
+
         kb = _build_region_inline_kb()
         try:
             await bot.send_message(
                 chat_id=event.chat.id,
                 text=(
-                    "👋 Салом! Ботни ушбу гуруҳга қўшганингиз учун раҳмат.\n\n"
                     f"✅ Сиз ({event.from_user.full_name}) шу гуруҳ учун "
                     f"вилоят(лар)ни созлаш ваколатига эга бўлдингиз.\n\n"
-                    "Бу гуруҳни қайси вилоят(лар)га боғлаймиз? "
-                    "Танланган вилоятдан эълон тасдиқлансa, шу гуруҳга ҳам жойланади.\n\n"
-                    "(Бир нечта вилоят танлашингиз мумкин)"
+                    "Танланган вилоят(лар)дан эълон тасдиқлансa, шу гуруҳга "
+                    "ҳам автомат жойланади:"
                 ),
                 reply_markup=kb
             )
@@ -309,16 +341,60 @@ async def add_review_admin_callback(callback: types.CallbackQuery):
 
 
 @router.message(Command("reviewadmins"))
-async def list_review_admins_command(message: types.Message):
+async def list_review_admins_command(message: types.Message, command: CommandObject):
     """
     Бош админ учун — яxлит review_admins ҳавзасидаги барча одамлар
     рўйхати, ҳар бирининг олдида «❌ Олиб ташлаш» тугмаси билан.
     Исталган жойда (приват чат ёки гуруҳда) ишлайди.
+
+    Янги одам ҚЎШИШ учун:
+      • Гуруҳда — керакли одамнинг хабарига REPLY қилиб «/reviewadmins add»;
+      • Ёки исталган жойда — «/reviewadmins add 123456789» (USER_ID билан).
     """
     from config import ADMINS
-    from database import get_all_review_admin_ids
+    from database import get_all_review_admin_ids, add_review_admin
 
     if message.from_user.id not in ADMINS:
+        return
+
+    args = (command.args or "").strip().split()
+
+    if args and args[0].lower() == "add":
+        target_id = None
+        target_name = None
+        target_username = None
+
+        if message.reply_to_message:
+            target_user = message.reply_to_message.from_user
+            target_id = target_user.id
+            target_name = target_user.full_name
+            target_username = target_user.username
+        elif len(args) > 1 and args[1].isdigit():
+            target_id = int(args[1])
+            try:
+                chat_info = await bot.get_chat(target_id)
+                target_name = chat_info.full_name
+                target_username = chat_info.username
+            except Exception:
+                target_name = None
+                target_username = None
+        else:
+            await message.answer(
+                "⚠️ Одамни белгилаш учун:\n"
+                "• унинг хабарига REPLY қилиб «/reviewadmins add» деб ёзинг,\n"
+                "• ёки «/reviewadmins add USER_ID» шаклида юборинг."
+            )
+            return
+
+        await add_review_admin(
+            target_id, full_name=target_name, username=target_username,
+            added_by=message.from_user.id
+        )
+        uname = f"@{target_username}" if target_username else f"ID: {target_id}"
+        await message.answer(
+            f"✅ {target_name or uname} энди яxлит review admins ҳавзасида — "
+            f"эълонларни тасдиқлаш/рад этиш ваколатига эга."
+        )
         return
 
     ids = await get_all_review_admin_ids()

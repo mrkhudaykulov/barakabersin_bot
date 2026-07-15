@@ -467,6 +467,13 @@ async def _show_profile_summary(message: types.Message, state: FSMContext):
 
     await state.set_state(AdStates.profile_confirm)
 
+    # ═══ ПАСТДАГИ КЛАВИАТУРАНИ ЯНГИЛАШ ═══
+    # Бу ерга "⏭ Ёзмасдан ўтказиб юбориш" каби олдинги қадамга тегишли
+    # тугмалар "осилиб қолмаслиги" учун — фақат Орқага/Бекор қолдирилади.
+    # (Пастдаги reply-клавиатура ва қуйидаги inline-тугмалар мустақил
+    # ишлайди, шунинг учун алоҳида хабар билан янгиланади.)
+    await message.answer("✅ Профил тайёр.", reply_markup=standard_step_keyboard())
+
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✏️ Вилоят/Туман", callback_data="editprofile_region"),
