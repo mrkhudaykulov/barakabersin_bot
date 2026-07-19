@@ -186,6 +186,7 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated):
         # у энди бош админ орқали, алоҳида берилади).
         await add_group_admin(event.chat.id, event.from_user.id, granted_by=None)
 
+        kb = _build_region_inline_kb()
         try:
             await bot.send_message(
                 chat_id=event.chat.id,
@@ -223,11 +224,6 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated):
                 ),
                 parse_mode="HTML"
             )
-        except Exception as e:
-            logging.warning(f"Гуруҳга (chat_id={event.chat.id}) хабар юборилмади: {e}")
-
-        kb = _build_region_inline_kb()
-        try:
             await bot.send_message(
                 chat_id=event.chat.id,
                 text=(
@@ -240,6 +236,34 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated):
             )
         except Exception as e:
             logging.warning(f"Гуруҳга (chat_id={event.chat.id}) хабар юборилмади: {e}")
+            # ═══ Кўпинча сабаби — ботга ёзиш ҳуқуқи йўқ (chat_admin_required
+            # ёки "фақат админлар ёзади" чеклови). Буни қўшган одамга
+            # ШАХСИЙ чатда тушунтирамиз — акс ҳолда у бунинг сабабини
+            # ҳеч қачон билмайди, чунки гуруҳда бот умуман ёза олмайди ═══
+            try:
+                await bot.send_message(
+                    chat_id=event.from_user.id,
+                    text=(
+                        f"⚠️ Мен «{html.escape(event.chat.title or '')}» гуруҳига "
+                        f"қўшилдим, лекин у ерга ХАБАР ЁЗА ОЛМАДИМ.\n\n"
+                        f"🔧 <b>Сабаби (техник):</b> <code>{html.escape(str(e))}</code>\n\n"
+                        f"Кўпинча бунинг сабаби шу иккитадан бири:\n"
+                        f"1️⃣ Менга (ботга) ҳали администратор ҳуқуқи берилмаган;\n"
+                        f"2️⃣ Гуруҳда «Фақат админлар хабар юбора олади» деган "
+                        f"чеклов ёқилган.\n\n"
+                        f"✅ <b>Ечими:</b> гуруҳ созламаларида мени "
+                        f"администратор қилиб қўйинг (ёки ёзиш чекловини "
+                        f"олиб ташланг), сўнг гуруҳда қайта «/viloyat» "
+                        f"буйруғини юборинг — шунда вилоят(лар) боғлашни "
+                        f"давом эттира оласиз."
+                    ),
+                    parse_mode="HTML"
+                )
+            except Exception as inner_e:
+                logging.warning(
+                    f"Гуруҳни қўшган одамга ({event.from_user.id}) ҳам "
+                    f"огоҳлантириш юборилмади: {inner_e}"
+                )
 
         # ═══ БОШ АДМИНЛАРГА БИЛДИРИШНОМА ═══
         await _notify_bosh_admins_about_new_group(event.chat, event.from_user)
