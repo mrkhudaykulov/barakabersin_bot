@@ -3,6 +3,7 @@ import os
 import logging
 import asyncio
 import threading
+import time
 from contextlib import contextmanager
 
 
@@ -168,6 +169,8 @@ AD_EXPIRE_DAYS = 7
 # ═══════════════════════════════════════
 
 def _sync_init_db():
+    _log_db_latency()
+
     conn = get_connection()
     try:
         _init_with_connection(conn)
@@ -177,10 +180,56 @@ def _sync_init_db():
     # Мавжуд базани янги устунлар билан янгилаш
     _sync_migrate_db()
 
+    # "Керак бўлганда яратиладиган" жадвалларни ШУ ЕРДА яратиб қўямиз.
+    # Акс ҳолда биринчи /start (гуруҳ админи текшируви орқали)
+    # _ensure_ready() ни ишга туширар ва фойдаланувчи CREATE TABLE
+    # сўровларини кутиб турарди.
+    global _block_log_ready
+    for ensure in (_ensure_ready, _ensure_group_admins_ready,
+                   _ensure_review_admins_ready):
+        try:
+            ensure()
+        except Exception as e:
+            logging.warning(f"Жадвал тайёрлашда хатолик: {e}")
+    try:
+        _ensure_block_log_table()
+        _block_log_ready = True
+    except Exception as e:
+        logging.warning(f"block_log жадвалини тайёрлашда хатолик: {e}")
+
     logging.info(
         "Baza yaratildi (PostgreSQL)" if DATABASE_URL
         else "Baza yaratildi (SQLite)"
     )
+
+
+def _log_db_latency():
+    """
+    Базагача бўлган кечикишни ўлчаб логга ёзади.
+
+    Бу оддий диагностика: агар битта арзимас сўров бир неча юз
+    миллисекунд олса, демак база сервердан узоқда (бошқа регионда) —
+    ундай ҳолда кодни оптималлаштириш эмас, базани ботга яқин регионга
+    кўчириш керак. Тахмин қилмаслик учун аниқ рақам.
+    """
+    try:
+        started = time.monotonic()
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+        elapsed_ms = (time.monotonic() - started) * 1000
+        logging.info("База кечикиши (SELECT 1): %.0f мс", elapsed_ms)
+        if elapsed_ms > 100:
+            logging.warning(
+                "⚠️ Базага ҳар бир сўров ~%.0f мс олмоқда. Бу жуда кўп — "
+                "база бот билан БИР ХИЛ регионда эмаслиги мумкин. Ҳар бир "
+                "фойдаланувчи амали бир нечта сўров қилади, шунинг учун "
+                "бу бевосита секинликка айланади.",
+                elapsed_ms
+            )
+    except Exception as e:
+        logging.debug(f"База кечикишини ўлчаб бўлмади: {e}")
 
 
 def _init_with_connection(conn):
