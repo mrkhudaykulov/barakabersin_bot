@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sqlite3
 
@@ -34,29 +35,30 @@ def _get_home_kb(user_id: int):
     return main_menu_admin() if user_id in ADMINS else main_menu()
 
 
-async def _add_group_admin_buttons_if_any(kb, user_id: int):
-    """
-    Агар фойдаланувчи бирор боғланган гуруҳда (ҳақиқий Telegram админи
-    сифатида) бўлса — "Менинг гуруҳларим"/"Мен блокладим" тугмаларини
-    қўшилган ЯНГИ клавиатура қайтаради. Бош ADMINS'га ҳам, оддий
-    фойдаланувчиларга ҳам бир хил тарзда ишлайди.
-
-    ⚠️ Келган `kb` ЎЗГАРТИРИЛМАЙДИ. Аввал kb.keyboard.append(...) орқали
-    тўғридан-тўғри ўзгартирилар эди — бу клавиатура объекти бирор жойда
-    кэшланса, гуруҳ админи тугмалари БАРЧА фойдаланувчиларга кўриниб
-    кетишига олиб келарди.
-    """
+async def _get_managed_groups(user_id: int):
+    """Фойдаланувчи тасдиқлаш ваколатига эга гуруҳлар (хатода — бўш рўйхат)."""
     try:
         # Модул handlers пакети ичида — аввал "from groups import ..."
         # деб ёзилган эди, бу ModuleNotFoundError берарди ва except
         # блоки уни ютиб юборарди: натижада бу тугмалар ҲЕЧ КИМГА,
         # ҳатто ҳақиқий гуруҳ админига ҳам кўринмаган.
         from handlers.groups import get_user_managed_groups
-        managed = await get_user_managed_groups(user_id)
+        return await get_user_managed_groups(user_id)
     except Exception:
         logging.exception("Гуруҳ админи тугмаларини аниқлаб бўлмади (user_id=%s)", user_id)
-        managed = []
+        return []
 
+
+def _with_group_admin_buttons(kb, managed):
+    """
+    `managed` бўш бўлмаса — "Менинг гуруҳларим"/"Мен блокладим"
+    тугмалари қўшилган ЯНГИ клавиатура қайтаради.
+
+    ⚠️ Келган `kb` ЎЗГАРТИРИЛМАЙДИ. Аввал kb.keyboard.append(...) орқали
+    тўғридан-тўғри ўзгартирилар эди — бу клавиатура объекти бирор жойда
+    кэшланса, гуруҳ админи тугмалари БАРЧА фойдаланувчиларга кўриниб
+    кетишига олиб келарди.
+    """
     if not managed:
         return kb
 
@@ -67,6 +69,11 @@ async def _add_group_admin_buttons_if_any(kb, user_id: int):
         ]],
         resize_keyboard=True
     )
+
+
+async def _add_group_admin_buttons_if_any(kb, user_id: int):
+    """Юқоридаги иккисининг қулай бирикмаси (кетма-кет чақириш учун)."""
+    return _with_group_admin_buttons(kb, await _get_managed_groups(user_id))
 
 
 def _get_ads_show_profile_summary():
@@ -221,26 +228,35 @@ async def onboarding_phone(message: types.Message, state: FSMContext):
 
 @router.message(Command("start"))
 async def start_cmd(message: types.Message, state: FSMContext):
-    await save_user(
-        user_id=message.from_user.id,
-        full_name=message.from_user.full_name,
-        username=message.from_user.username
-    )
+    user_id = message.from_user.id
 
-    await message.answer(
-        "Ассалому алайкум! Чорва бозор ботига хуш келибсиз!"
+    # Саломлашиш ва базадаги учта мустақил сўровни БИР ВАҚТДА бажарамиз.
+    # Аввал улар кетма-кет эди — ҳар бири узоқдаги базага/Telegram'га
+    # алоҳида боришни кутарди ва /start 6 сониягача чўзилиб кетарди
+    # (фойдаланувчи буни "бот жим" деб қабул қилади).
+    #
+    # save_user фақат исм/username'ни ёзади, get_user_profile эса
+    # вилоят/туман/телефонни ўқийди — улар бир-бирига боғлиқ эмас,
+    # шунинг учун параллел бажарса бўлади.
+    _, _, profile, managed = await asyncio.gather(
+        message.answer("Ассалому алайкум! Чорва бозор ботига хуш келибсиз!"),
+        save_user(
+            user_id=user_id,
+            full_name=message.from_user.full_name,
+            username=message.from_user.username
+        ),
+        get_user_profile(user_id),
+        _get_managed_groups(user_id),
     )
 
     # ═══ ПРОФИЛ ТЎЛИҚМИ? Бўлмаса — онбординг ═══
-    profile = await get_user_profile(message.from_user.id)
     if not (profile.get("region") and profile.get("district") and profile.get("phone")):
         # Профилни узатамиз — базадан қайта ўқилмасин
         await state.update_data(_onb_profile=profile)
         await _ask_next_onboarding_step(message, state, profile)
         return
 
-    kb = _get_home_kb(message.from_user.id)
-    kb = await _add_group_admin_buttons_if_any(kb, message.from_user.id)
+    kb = _with_group_admin_buttons(_get_home_kb(user_id), managed)
     await message.answer(
         "Керакли бўлимни менюдаги тугмаларда танланг!",
         reply_markup=kb

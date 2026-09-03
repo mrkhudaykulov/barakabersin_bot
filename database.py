@@ -19,10 +19,14 @@ _pg_pool = None
 _pg_pool_lock = threading.Lock()
 
 
-# Pool ҳажми: asyncio.to_thread'нинг стандарт thread pool'и 32 тагача
-# ипга эга, шунинг учун бир вақтда шунча DB сўрови бўлиши мумкин.
-PG_POOL_MIN = 1
-PG_POOL_MAX = int(os.getenv("PG_POOL_MAX", "32"))
+# ⚠️ MINCONN'нинг маъноси психологик кутилгандан бошқача: psycopg2
+# қайтарилган уланишни ФАҚАТ pool'да minconn'дан кам уланиш бўлса
+# сақлайди, акс ҳолда уни ҳақиқатан ЁПИБ юборади. minconn=1 бўлганда
+# демак бор-йўғи БИТТА уланиш иссиқ турарди — қолган ҳар бир сўров
+# яна TCP+TLS handshake қилиб, pool деярли фойда бермасди.
+# Шунинг учун minconn — иссиқ сақланадиган уланишлар сони.
+PG_POOL_MIN = int(os.getenv("PG_POOL_MIN", "5"))
+PG_POOL_MAX = int(os.getenv("PG_POOL_MAX", "20"))
 
 
 def _get_pg_pool():
@@ -34,7 +38,10 @@ def _get_pg_pool():
                 _pg_pool = pg_pool_module.ThreadedConnectionPool(
                     PG_POOL_MIN, PG_POOL_MAX, DATABASE_URL
                 )
-                logging.info("PostgreSQL pool яратилди (макс. %s уланиш).", PG_POOL_MAX)
+                logging.info(
+                    "PostgreSQL pool яратилди (иссиқ: %s, макс: %s уланиш).",
+                    PG_POOL_MIN, PG_POOL_MAX
+                )
     return _pg_pool
 
 
@@ -65,11 +72,10 @@ class _PooledConnection:
             return
         object.__setattr__(self, "_returned", True)
         try:
-            if not broken:
-                # Тугалланмаган транзакция (масалан, хатолик боис commit
-                # чақирилмаган ҳолат) кейинги фойдаланувчига ўтиб
-                # қолмаслиги учун поolга қайтаришдан олдин rollback.
-                self._conn.rollback()
+            # Тугалланмаган транзакцияни psycopg2'нинг ўзи putconn ичида
+            # тозалайди — фақат ҲАҚИҚАТАН транзакция очиқ бўлса rollback
+            # қилади. Бу ерда ўзимиз шартсиз rollback чақирсак, ҳар бир
+            # сўровга битта ортиқча тармоқ айланиши қўшилар эди.
             self._pool.putconn(self._conn, close=broken)
         except Exception:
             try:
