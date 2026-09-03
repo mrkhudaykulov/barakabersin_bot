@@ -137,8 +137,8 @@ async def remove_connected_group_callback(callback: types.CallbackQuery):
             "янгилаш учун \"🏘 Уланган гуруҳлар\"ни қайта босинг.</i>",
             parse_mode="HTML"
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logging.info("edit_text: бажарилмади (%s)", e)
 
 
 def _build_region_inline_kb(selected_regions=None):
@@ -353,8 +353,8 @@ async def add_review_admin_callback(callback: types.CallbackQuery):
         chat_info = await bot.get_chat(target_user_id)
         full_name = chat_info.full_name
         username = chat_info.username
-    except Exception:
-        pass
+    except Exception as e:
+        logging.info("get_chat: бажарилмади (%s)", e)
 
     await add_review_admin(
         target_user_id, full_name=full_name, username=username,
@@ -367,8 +367,8 @@ async def add_review_admin_callback(callback: types.CallbackQuery):
             callback.message.text + "\n\n✅ <b>REVIEW ADMIN сифатида қўшилди.</b>",
             parse_mode="HTML"
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logging.info("edit_text: бажарилмади (%s)", e)
 
 
 @router.message(Command("reviewadmins"))
@@ -474,8 +474,8 @@ async def remove_review_admin_callback(callback: types.CallbackQuery):
             parse_mode="HTML",
             reply_markup=None
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logging.info("edit_text: бажарилмади (%s)", e)
 
 
 @router.message(Command("viloyat"))
@@ -577,8 +577,8 @@ async def region_group_callback(callback: types.CallbackQuery):
     if region == "done":
         try:
             await callback.message.edit_text("✅ Созлаш якунланди. Раҳмат!")
-        except Exception:
-            pass
+        except Exception as e:
+            logging.info("edit_text: бажарилмади (%s)", e)
         return
 
     chat_title = callback.message.chat.title

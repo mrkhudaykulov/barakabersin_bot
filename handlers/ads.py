@@ -4,7 +4,7 @@ import logging
 
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
-from aiogram.exceptions import TelegramMigrateToChat
+from aiogram.exceptions import TelegramMigrateToChat, TelegramBadRequest
 from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo,
     InputMediaPhoto, InputMediaVideo
@@ -40,6 +40,20 @@ from handlers.ratelimit import fan_out
 
 router = Router()
 router.message.filter(F.chat.type == "private")  # гуруҳларда мену/кнопкалар КЎРИНМАСИН (callback'larga tegmaydi)
+
+
+async def _safe_edit_text(message, text: str) -> bool:
+    """
+    Хабар матнини таҳрирлайди. Тугма икки марта тез босилса (ёки хабар
+    аллақачон таҳрирланган/ўчирилган бўлса) Telegram хато қайтаради —
+    бу handler'ни йиқитмаслиги керак.
+    """
+    try:
+        await message.edit_text(text)
+        return True
+    except TelegramBadRequest as e:
+        logging.info(f"Хабарни таҳрирлаб бўлмади (эҳтимол такрорий босиш): {e}")
+        return False
 
 
 def _get_keyboard_texts(keyboard) -> set:
@@ -623,7 +637,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             f"Хабар ёзиш</a>"
         )
 
-    bot_info = await bot.get_me()
+    bot_info = await bot.me()
 
     price_display = html.escape(data.get('price_display', data['price']))
     mfy_display = html.escape(data.get('mfy') or "Кўрсатилмаган")
@@ -751,8 +765,8 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
                 "⚠️ Хатолик юз берди. Илтимос, бироздан сўнг қайта уриниб кўринг.",
                 reply_markup=main_menu()
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logging.info("answer: бажарилмади (%s)", e)
 
     await state.clear()
 
@@ -1030,7 +1044,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
 
     user_id, a_type, qty, price, price_disp, desc, region, dist, mfy, phone, username = ad
 
-    bot_info = await bot.get_me()
+    bot_info = await bot.me()
     group_links = await get_public_group_links_for_region(region)
 
     caption = build_full_ad_caption(
@@ -1289,8 +1303,8 @@ async def reject_ad_callback(callback: types.CallbackQuery):
                     ),
                     parse_mode="Markdown"
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logging.info("send_message: бажарилмади (%s)", e)
 
             # Админларга фойдаланувчи блоклангани ҳақида хабар бериш
             for admin_id in await get_all_review_admin_ids():
@@ -1301,8 +1315,8 @@ async def reject_ad_callback(callback: types.CallbackQuery):
                         chat_id=admin_id,
                         text=f"🚫 Фойдаланувчи ID:{user_id} блокланди ({count} марта рад)"
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.info("send_message: бажарилмади (%s)", e)
 
         # ═══ 2-ХОЛАТ: ОДДИЙ РАД ЭТИШ (Блок эмас, уринишлар бор) ═══
         else:
@@ -1322,8 +1336,8 @@ async def reject_ad_callback(callback: types.CallbackQuery):
                     ),
                     parse_mode="Markdown"
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logging.info("send_message: бажарилмади (%s)", e)
 
     # ═══ БАРЧА АДМИНЛАРДАГИ REVIEW ХАБАРНИ ЎЧИРИШ (базада эмас, faqat chatdan) ═══
     await _clear_all_admin_review_messages(ad_id)
@@ -1375,8 +1389,8 @@ async def block_user_callback(callback: types.CallbackQuery):
             ),
             parse_mode="Markdown"
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logging.info("send_message: бажарилмади (%s)", e)
 
     # ═══ БАРЧА АДМИНЛАРДАГИ REVIEW ХАБАРНИ ЎЧИРИШ ═══
     await _clear_all_admin_review_messages(ad_id)
@@ -1611,7 +1625,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
             except Exception:
                 await callback.answer("Постни таҳрирлаб бўлмади.")
         else:
-            await callback.message.edit_text("✅ Эълон 'Сотилди' ҳолатига ўтказилди (каналдаги ИД топилмаганлиги сабабли).")
+            await _safe_edit_text(callback.message, "✅ Эълон 'Сотилди' ҳолатига ўтказилди (каналдаги ИД топилмаганлиги сабабли).")
 
         # ═══ ГУРУҲЛАРДАГИ НУСХАЛАРНИ ҲАМ ЯНГИЛАШ ═══
         await _mark_ad_sold_in_all_groups(int(ad_id), a_type, qty, price, region, dist)
@@ -1620,19 +1634,21 @@ async def handle_ad_action(callback: types.CallbackQuery):
         def _mark_deleted_sync():
             p = get_placeholder()
             conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute(f"UPDATE ads SET status = 'deleted' WHERE id = {p}", (ad_id,))
-            conn.commit()
-            conn.close()
+            try:
+                cursor = conn.cursor()
+                cursor.execute(f"UPDATE ads SET status = 'deleted' WHERE id = {p}", (ad_id,))
+                conn.commit()
+            finally:
+                conn.close()
 
         await asyncio.to_thread(_mark_deleted_sync)
 
         for msg_id in msg_ids:
             try:
                 await bot.delete_message(chat_id=CHANNEL_ID, message_id=msg_id)
-            except Exception:
-                pass
-        await callback.message.edit_text("❌ Эълон каналдан бутунлай ўчирилди.")
+            except Exception as e:
+                logging.info(f"Каналдан хабар ({msg_id}) ўчирилмади: {e}")
+        await _safe_edit_text(callback.message, "❌ Эълон каналдан бутунлай ўчирилди.")
 
         # ═══ ГУРУҲЛАРДАГИ НУСХАЛАРНИ ҲАМ ЎЧИРИШ ═══
         await _delete_ad_from_all_groups(int(ad_id))
@@ -1655,7 +1671,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
             return rows
 
         media_list_db = await asyncio.to_thread(_fetch_media_sync)
-        bot_info = await bot.get_me()
+        bot_info = await bot.me()
 
         new_caption = (
             f"#️⃣ <b>#{html.escape(a_type)}</b>\n"
@@ -1695,8 +1711,8 @@ async def handle_ad_action(callback: types.CallbackQuery):
             for old_msg_id in msg_ids:
                 try:
                     await bot.delete_message(chat_id=CHANNEL_ID, message_id=old_msg_id)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.info("delete_message: бажарилмади (%s)", e)
 
             new_msg_str = ",".join(new_msg_ids)
             await repost_ad(int(ad_id))

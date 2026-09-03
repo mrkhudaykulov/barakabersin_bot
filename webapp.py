@@ -58,6 +58,18 @@ MAX_MEDIA_FILES = 10               # Telegram media group'нинг макс. ҳ�
 MAX_TOTAL_UPLOAD_BYTES = 100 * 1024 * 1024
 MAX_FIELD_BYTES = 64 * 1024        # оддий матн майдонлари учун етарли
 
+# Фон вазифаларига кучли ҳавола (акс ҳолда GC уларни йўқ қилиши мумкин)
+_background_tasks = set()
+
+
+def _log_task_exception(task: "asyncio.Task"):
+    """Фон вазифасидаги хатолик жимгина йўқолмаслиги учун."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logging.error("Mini App фон вазифасида хатолик", exc_info=exc)
+
 
 # ═══════════════════════════════════════
 # TELEGRAM initData ТЕКШИРУВИ
@@ -134,7 +146,7 @@ async def api_profile(request: web.Request):
         return _unauthorized()
 
     profile = await get_user_profile(user["id"])
-    bot_info = await bot.get_me()
+    bot_info = await bot.me()
     return web.json_response({
         "ok": True,
         "profile": profile,
@@ -473,7 +485,7 @@ async def _api_submit_ad_inner(request: web.Request):
     # ═══ ФОЙДАЛАНУВЧИГА ДАРҲОЛ ЖАВОБ (kutish kerak bo'lmasin) ═══
     # Қолган БАРЧА секин иш (reviewer/guruhларга юбориш, ad_media, профиль,
     # фойдаланувчига хабар) — фон режимида, HTTP javobidan KEYIN davom etadi.
-    asyncio.create_task(
+    task = asyncio.create_task(
         _process_ad_after_insert(
             ad_id=ad_id,
             fields_clean=fields_clean,
@@ -490,6 +502,13 @@ async def _api_submit_ad_inner(request: web.Request):
             mfy=mfy,
         )
     )
+    # Фон вазифасига ҳавола сақланмаса, GC уни ярим йўлда тўхтатиши мумкин;
+    # хатолиги ҳам ҳеч ким ўқимаган "Task exception was never retrieved"
+    # бўлиб қолар эди. Шунинг учун ҳаволани ушлаб турамиз ва хатони логга
+    # ёзамиз.
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    task.add_done_callback(_log_task_exception)
 
     return web.json_response({"ok": True})
 
@@ -516,17 +535,22 @@ async def _process_ad_after_insert(
     def _save_ad_media_sync():
         p = get_placeholder()
         conn = get_connection()
-        cursor = conn.cursor()
-        for media in media_files:
-            if media.get("file_id"):
-                cursor.execute(f"""
-                    INSERT INTO ad_media (ad_id, media_type, file_id)
-                    VALUES ({p}, {p}, {p})
-                """, (ad_id, media["type"], media["file_id"]))
-        conn.commit()
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            for media in media_files:
+                if media.get("file_id"):
+                    cursor.execute(f"""
+                        INSERT INTO ad_media (ad_id, media_type, file_id)
+                        VALUES ({p}, {p}, {p})
+                    """, (ad_id, media["type"], media["file_id"]))
+            conn.commit()
+        finally:
+            conn.close()
 
-    await asyncio.to_thread(_save_ad_media_sync)
+    try:
+        await asyncio.to_thread(_save_ad_media_sync)
+    except Exception:
+        logging.exception(f"Mini App: ad_media сақлашда хатолик (ad_id={ad_id})")
 
     # ═══ ФОЙДАЛАНУВЧИГА ХАБАР (bot orqali, chunki bu HTTP so'rov, message emas) ═══
     try:
