@@ -3,8 +3,7 @@ scheduler.py — Фонда ишлайдиган вазифалар
 
 Вазифалар:
 1. Ҳар куни соат 10:00 да муддати 2 кун қолган эълонлар эгасига эслатма
-2. Ҳар куни соат 09:00 да муддати 7 кун қолган эълонлар эгасига огоҳлантириш
-3. Ҳар соатда муддати ўтган эълонларни 'expired' статусига ўтказиш
+2. Ҳар 2 соатда муддати ўтган эълонларни архивлаш
 
 Ишга тушириш: main.py дан asyncio.create_task(start_scheduler(bot)) орқали
 """
@@ -18,6 +17,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database import get_expiring_ads, get_expired_ads, archive_ad, contains_bad_word, AD_EXPIRE_DAYS
 from config import CHANNEL_ID
+from handlers.ratelimit import fan_out
 
 logger = logging.getLogger(__name__)
 
@@ -40,41 +40,48 @@ def repost_keyboard(ad_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
-async def send_expiry_reminder(bot: Bot, days_left: int):
+async def send_expiry_reminder(bot: Bot, days_left: int = 2):
     """
     Муддати days_left кун қолган эълон эгаларига хабар юбориш.
+
+    ⚠️ Аввал бу функция days_left аргументини умуман ишлатмасдан доим
+    get_expiring_ads(2) чақирарди, устига уни чақирувчи вазифа
+    аргументсиз чақирар эди — яъни ҳар куни соат 10:00 да TypeError
+    билан йиқилиб, эслатмалар ҲЕЧ ҚАЧОН юборилмаган.
     """
-    ads = await get_expiring_ads(2)
+    ads = await get_expiring_ads(days_left)
     if not ads:
-        logger.info(f"[Scheduler] 2 кун қолган эълон йўқ.")
+        logger.info(f"[Scheduler] {days_left} кун қолган эълон йўқ.")
         return
 
-    logger.info(f"[Scheduler] 2 кун қолган {len(ads)} та эълон учун эслатма юборилмоқда...")
+    logger.info(
+        f"[Scheduler] {days_left} кун қолган {len(ads)} та эълон учун "
+        f"эслатма юборилмоқда..."
+    )
 
-    for ad in ads:
+    async def _remind_one(ad):
         ad_id, user_id, animal_type, quantity, price, msg_id = ad
-        try:
-            text = (
-                f"🔴 <b>Эълон муддати ОХИРГИ 2 кун қолди!</b>\n\n"
-                f"📦 <b>{animal_type}</b> — {quantity}\n"
-                f"💰 <b>Нарх:</b> {price}\n\n"
-                f"💎 <b>Премиум</b> аъзолар эълонни "
-                f"каналга қайта жойлашлари мумкин."
-                f"\n\n⚠️ Муддат ўтса эълон "
-                f"каналдан архивланади!"
-            )
+        text = (
+            f"🔴 <b>Эълон муддати ОХИРГИ {days_left} кун қолди!</b>\n\n"
+            f"📦 <b>{animal_type}</b> — {quantity}\n"
+            f"💰 <b>Нарх:</b> {price}\n\n"
+            f"💎 <b>Премиум</b> аъзолар эълонни "
+            f"каналга қайта жойлашлари мумкин."
+            f"\n\n⚠️ Муддат ўтса эълон "
+            f"каналдан архивланади!"
+        )
+        await bot.send_message(
+            chat_id=user_id,
+            text=text,
+            parse_mode="HTML",
+            reply_markup=repost_keyboard(ad_id)
+        )
+        return True
 
-            await bot.send_message(
-                chat_id=user_id,
-                text=text,
-                parse_mode="HTML",
-                reply_markup=repost_keyboard(ad_id)
-            )
-            # Spam-ga tushmaslik uchun kichik kutish
-            await asyncio.sleep(0.1)
-
-        except Exception as e:
-            logger.warning(f"[Scheduler] user_id={user_id} га хабар юбориб бўлмади: {e}")
+    results = await fan_out(_remind_one, ads, description="Муддат эслатмаси")
+    logger.info(
+        f"[Scheduler] {sum(1 for r in results if r)}/{len(ads)} та эслатма юборилди."
+    )
 
 
 async def archive_expired_ads(bot: Bot):
@@ -150,20 +157,32 @@ async def seconds_until(hour: int, minute: int = 0) -> float:
 # АСОСИЙ SCHEDULER LOOP
 # ═══════════════════════════════════════
 
+async def _safe(coro_factory, name: str):
+    """
+    Вазифанинг бир мартаlik ишини хатоликдан ҳимоялайди — акс ҳолда
+    битта хатолик бутун цикл вазифасини (ва у билан бирга кундалик
+    эслатмаларни) бутунлай ўлдирар эди.
+    """
+    try:
+        await coro_factory()
+    except Exception:
+        logger.exception(f"[Scheduler] '{name}' вазифасида хатолик")
+
+
 async def task_2day_reminder(bot: Bot):
-    """Ҳар куни соат 10:00 да 2 кун қолган эълонларга огоҳлантириш"""
+    """Ҳар куни соат 10:00 да 2 кун қолган эълонларга огоҳлантириш."""
     while True:
         wait = await seconds_until(hour=10, minute=0)
         logger.info(f"[Scheduler] 2-кун эслатмаси {wait/3600:.1f} соатдан кейин.")
         await asyncio.sleep(wait)
-        await send_expiry_reminder(bot)
+        await _safe(lambda: send_expiry_reminder(bot, days_left=2), "2-кун эслатмаси")
 
 
 async def task_archive_expired(bot: Bot):
     """Ҳар куни муддати ўтган эълонларни архивлаш"""
     while True:
         await asyncio.sleep(7200)  # 2 соат
-        await archive_expired_ads(bot)
+        await _safe(lambda: archive_expired_ads(bot), "Архивлаш")
 
 
 async def start_scheduler(bot: Bot):
@@ -175,10 +194,11 @@ async def start_scheduler(bot: Bot):
     logger.info("[Scheduler] Барча вазифалар ишга тушди.")
 
     # Бот ишга тушгандаёқ муддати ўтганларни архивлаш
-    await archive_expired_ads(bot)
+    await _safe(lambda: archive_expired_ads(bot), "Бошланғич архивлаш")
 
-    # Параллел вазифалар
+    # Параллел вазифалар — биттаси йиқилса, бошқаси давом этсин
     await asyncio.gather(
         task_2day_reminder(bot),
         task_archive_expired(bot),
+        return_exceptions=True,
     )

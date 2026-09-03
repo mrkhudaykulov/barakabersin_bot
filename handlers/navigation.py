@@ -16,7 +16,7 @@ from keyboards import (
     admin_prices_keyboard, admin_block_keyboard, admin_premium_keyboard,
     vet_contact_result_keyboard, vet_action_type_keyboard, vet_role_type_keyboard,
     vet_comment_keyboard, market_analysis_menu, price_index_keyboard,
-    phone_keyboard
+    phone_keyboard, REGIONS, DISTRICTS
 )
 from states import (
     AdStates, CalcStates, SearchStates, PriceInputStates, NotifyStates,
@@ -36,35 +36,57 @@ def _get_home_kb(user_id: int):
 
 async def _add_group_admin_buttons_if_any(kb, user_id: int):
     """
-    Агар фойдаланувчи биror боғланган гуруҳда (ҳақиқий Telegram админи
+    Агар фойдаланувчи бирор боғланган гуруҳда (ҳақиқий Telegram админи
     сифатида) бўлса — "Менинг гуруҳларим"/"Мен блокладим" тугмаларини
-    мавжуд клавиатурага қўшиб қайтаради. Бош ADMINS'га ҳам, оддий
-    фойдаланувчиларга ҳам бир xil tarzda ishlaydi.
+    қўшилган ЯНГИ клавиатура қайтаради. Бош ADMINS'га ҳам, оддий
+    фойдаланувчиларга ҳам бир хил тарзда ишлайди.
+
+    ⚠️ Келган `kb` ЎЗГАРТИРИЛМАЙДИ. Аввал kb.keyboard.append(...) орқали
+    тўғридан-тўғри ўзгартирилар эди — бу клавиатура объекти бирор жойда
+    кэшланса, гуруҳ админи тугмалари БАРЧА фойдаланувчиларга кўриниб
+    кетишига олиб келарди.
     """
     try:
-        from groups import get_user_managed_groups
+        # Модул handlers пакети ичида — аввал "from groups import ..."
+        # деб ёзилган эди, бу ModuleNotFoundError берарди ва except
+        # блоки уни ютиб юборарди: натижада бу тугмалар ҲЕЧ КИМГА,
+        # ҳатто ҳақиқий гуруҳ админига ҳам кўринмаган.
+        from handlers.groups import get_user_managed_groups
         managed = await get_user_managed_groups(user_id)
     except Exception:
+        logging.exception("Гуруҳ админи тугмаларини аниқлаб бўлмади (user_id=%s)", user_id)
         managed = []
-    if managed:
-        kb.keyboard.append([
+
+    if not managed:
+        return kb
+
+    return ReplyKeyboardMarkup(
+        keyboard=[list(row) for row in kb.keyboard] + [[
             KeyboardButton(text="🏘 Менинг гуруҳларим"),
             KeyboardButton(text="🚫 Мен блокладим"),
-        ])
-    return kb
+        ]],
+        resize_keyboard=True
+    )
+
 
 def _get_ads_show_profile_summary():
     """Айланма импортни олдини олиш учун lazy import."""
-    from ads import _show_profile_summary
+    from handlers.ads import _show_profile_summary
     return _show_profile_summary
 
-async def _ask_next_onboarding_step(message: types.Message, state: FSMContext):
+async def _ask_next_onboarding_step(message: types.Message, state: FSMContext,
+                                    profile: dict | None = None):
     """
     Профилда етишмаган биринчи майдонни сўрайди.
     Ҳаммаси тўлдирилган бўлса — онбординг тугайди, бош меню кўрсатилади.
+
+    `profile` берилса — базадан қайта ўқилмайди. Ҳар бир онбординг
+    қадамидан кейин базага такрор мурожаат қилмаслик учун чақирувчи
+    ўзи билган (ҳозиргина ёзилган) профилни узатади.
     """
-    profile = await get_user_profile(message.from_user.id)
- 
+    if profile is None:
+        profile = await get_user_profile(message.from_user.id)
+
     if not profile.get("region"):
         await state.set_state(OnboardingStates.region)
         await message.answer(
@@ -108,57 +130,92 @@ async def _ask_next_onboarding_step(message: types.Message, state: FSMContext):
     )
  
  
+# ЭСЛАТМА: "🔙 Орқага" ва "❌ Бекор қилиш" тугмаларини қуйидаги
+# handlerлар эмас, шу файлдаги ГЛОБАЛ global_back_handler /
+# global_cancel_handler ушлайди (navigation роутери ads/vet'дан олдин
+# уланган). Шунинг учун бу ерда уларни такрор текшириш шарт эмас —
+# аммо ҳар бир қадам киритилган матнни ВАЛИДАЦИЯ қилади, шунда
+# роутерлар тартиби ўзгарса ҳам базага ахлат маълумот тушмайди.
+
+async def _onboarding_profile(message: types.Message, state: FSMContext) -> dict:
+    """Онбординг давомида FSM'да сақланаётган профиль нусхаси."""
+    data = await state.get_data()
+    profile = data.get("_onb_profile")
+    if not profile:
+        profile = await get_user_profile(message.from_user.id)
+    return dict(profile)
+
+
+async def _onboarding_advance(message: types.Message, state: FSMContext, **updates):
+    """Битта майдонни базага ёзиб, кейинги қадамга ўтади."""
+    profile = await _onboarding_profile(message, state)
+    profile.update(updates)
+    await save_user(user_id=message.from_user.id, **updates)
+    await state.update_data(_onb_profile=profile)
+    await _ask_next_onboarding_step(message, state, profile)
+
+
 @router.message(OnboardingStates.region)
 async def onboarding_region(message: types.Message, state: FSMContext):
-    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
-        await state.clear()
-        await message.answer("Асосий менюга ўтдингиз. Маълумотингизни "
-                              "истаган вақтда эълон беришда тўлдиришингиз мумкин.",
-                              reply_markup=_get_home_kb(message.from_user.id))
+    fixed = fix_keyboard_text((message.text or "").strip())
+    if fixed not in REGIONS:
+        # Аввал ҳар қандай матн (масалан "asdf") вилоят сифатида
+        # сақланарди — кейин вет/нарх/эълон қидируви ҳеч нарса топмасди.
+        await message.answer(
+            "⚠️ Илтимос, пастдаги тугмалардан вилоятни танланг:",
+            reply_markup=regions_keyboard()
+        )
         return
-    fixed = fix_keyboard_text(message.text)
-    await save_user(user_id=message.from_user.id, region=fixed)
-    await _ask_next_onboarding_step(message, state)
- 
- 
+    await _onboarding_advance(message, state, region=fixed)
+
+
 @router.message(OnboardingStates.district)
 async def onboarding_district(message: types.Message, state: FSMContext):
-    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
-        await state.clear()
-        await message.answer("Асосий менюга ўтдингиз.",
-                              reply_markup=_get_home_kb(message.from_user.id))
+    profile = await _onboarding_profile(message, state)
+    region = profile.get("region")
+    fixed = fix_keyboard_text((message.text or "").strip())
+
+    valid_districts = DISTRICTS.get(region)
+    if valid_districts and fixed not in valid_districts:
+        await message.answer(
+            "⚠️ Илтимос, пастдаги тугмалардан туманни танланг:",
+            reply_markup=districts_keyboard(region)
+        )
         return
-    fixed = fix_keyboard_text(message.text)
-    await save_user(user_id=message.from_user.id, district=fixed)
-    await _ask_next_onboarding_step(message, state)
- 
- 
+    if not fixed:
+        await message.answer(
+            "⚠️ Илтимос, туманни тугмалардан танланг:",
+            reply_markup=districts_keyboard(region)
+        )
+        return
+    await _onboarding_advance(message, state, district=fixed)
+
+
 @router.message(OnboardingStates.mfy)
 async def onboarding_mfy(message: types.Message, state: FSMContext):
-    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
-        await state.clear()
-        await message.answer("Асосий менюга ўтдингиз.",
-                              reply_markup=_get_home_kb(message.from_user.id))
+    # message.text расм/стикер/овозли хабарда None бўлади — аввал
+    # шу ерда .strip() чақирилиб, handler AttributeError билан йиқиларди.
+    mfy = (message.text or "").strip()
+    if len(mfy) < 2:
+        await message.answer(
+            "⚠️ МФЙ номини матн кўринишида ёзинг (камида 2 та ҳарф):",
+            reply_markup=standard_step_keyboard()
+        )
         return
-    await save_user(user_id=message.from_user.id, mfy=message.text.strip())
-    await _ask_next_onboarding_step(message, state)
- 
- 
-@router.message(OnboardingStates.phone, F.contact | F.text)
+    await _onboarding_advance(message, state, mfy=mfy)
+
+
+@router.message(OnboardingStates.phone)
 async def onboarding_phone(message: types.Message, state: FSMContext):
-    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
-        await state.clear()
-        await message.answer("Асосий менюга ўтдингиз.",
-                              reply_markup=_get_home_kb(message.from_user.id))
-        return
- 
-    phone = message.contact.phone_number if message.contact else message.text
+    phone = message.contact.phone_number if message.contact else (message.text or "")
     if not any(ch.isdigit() for ch in phone):
-        await message.answer("⚠️ Илтимос, телефон рақамини тўғри форматда юборинг.")
+        await message.answer(
+            "⚠️ Илтимос, телефон рақамини юборинг — пастдаги тугма орқали "
+            "ёки матн кўринишида (масалан: +998901234567).",
+            reply_markup=phone_keyboard()
+        )
         return
- 
-    await save_user(user_id=message.from_user.id, phone=phone)
-    await _ask_next_onboarding_step(message, state)
+    await _onboarding_advance(message, state, phone=phone)
  
 
 
@@ -177,7 +234,9 @@ async def start_cmd(message: types.Message, state: FSMContext):
     # ═══ ПРОФИЛ ТЎЛИҚМИ? Бўлмаса — онбординг ═══
     profile = await get_user_profile(message.from_user.id)
     if not (profile.get("region") and profile.get("district") and profile.get("phone")):
-        await _ask_next_onboarding_step(message, state)
+        # Профилни узатамиз — базадан қайта ўқилмасин
+        await state.update_data(_onb_profile=profile)
+        await _ask_next_onboarding_step(message, state, profile)
         return
 
     kb = _get_home_kb(message.from_user.id)
@@ -412,15 +471,9 @@ async def global_back_handler(message: types.Message, state: FSMContext):
         return
 
     # ═══ Бозор таҳлили субменюси ═══
-    elif current_state == CalcStates.menu.state:
-        await state.set_state(MarketStates.menu)
-        await message.answer(
-            "📊 Бозор таҳлили бўлимига қайтдингиз:",
-            reply_markup=market_analysis_menu()
-        )
-        return
-
-    elif current_state == PriceIndexStates.menu.state:
+    # Калькулятор ҳам, нархлар индекси ҳам шу менюдан кирилади —
+    # иккаласидан "Орқага" бир жойга, Бозор таҳлилига қайтаради.
+    elif current_state in (CalcStates.menu.state, PriceIndexStates.menu.state):
         await state.set_state(MarketStates.menu)
         await message.answer(
             "📊 Бозор таҳлили бўлимига қайтдингиз:",

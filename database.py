@@ -2,6 +2,7 @@ import re
 import os
 import logging
 import asyncio
+import threading
 from contextlib import contextmanager
 
 
@@ -11,12 +12,59 @@ from contextlib import contextmanager
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# PostgreSQL учун connection pool — ҳар бир сўровда янги TCP/TLS
+# уланиш очиш (~1-2 сония) /start ва бошқа ҳар бир amalни сезиларли
+# секинлаштирган эди (лог: ҳар бир update ~3.7 сония давом этарди).
+_pg_pool = None
+_pg_pool_lock = threading.Lock()
+
+
+def _get_pg_pool():
+    global _pg_pool
+    if _pg_pool is None:
+        with _pg_pool_lock:
+            if _pg_pool is None:
+                from psycopg2 import pool as pg_pool_module
+                _pg_pool = pg_pool_module.ThreadedConnectionPool(1, 10, DATABASE_URL)
+    return _pg_pool
+
+
+class _PooledConnection:
+    """
+    Pool'дан олинган psycopg2 connection'ни ўраб туради — .close()
+    чақирилганда уни ҳақиқатан ёпиш ўрниga poolga қайтаради, шунда
+    кейинги сўров учун қайта ишлатилади. Бошқа барча чақириқлар
+    (cursor(), commit(), rollback() ва ҳ.к.) ҳақиқий connection'га
+    ўзгаришсиз ўтказилади.
+    """
+    __slots__ = ("_conn", "_pool")
+
+    def __init__(self, conn, pool):
+        object.__setattr__(self, "_conn", conn)
+        object.__setattr__(self, "_pool", pool)
+
+    def close(self):
+        try:
+            # Тугалланмаган транзакция (масалан, хатолик боис commit
+            # чақирилмаган ҳолат) кейинги фойдаланувчига ўтиб қолмаслиги
+            # учун poolga қайтаришдан олдин ҳар доим rollback қиламиз.
+            self._conn.rollback()
+            self._pool.putconn(self._conn)
+        except Exception:
+            try:
+                self._pool.putconn(self._conn, close=True)
+            except Exception:
+                pass
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
 
 def get_connection():
     """PostgreSQL yoki SQLite — qaysi biri bor bo'lsa"""
     if DATABASE_URL:
-        import psycopg2
-        return psycopg2.connect(DATABASE_URL)
+        pool = _get_pg_pool()
+        return _PooledConnection(pool.getconn(), pool)
     else:
         import sqlite3
         return sqlite3.connect("chorva.db")
@@ -45,6 +93,24 @@ def get_placeholder():
     return "%s" if DATABASE_URL else "?"
 
 
+def _try_create_indexes(cursor, conn, statements):
+    """
+    Индексларни битталаб яратади: биттаси хато берса (масалан жадвал
+    ҳали йўқ), қолганлари барибир яратилаверади.
+    CREATE INDEX IF NOT EXISTS синтаксиси PostgreSQL ва SQLite'да бир хил.
+    """
+    for sql in statements:
+        try:
+            cursor.execute(sql)
+            conn.commit()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logging.debug(f"Индекс (ўтказиб юборилди): {e}")
+
+
 # ═══════════════════════════════════════
 # ⚠️ Chegaralar
 
@@ -60,6 +126,21 @@ AD_EXPIRE_DAYS = 7
 
 def _sync_init_db():
     conn = get_connection()
+    try:
+        _init_with_connection(conn)
+    finally:
+        conn.close()
+
+    # Мавжуд базани янги устунлар билан янгилаш
+    _sync_migrate_db()
+
+    logging.info(
+        "Baza yaratildi (PostgreSQL)" if DATABASE_URL
+        else "Baza yaratildi (SQLite)"
+    )
+
+
+def _init_with_connection(conn):
     cursor = conn.cursor()
 
     if DATABASE_URL:
@@ -276,15 +357,7 @@ def _sync_init_db():
         """)
 
     conn.commit()
-    conn.close()
 
-    # Мавжуд базани янги устунлар билан янгилаш
-    _sync_migrate_db()
-
-    logging.info(
-        "Baza yaratildi (PostgreSQL)" if DATABASE_URL
-        else "Baza yaratildi (SQLite)"
-    )
 
 async def init_db(*args, **kwargs):
     return await asyncio.to_thread(_sync_init_db, *args, **kwargs)
@@ -295,7 +368,16 @@ def _sync_migrate_db():
     Мавжуд базага янги устунларни хавфсиз қўшиш.
     Бот аллақачон ишлаётган бўлса ҳам хатосиз ишлайди.
     """
+    # try/finally — миграция ярмида хатолик чиқса ҳам уланиш poolga
+    # қайтарилиши (ёки ёпилиши) кафолатланади.
     conn = get_connection()
+    try:
+        _migrate_with_connection(conn)
+    finally:
+        conn.close()
+
+
+def _migrate_with_connection(conn):
     cursor = conn.cursor()
 
     migrations = []
@@ -316,6 +398,7 @@ def _sync_migrate_db():
             "ALTER TABLE notifications ADD CONSTRAINT unique_notification UNIQUE (user_id, animal_type, region, district, min_price, max_price)",            
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS reviewed_by BIGINT",
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS price_display TEXT",
+            "ALTER TABLE ads ADD COLUMN IF NOT EXISTS price_num BIGINT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS rejection_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP",
@@ -370,6 +453,7 @@ def _sync_migrate_db():
             "ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",                  
             "ALTER TABLE ads ADD COLUMN reviewed_by INTEGER",
             "ALTER TABLE ads ADD COLUMN price_display TEXT",
+            "ALTER TABLE ads ADD COLUMN price_num INTEGER",
             "ALTER TABLE users ADD COLUMN rejection_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN blocked_at TIMESTAMP",
@@ -406,11 +490,132 @@ def _sync_migrate_db():
             try:
                 cursor.execute(sql)
                 conn.commit()
-            except Exception:                
+            except Exception:
                 pass
 
-    conn.close()
+    # ═══ ИНДЕКСЛАР ═══
+    # Аввал битта ҳам индекс йўқ эди — ҳар бир қидирув, админ рўйхати
+    # ва scheduler сўрови бутун жадвални тўлиқ ўқирди (full scan). Эълонлар
+    # сони ошган сайин бу энг катта секинлик манбаига айланади.
+    # Синтаксис PostgreSQL ва SQLite'да бир xil.
+    index_migrations = [
+        "CREATE INDEX IF NOT EXISTS idx_ads_status ON ads (status)",
+        "CREATE INDEX IF NOT EXISTS idx_ads_user_id ON ads (user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ads_expires_at ON ads (expires_at)",
+        "CREATE INDEX IF NOT EXISTS idx_ads_created_at ON ads (created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_ads_status_animal ON ads (status, animal_type)",
+        "CREATE INDEX IF NOT EXISTS idx_ads_status_region ON ads (status, region)",
+        "CREATE INDEX IF NOT EXISTS idx_ad_media_ad_id ON ad_media (ad_id)",
+        "CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_notifications_animal_region ON notifications (animal_type, region)",
+        "CREATE INDEX IF NOT EXISTS idx_market_prices_animal ON market_prices (animal_type)",
+        "CREATE INDEX IF NOT EXISTS idx_market_prices_created_at ON market_prices (created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_vet_suggestions_status ON vet_suggestions (status)",
+        "CREATE INDEX IF NOT EXISTS idx_ads_animal_price ON ads (animal_type, price_num)",
+    ]
+    # Гуруҳ/блок жадваллари керак бўлганда яратилади — уларнинг индекслари
+    # ўша жадвал яратиладиган _ensure_*_table() функцияларида қўшилади.
+    _try_create_indexes(cursor, conn, index_migrations)
+
+    _add_ad_foreign_keys(cursor, conn)
+    _backfill_price_num(cursor, conn)
+
     logging.info("Миграция тугади.")
+
+
+def _add_ad_foreign_keys(cursor, conn):
+    """
+    Эълонга боғлиқ ёрдамчи жадвалларга ON DELETE CASCADE қўшади.
+
+    Нима учун фақат шу иккитаси: эълон ўчирилганда ad_group_posts
+    қаторлари ҳеч қачон тозаланмас эди (жадвалда "етим" қаторлар
+    тўпланарди). Бу иккала жадвалга ёзув доим ҳозиргина яратилган
+    эълон учун қўшилади, шунинг учун чеклов янги хатолик манбаи
+    бўлмайди.
+
+    ⚠️ ads.user_id → users.user_id БИЛА ТУРИБ қўшилмади: у эълон
+    сақлашнинг ЯНГИ йиқилиш йўлини очарди (users'да қатор бўлмаса,
+    эълон умуман сақланмасди). SQLite мавжуд жадвалга чеклов
+    қўшишни умуман қўллаб-қувватламайди — у ерда фақат етим
+    қаторлар тозаланади.
+    """
+    # Аввал мавжуд етим қаторларни тозалаймиз (иккала базада ҳам)
+    cleanups = [
+        "DELETE FROM admin_review_messages WHERE ad_id NOT IN (SELECT id FROM ads)",
+        "DELETE FROM ad_group_posts WHERE ad_id NOT IN (SELECT id FROM ads)",
+    ]
+    for sql in cleanups:
+        try:
+            cursor.execute(sql)
+            if cursor.rowcount and cursor.rowcount > 0:
+                logging.info(f"Етим қаторлар тозаланди: {cursor.rowcount} та ({sql[12:40]}...)")
+            conn.commit()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logging.debug(f"Тозалаш ўтказиб юборилди: {e}")
+
+    if not DATABASE_URL:
+        # SQLite мавжуд жадвалга FOREIGN KEY қўша олмайди
+        return
+
+    constraints = [
+        """ALTER TABLE admin_review_messages
+           ADD CONSTRAINT fk_arm_ad FOREIGN KEY (ad_id)
+           REFERENCES ads (id) ON DELETE CASCADE""",
+        """ALTER TABLE ad_group_posts
+           ADD CONSTRAINT fk_agp_ad FOREIGN KEY (ad_id)
+           REFERENCES ads (id) ON DELETE CASCADE""",
+    ]
+    for sql in constraints:
+        try:
+            cursor.execute(sql)
+            conn.commit()
+            logging.info("Foreign key қўшилди.")
+        except Exception as e:
+            # Аллақачон мавжуд бўлса — оддий ҳол
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logging.debug(f"Foreign key (ўтказиб юборилди): {e}")
+
+
+def _backfill_price_num(cursor, conn):
+    """
+    ads.price матн сифатида сақланади ("5 000 000", "5 mln", ...), шунинг
+    учун ҳар бир нарх статистикаси бутун жадвални ўқиб, ҳар қаторни
+    Python'да таҳлил қиларди. Энди рақамли price_num устуни бор — бу
+    функция ЭСКИ қаторларни бир марта тўлдиради (price_num IS NULL
+    бўлганларини), кейинги ишга туширишларда ҳеч нарса қилмайди.
+    """
+    p = get_placeholder()
+    try:
+        cursor.execute("SELECT id, price FROM ads WHERE price_num IS NULL")
+        rows = cursor.fetchall()
+    except Exception as e:
+        logging.debug(f"price_num backfill ўтказиб юборилди: {e}")
+        return
+
+    if not rows:
+        return
+
+    updated = 0
+    for ad_id, price_text in rows:
+        value = parse_price_text(price_text) if price_text else 0
+        try:
+            cursor.execute(
+                f"UPDATE ads SET price_num = {p} WHERE id = {p}",
+                (int(value), ad_id)
+            )
+            updated += 1
+        except Exception as e:
+            logging.warning(f"price_num тўлдирилмади (ad_id={ad_id}): {e}")
+
+    conn.commit()
+    logging.info(f"price_num: {updated} та эълон учун тўлдирилди.")
 
 async def migrate_db(*args, **kwargs):
     return await asyncio.to_thread(_sync_migrate_db, *args, **kwargs)
@@ -429,38 +634,49 @@ def _sync_save_ad_with_media(user_id: int, data: dict, media_list: list) -> int 
     cursor = conn.cursor()
     
     try:
-        # 1. Эълон матнини ва малумотларини сақлаш
-        cursor.execute(f"""
-            INSERT INTO ads (user_id, animal_type, quantity, price, description, region, district, mfy, phone, username, status)
-            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'pending')
-        """, (
+        # 1. Эълон матнини ва малумотларини сақлаш.
+        # ⚠️ PostgreSQL'да cursor.lastrowid ДОИМ None қайтаради — шунинг
+        # учун ID'ни INSERT ... RETURNING id орқали оламиз. Акс ҳолда
+        # ad_id=None бўлиб, қуйидаги медиа сақлаш блоки ўтказиб юборилар
+        # ва эълоннинг барча расм/видеолари жимгина йўқоларди.
+        insert_sql = f"""
+            INSERT INTO ads (user_id, animal_type, quantity, price, price_num, description, region, district, mfy, phone, username, status)
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'pending')
+        """
+        params = (
             user_id, data.get('animal_type'), data.get('quantity'), data.get('price'),
+            int(parse_price_text(data.get('price')) or 0),
             data.get('description'), data.get('region'), data.get('district'), data.get('mfy'),
             data.get('phone'), data.get('username')
-        ))
-        
-        # Янги яратилган эълоннинг ID сини оламиз
-        ad_id = cursor.lastrowid
-        
-        # Агар SQLite бўлса ва lastrowid ўхшамаса, муқобил вариант:
-        if not ad_id and not DATABASE_URL:
-            cursor.execute("SELECT last_insert_rowid()")
+        )
+
+        if DATABASE_URL:
+            cursor.execute(insert_sql + " RETURNING id", params)
             ad_id = cursor.fetchone()[0]
+        else:
+            cursor.execute(insert_sql, params)
+            ad_id = cursor.lastrowid
+            if not ad_id:
+                cursor.execute("SELECT last_insert_rowid()")
+                ad_id = cursor.fetchone()[0]
+
+        if not ad_id:
+            raise RuntimeError("Эълон сақланди, лекин ID олинмади")
 
         # 2. Агар media_list ичида файллар бўлса, уларни айлантириб базага ёзиш
-        if media_list and ad_id:
+        if media_list:
             for media in media_list:
                 cursor.execute(f"""
                     INSERT INTO ad_media (ad_id, media_type, file_id)
                     VALUES ({p}, {p}, {p})
                 """, (ad_id, media.get('type'), media.get('file_id')))
-                
+
         conn.commit()
         return ad_id  # Муваффақиятли бўлса ID қайтади
-        
+
     except Exception as e:
         conn.rollback()
-        logging.error(f"Базага эълон ва медиани сақлашда хатолик: {e}")
+        logging.exception(f"Базага эълон ва медиани сақлашда хатолик: {e}")
         return None
     finally:
         conn.close()
@@ -563,6 +779,10 @@ def _sync_get_expiring_ads(days_left: int):
     Муддати days_left кун қолган АКТИВ эълонларни қайтаради.
     Scheduler эслатма юборади.
     """
+    # Кун сони SQL матнига қўшилгани учун — уни албатта бутун сонга
+    # айлантирамиз (SQL'га матн сифатида қўшилиши инъекция йўли бўлмасин).
+    days_left = int(days_left)
+
     p = get_placeholder()
     with db_connection() as conn:
         cursor = conn.cursor()
@@ -573,16 +793,16 @@ def _sync_get_expiring_ads(days_left: int):
                 FROM ads
                 WHERE status = {p}
                   AND expires_at IS NOT NULL
-                  AND expires_at::date = (NOW() + INTERVAL '{days_left} days')::date
-            """, ("active",))
+                  AND expires_at::date = (NOW() + ({p} || ' days')::interval)::date
+            """, ("active", str(days_left)))
         else:
             cursor.execute(f"""
                 SELECT id, user_id, animal_type, quantity, price, msg_id
                 FROM ads
                 WHERE status = {p}
                   AND expires_at IS NOT NULL
-                  AND date(expires_at) = date('now', '+{days_left} days')
-            """, ("active",))
+                  AND date(expires_at) = date('now', {p})
+            """, ("active", f"+{days_left} days"))
 
         rows = cursor.fetchall()
         return rows
@@ -914,21 +1134,18 @@ def _sync_search_ads_db(animal_type=None, region=None, district=None, max_price=
             query += f" AND district = {p}"
             params.append(district)
 
+        # Нарх фильтри энди SQL'да — аввал LIMIT қўлланилгандан КЕЙИН
+        # Python'да фильтрланарди, яъни сўралган limit'дан кам натижа
+        # қайтиши мумкин эди (қиммат эълонлар ўринни эгаллаб оларди).
+        if max_price:
+            query += f" AND price_num > 0 AND price_num <= {p}"
+            params.append(int(max_price))
+
         query += f" ORDER BY id DESC LIMIT {p}"
         params.append(limit)
 
         cursor.execute(query, params)
-        rows = cursor.fetchall()
-
-        if max_price:
-            filtered = []
-            for row in rows:
-                price = parse_price_text(row[3])
-                if price > 0 and price <= max_price:
-                    filtered.append(row)
-            return filtered
-
-        return rows
+        return cursor.fetchall()
 
 async def search_ads_db(*args, **kwargs):
     return await asyncio.to_thread(_sync_search_ads_db, *args, **kwargs)
@@ -1325,6 +1542,43 @@ async def reject_ad(*args, **kwargs):
     return await asyncio.to_thread(_sync_reject_ad, *args, **kwargs)
 
 
+def _sync_claim_and_delete_pending_ad(ad_id):
+    """
+    Кўриб чиқилмаган (pending) эълонни "эгаллаб олиб" ўчиради ва унинг
+    (user_id, animal_type) маълумотини қайтаради. Эълон аллақачон бошқа
+    админ томонидан кўрилган (status != 'pending') ёки ўчирилган бўлса —
+    None қайтаради.
+
+    approve_ad/reject_ad'даги каби status='pending' шарти билан ишлайди:
+    иккита админ бир вақтда босса, ФАҚАТ биттасида rowcount=1 бўлади.
+    Аввал бу ерда шартсиз DELETE бор эди — шу сабабли аллақачон каналга
+    жойланган эълон ҳам ўчиб кетиши мумкин эди.
+    """
+    p = get_placeholder()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT user_id, animal_type FROM ads WHERE id = {p} AND status = {p}",
+            (ad_id, 'pending')
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        cursor.execute(
+            f"DELETE FROM ads WHERE id = {p} AND status = {p}",
+            (ad_id, 'pending')
+        )
+        claimed = cursor.rowcount > 0
+        conn.commit()
+
+    return row if claimed else None
+
+
+async def claim_and_delete_pending_ad(*args, **kwargs):
+    return await asyncio.to_thread(_sync_claim_and_delete_pending_ad, *args, **kwargs)
+
+
 # ═══════════════════════════════════════
 # БЛОКЛАШ ТИЗИМИ
 # ═══════════════════════════════════════
@@ -1359,19 +1613,28 @@ def _sync_increment_rejection(user_id):
     with db_connection() as conn:
         cursor = conn.cursor()
 
-        # Рад сонини ошириш
-        cursor.execute(f"""
-            UPDATE users
-            SET rejection_count = rejection_count + 1
-            WHERE user_id = {p}
-        """, (user_id,))
-
-        # Янги қийматни олиш
-        cursor.execute(
-            f"SELECT rejection_count FROM users WHERE user_id = {p}",
-            (user_id,)
-        )
-        row = cursor.fetchone()
+        # Рад сонини ошириб, янги қийматни ЎША сўровнинг ўзида оламиз —
+        # алоҳида SELECT керак эмас (битта round-trip камаяди ва янги
+        # қиймат аниқ шу UPDATE натижаси эканига шубҳа қолмайди).
+        if DATABASE_URL:
+            cursor.execute(f"""
+                UPDATE users
+                SET rejection_count = rejection_count + 1
+                WHERE user_id = {p}
+                RETURNING rejection_count
+            """, (user_id,))
+            row = cursor.fetchone()
+        else:
+            cursor.execute(f"""
+                UPDATE users
+                SET rejection_count = rejection_count + 1
+                WHERE user_id = {p}
+            """, (user_id,))
+            cursor.execute(
+                f"SELECT rejection_count FROM users WHERE user_id = {p}",
+                (user_id,)
+            )
+            row = cursor.fetchone()
         count = row[0] if row else 0
 
         # Блоклаш текшириш
@@ -1553,11 +1816,16 @@ async def is_premium_user(*args, **kwargs):
     return await asyncio.to_thread(_sync_is_premium_user, *args, **kwargs)
 
 # ═══════════════════════════════════════
-# ОЙЛИК ЭЪЛОН ЛИМИТИ
+# ТАРИФ ЛИМИТЛАРИ (оддий / премиум)
 # ═══════════════════════════════════════
+# Барча лимитлар ШУ ЕРДА — аввал кузатув лимитлари handlers/notify.py'да
+# алоҳида турарди, шу сабабли қоидаларни бир жойда кўриб бўлмасди.
 
 MAX_ADS_PER_MONTH_REGULAR = 15
 MAX_ADS_PER_MONTH_PREMIUM = 150
+
+MAX_NOTIFICATIONS_REGULAR = 1
+MAX_NOTIFICATIONS_PREMIUM = 10
 
 
 def _sync_get_monthly_ad_count(user_id: int) -> int:
@@ -1600,34 +1868,32 @@ def clean_phone(phone: str) -> str:
 def _sync_get_price_range(animal_type):
     """Ҳайвон тури учун ўртача нарх"""
     p = get_placeholder()
-    prices = []
     with db_connection() as conn:
         cursor = conn.cursor()
 
-        # price матн сифатида сақланади (масалан "5 000 000" ёки "5 mln"),
-        # шунинг учун Постгрес/SQLite'га хос cast/regex ўрнига
-        # parse_price_text ишлатилади — иккала базада ҳам бир хил ишлайди.
+        # Нарх энди рақамли price_num устунида ҳам сақланади, шунинг учун
+        # ўртачани базанинг ўзи ҳисоблайди — аввал бу ерда шу турдаги
+        # БАРЧА фаол эълонлар ўқилиб, ҳар бири Python'да таҳлил қилинарди
+        # (эълон бериш жараёнида ҳар бир нарх киритилганда чақирилади).
         cursor.execute(f"""
-            SELECT price FROM ads
-            WHERE animal_type = {p} AND status = 'active'
+            SELECT COALESCE(SUM(price_num), 0), COUNT(*)
+            FROM ads
+            WHERE animal_type = {p} AND status = 'active' AND price_num > 0
         """, (animal_type,))
-        for (price_text,) in cursor.fetchall():
-            price = parse_price_text(price_text)
-            if price > 0:
-                prices.append(price)
+        ads_sum, ads_count = cursor.fetchone()
 
         cursor.execute(f"""
-            SELECT price FROM market_prices
-            WHERE animal_type = {p}
+            SELECT COALESCE(SUM(price), 0), COUNT(*)
+            FROM market_prices
+            WHERE animal_type = {p} AND price > 0
         """, (animal_type,))
-        for (price,) in cursor.fetchall():
-            if price and price > 0:
-                prices.append(price)
+        mp_sum, mp_count = cursor.fetchone()
 
-    if not prices:
+    total_count = (ads_count or 0) + (mp_count or 0)
+    if not total_count:
         return 0
 
-    return sum(prices) // len(prices)
+    return int((ads_sum or 0) + (mp_sum or 0)) // total_count
 
 async def get_price_range(*args, **kwargs):
     return await asyncio.to_thread(_sync_get_price_range, *args, **kwargs)
@@ -1870,6 +2136,11 @@ def _ensure_region_group_tables():
                 )
             """)
         conn.commit()
+        _try_create_indexes(cursor, conn, [
+            "CREATE INDEX IF NOT EXISTS idx_region_groups_region ON region_groups (region)",
+            "CREATE INDEX IF NOT EXISTS idx_ad_group_posts_ad_id ON ad_group_posts (ad_id)",
+            "CREATE INDEX IF NOT EXISTS idx_ad_group_posts_chat_msg ON ad_group_posts (chat_id, message_id)",
+        ])
 
 
 # init_db() ишга тушганда бу жадваллар ҳам яратилиши учун:
@@ -2094,6 +2365,10 @@ def _ensure_block_log_table():
                 )
             """)
         conn.commit()
+        _try_create_indexes(cursor, conn, [
+            "CREATE INDEX IF NOT EXISTS idx_block_log_user_id ON block_log (user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_block_log_blocked_by ON block_log (blocked_by)",
+        ])
 
 
 _block_log_ready = False
@@ -2246,6 +2521,12 @@ def _ensure_group_admins_table():
                 )
             """)
         conn.commit()
+        # UNIQUE (chat_id, user_id) chat_id бўйича қидиришни қоплайди,
+        # аммо "бу фойдаланувчи қайси гуруҳларда админ?" сўрови учун
+        # user_id бўйича алоҳида индекс керак.
+        _try_create_indexes(cursor, conn, [
+            "CREATE INDEX IF NOT EXISTS idx_group_admins_user_id ON group_admins (user_id)",
+        ])
 
 
 _group_admins_ready = False

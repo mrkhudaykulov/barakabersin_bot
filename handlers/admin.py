@@ -19,6 +19,7 @@ from keyboards import (
     standard_step_keyboard
 )
 from states import AdminStates
+from handlers.ratelimit import fan_out
 
 class IsAdmin(BaseFilter):
     """
@@ -298,8 +299,8 @@ async def do_del_user_ads(message: types.Message, state: FSMContext):
             try:
                 await bot.delete_message(chat_id=CHANNEL_ID, message_id=msg_id)
                 deleted_count += 1
-            except Exception:
-                pass
+            except Exception as e:
+                logging.info("delete_message: бажарилмади (%s)", e)
 
     def _delete_user_ads_sync():
         p = get_placeholder()
@@ -813,8 +814,8 @@ async def do_unblock(message: types.Message, state: FSMContext):
             text="✅ *Блок олинди!*\nЭнди қайтадан эълон бера оласиз.",
             parse_mode="Markdown"
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logging.info("send_message: бажарилмади (%s)", e)
 
     await state.set_state(AdminStates.block_menu)
     await message.answer("🚫 Давом этинг:", reply_markup=admin_block_keyboard())
@@ -900,8 +901,8 @@ async def do_premium_give(message: types.Message, state: FSMContext):
             text="💎 *Табриклаймиз!*\n\nСизга *Премиум* аъзолик берилди!",
             parse_mode="Markdown"
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logging.info("send_message: бажарилмади (%s)", e)
 
     await state.set_state(AdminStates.premium_menu)
     await message.answer("💎 Давом этинг:", reply_markup=admin_premium_keyboard())
@@ -1010,23 +1011,22 @@ async def do_broadcast(message: types.Message, state: FSMContext):
         await message.answer("Базада фойдаланувчилар йўқ.")
         return
 
-    sent_count = 0
-    failed_count = 0
-
     status_msg = await message.answer(f"⏳ Юборилмоқда... ({len(users)} та)")
 
-    for user in users:
-        uid = user[0]
-        try:
-            await bot.send_message(chat_id=uid, text=broadcast_text)
-            sent_count += 1
-        except Exception:
-            try:
-                await bot.send_message(chat_id=uid, text=html.escape(broadcast_text))
-                sent_count += 1
-            except Exception:
-                failed_count += 1
-        await asyncio.sleep(0.05)
+    async def _send_one(uid):
+        # parse_mode ишлатилмаган — демак "Markdown хатоси" бўлиши мумкин
+        # эмас. Аввалги код ҳар бир хатода html.escape() билан қайта
+        # уринарди; аслида хатоларнинг деярли ҳаммаси "бот блокланган"
+        # бўлади, шунинг учун бу фақат бекорга иккиланма сўров эди.
+        # Лимит (429) ва блокланганлик энди fan_out ичида тўғри ишланади.
+        await bot.send_message(chat_id=uid, text=broadcast_text)
+        return True
+
+    results = await fan_out(
+        _send_one, [u[0] for u in users], description="Тарқатиш"
+    )
+    sent_count = sum(1 for r in results if r)
+    failed_count = len(results) - sent_count
 
     await status_msg.edit_text(
         f"📢 *Тарқатиш якунланди!*\n\n"

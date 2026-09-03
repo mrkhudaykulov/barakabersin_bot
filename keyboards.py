@@ -1,5 +1,39 @@
+import logging
+from functools import lru_cache
+
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
+
+
+def _layout_of(builder: ReplyKeyboardBuilder):
+    """Builder натижасини оддий матн жадвалига (tuple) айлантиради."""
+    markup = builder.as_markup()
+    return tuple(tuple(btn.text for btn in row) for row in markup.keyboard)
+
+
+def _markup(layout):
+    """
+    Кэшланган матн жадвалидан ҲАР САФАР ЯНГИ клавиатура объекти қуради.
+
+    Нима учун объектнинг ўзи кэшланмайди: клавиатура объекти ўзгарувчан
+    (mutable) — агар кимдир унга тугма қўшса, ўша тугма кэшдан фойдаланган
+    БАРЧА фойдаланувчиларга кўриниб кетарди (масалан гуруҳ админи
+    тугмалари ҳаммага). Шунинг учун фақат матнлар кэшланади, объект эса
+    ҳар доим янги.
+    """
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=t) for t in row] for row in layout],
+        resize_keyboard=True
+    )
+
+# Вилоятлар рўйхати — клавиатура ҳам, киритилган матнни текшириш
+# (валидация) ҳам шу битта манбадан фойдаланиши учун модул даражасида.
+REGIONS = [
+    "Қашқадарё", "Сурхондарё", "Тошкент", "Фарғона",
+    "Андижон", "Наманган", "Самарқанд", "Бухоро",
+    "Навоий", "Жиззах", "Сирдарё", "Хоразм",
+    "Қорақалпоғистон"
+]
 
 DISTRICTS = {
     "Фарғона": [
@@ -124,7 +158,8 @@ def photo_confirm_keyboard():
     ], resize_keyboard=True)
 
 
-def animal_types_keyboard():
+@lru_cache(maxsize=1)
+def _animal_types_layout():
     builder = ReplyKeyboardBuilder()
     types_list = [
         "Буқа", "Сигир", "Тана", "Бузоқ", "Қўчқор",
@@ -138,30 +173,40 @@ def animal_types_keyboard():
         KeyboardButton(text="🔙 Орқага"),
         KeyboardButton(text="❌ Бекор қилиш")
     )
-    return builder.as_markup(resize_keyboard=True)
+    return _layout_of(builder)
 
 
-def regions_keyboard():
+def animal_types_keyboard():
+    return _markup(_animal_types_layout())
+
+
+@lru_cache(maxsize=1)
+def _regions_layout():
     builder = ReplyKeyboardBuilder()
-    regions = [
-        "Қашқадарё", "Сурхондарё", "Тошкент", "Фарғона",
-        "Андижон", "Наманган", "Самарқанд", "Бухоро",
-        "Навоий", "Жиззах", "Сирдарё", "Хоразм",
-        "Қорақалпоғистон"
-    ]
-    for r in regions:
+    for r in REGIONS:
         builder.add(KeyboardButton(text=r))
     builder.adjust(2)
     builder.row(
         KeyboardButton(text="🔙 Орқага"),
         KeyboardButton(text="❌ Бекор қилиш")
     )
-    return builder.as_markup(resize_keyboard=True)
+    return _layout_of(builder)
 
 
-def districts_keyboard(region):
-    builder = ReplyKeyboardBuilder()    
-    list_d = DISTRICTS.get(region, ["Марказ тумани", "Чет тумани"])
+def regions_keyboard():
+    return _markup(_regions_layout())
+
+
+@lru_cache(maxsize=64)
+def _districts_layout(region):
+    builder = ReplyKeyboardBuilder()
+    list_d = DISTRICTS.get(region)
+    if list_d is None:
+        # Бу ҳолат маълумотдаги камчиликни билдиради (нотўғри/эски вилоят
+        # номи) — жимгина сохта туманлар кўрсатиш ўрнига логга ёзамиз,
+        # акс ҳолда фойдаланувчи ҳеч нарса топилмайдиган кўчага киради.
+        logging.warning("districts_keyboard: '%s' вилояти DISTRICTS'да йўқ!", region)
+        list_d = ["Марказ тумани", "Чет тумани"]
 
     for d in list_d:
         builder.add(KeyboardButton(text=d))
@@ -170,7 +215,11 @@ def districts_keyboard(region):
         KeyboardButton(text="🔙 Орқага"),
         KeyboardButton(text="❌ Бекор қилиш")
     )
-    return builder.as_markup(resize_keyboard=True)
+    return _layout_of(builder)
+
+
+def districts_keyboard(region):
+    return _markup(_districts_layout(region))
 
 
 def standard_step_keyboard():
@@ -194,7 +243,8 @@ def phone_keyboard():
     ], resize_keyboard=True)
 
 
-def price_index_keyboard():
+@lru_cache(maxsize=1)
+def _price_index_layout():
     builder = ReplyKeyboardBuilder()
     types_list = [
         "🐂 Буқа", "🐄 Сигир", "🐮 Тана", "🐮 Бузоқ",
@@ -213,10 +263,15 @@ def price_index_keyboard():
         KeyboardButton(text="🔙 Орқага"),
         KeyboardButton(text="🏠 Бош меню")
     )
-    return builder.as_markup(resize_keyboard=True)
+    return _layout_of(builder)
 
 
-def search_animal_keyboard():
+def price_index_keyboard():
+    return _markup(_price_index_layout())
+
+
+@lru_cache(maxsize=1)
+def _search_animal_layout():
     builder = ReplyKeyboardBuilder()
     types_list = [
         "Буқа", "Сигир", "Тана", "Бузоқ",
@@ -230,10 +285,15 @@ def search_animal_keyboard():
         KeyboardButton(text="🔙 Орқага"),
         KeyboardButton(text="❌ Бекор қилиш")
     )
-    return builder.as_markup(resize_keyboard=True)
+    return _layout_of(builder)
 
 
-def regions_with_all_keyboard():
+def search_animal_keyboard():
+    return _markup(_search_animal_layout())
+
+
+@lru_cache(maxsize=1)
+def _regions_with_all_layout():
     builder = ReplyKeyboardBuilder()
     regions = [
         "Барчаси", "Қашқадарё", "Сурхондарё", "Тошкент",
@@ -248,7 +308,11 @@ def regions_with_all_keyboard():
         KeyboardButton(text="🔙 Орқага"),
         KeyboardButton(text="❌ Бекор қилиш")
     )
-    return builder.as_markup(resize_keyboard=True)
+    return _layout_of(builder)
+
+
+def regions_with_all_keyboard():
+    return _markup(_regions_with_all_layout())
 
 
 def notify_menu_keyboard():
@@ -261,8 +325,8 @@ def notify_menu_keyboard():
         resize_keyboard=True
     )
 
-def notification_districts_keyboard(region):
-    """Хабардорлик учун туманлар — вилоят бўйича + Барчаси"""
+@lru_cache(maxsize=64)
+def _notification_districts_layout(region):
     builder = ReplyKeyboardBuilder()
 
     # Туманлар
@@ -278,8 +342,13 @@ def notification_districts_keyboard(region):
     builder.add(KeyboardButton(text="❌ Бекор қилиш"))
 
     builder.adjust(2)  # Har bir qatorda 2 tadan
-    
-    return builder.as_markup(resize_keyboard=True)
+
+    return _layout_of(builder)
+
+
+def notification_districts_keyboard(region):
+    """Хабардорлик учун туманлар — вилоят бўйича + Барчаси"""
+    return _markup(_notification_districts_layout(region))
 
 
 #  Админ бошқариш панели

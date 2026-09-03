@@ -4,7 +4,7 @@ import logging
 
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
-from aiogram.exceptions import TelegramMigrateToChat
+from aiogram.exceptions import TelegramMigrateToChat, TelegramBadRequest
 from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo,
     InputMediaPhoto, InputMediaVideo
@@ -26,8 +26,8 @@ from database import (
     repost_ad, is_premium_user, 
     archive_ad, AD_EXPIRE_DAYS,
     get_notification_users, is_user_blocked, 
-    approve_ad, reject_ad,
-    get_pending_ad, increment_rejection, 
+    approve_ad, reject_ad, claim_and_delete_pending_ad,
+    get_pending_ad, increment_rejection,
     MAX_REJECTIONS, save_admin_review_message, 
     get_admin_review_messages, delete_admin_review_messages,
     get_monthly_ad_count, parse_price_with_type,
@@ -36,9 +36,24 @@ from database import (
     clean_phone, get_price_range,
     force_block_user, log_block, get_all_review_admin_ids
 )
+from handlers.ratelimit import fan_out
 
 router = Router()
 router.message.filter(F.chat.type == "private")  # гуруҳларда мену/кнопкалар КЎРИНМАСИН (callback'larga tegmaydi)
+
+
+async def _safe_edit_text(message, text: str) -> bool:
+    """
+    Хабар матнини таҳрирлайди. Тугма икки марта тез босилса (ёки хабар
+    аллақачон таҳрирланган/ўчирилган бўлса) Telegram хато қайтаради —
+    бу handler'ни йиқитмаслиги керак.
+    """
+    try:
+        await message.edit_text(text)
+        return True
+    except TelegramBadRequest as e:
+        logging.info(f"Хабарни таҳрирлаб бўлмади (эҳтимол такрорий босиш): {e}")
+        return False
 
 
 def _get_keyboard_texts(keyboard) -> set:
@@ -622,7 +637,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             f"Хабар ёзиш</a>"
         )
 
-    bot_info = await bot.get_me()
+    bot_info = await bot.me()
 
     price_display = html.escape(data.get('price_display', data['price']))
     mfy_display = html.escape(data.get('mfy') or "Кўрсатилмаган")
@@ -659,15 +674,16 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             if __import__('os').getenv("DATABASE_URL"):
                 cursor.execute(f"""
                     INSERT INTO ads
-                    (user_id, msg_id, animal_type, quantity, price,
+                    (user_id, msg_id, animal_type, quantity, price, price_num,
                      price_display, description, region, district, mfy, phone, username,
                      status, expires_at)
                     VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
-                            {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
+                            {p}, {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
                     RETURNING id
                 """, (
                     user.id, '',
                     data['animal_type'], data['quantity'], data['price'],
+                    int(parse_price_text(data['price']) or 0),
                     data.get('price_display', data['price']),
                     data['description'], data['region'], data['district'],
                     data['mfy'], phone, db_username, 'pending'
@@ -675,45 +691,60 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             else:
                 cursor.execute(f"""
                     INSERT INTO ads
-                    (user_id, msg_id, animal_type, quantity, price,
+                    (user_id, msg_id, animal_type, quantity, price, price_num,
                      price_display, description, region, district, mfy, phone, username,
                      status, expires_at)
                     VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
-                            {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
+                            {p}, {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
                     RETURNING id
                 """, (
                     user.id, '',
                     data['animal_type'], data['quantity'], data['price'],
+                    int(parse_price_text(data['price']) or 0),
                     data.get('price_display', data['price']),
                     data['description'], data['region'], data['district'],
                     data['mfy'], phone, db_username, 'pending'
                 ))
 
-            ad_id = cursor.fetchone()[0]
-            # ═══ МЕДИАЛАРНИ ad_media ЖАДВАЛИГА САҚЛАШ
-            if media_list and ad_id:
-                for media in media_list:
-                    cursor.execute(f"""
-                        INSERT INTO ad_media (ad_id, media_type, file_id)
-                        VALUES ({p}, {p}, {p})
-                    """, (ad_id, media.get('type'), media.get('file_id')))
+            try:
+                ad_id = cursor.fetchone()[0]
+                # ═══ МЕДИАЛАРНИ ad_media ЖАДВАЛИГА САҚЛАШ
+                if media_list and ad_id:
+                    for media in media_list:
+                        cursor.execute(f"""
+                            INSERT INTO ad_media (ad_id, media_type, file_id)
+                            VALUES ({p}, {p}, {p})
+                        """, (ad_id, media.get('type'), media.get('file_id')))
 
-            conn.commit()
-            conn.close()
-            return ad_id
+                conn.commit()
+                return ad_id
+            finally:
+                # Хатолик чиқса ҳам уланиш poolga қайтарилсин
+                conn.close()
 
         ad_id = await asyncio.to_thread(_save_ad_sync)
 
         # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══
-        await message.answer(
-            f"📩 *Эълонингиз қабул қилинди!*\n\n"
-            f"Эълонингиз қисқача кўриб чиқилади.\n"
-            f"Тасдиқлангандан кейин @internetmolbozor каналга, шунингдек "
-            f"тегишли вилоят гуруҳ(лар)ига автомат жойланади.\n\n"
-            f"⏳ Одатда бир неча дақиқа ичида жавоб оласиз.",
-            parse_mode="Markdown",
-            reply_markup=main_menu()
-        )
+        # Бу қадам алоҳида try ичида: фойдаланувчи ботни блоклаган бўлса
+        # (ёки бошқа Telegram хатоси чиқса) хабар юборилмайди, аммо эълон
+        # админларга барибир кетиши ШАРТ. Аввал бу иккиси битта try'да
+        # эди — шу сабабли эълон базада "pending" бўлиб қолиб, ҳеч бир
+        # админ уни кўрмас, фойдаланувчи эса жавоб кутиб ўтираверарди.
+        try:
+            await message.answer(
+                f"📩 *Эълонингиз қабул қилинди!*\n\n"
+                f"Эълонингиз қисқача кўриб чиқилади.\n"
+                f"Тасдиқлангандан кейин @internetmolbozor каналга, шунингдек "
+                f"тегишли вилоят гуруҳ(лар)ига автомат жойланади.\n\n"
+                f"⏳ Одатда бир неча дақиқа ичида жавоб оласиз.",
+                parse_mode="Markdown",
+                reply_markup=main_menu()
+            )
+        except Exception:
+            logging.exception(
+                f"Эълон қабул қилинди, лекин фойдаланувчига хабар "
+                f"юборилмади (ad_id={ad_id}, user_id={user.id})"
+            )
 
         # ═══ АДМИНЛАРГА ЮБОРИШ ═══
         await _send_to_reviewers(
@@ -727,12 +758,17 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         # ДИҚҚАТ: Гуруҳларга ЭНДИ фақат тасдиқлангандан кейин
         # (approve_ad_callback ичида) юборилади — марказлашган занжир.
 
-    except Exception as e:
-        logging.error(f"Эълон жойлашда хато: {e}")
-        await message.answer(
-            f"Хатолик юз берди: {e}",
-            reply_markup=main_menu()
-        )
+    except Exception:
+        # Хатоликнинг ички тафсилотлари (база/драйвер хабарлари) оддий
+        # фойдаланувчига кўрсатилмайди — фақат логга ёзилади.
+        logging.exception(f"Эълон жойлашда хато (user_id={user.id})")
+        try:
+            await message.answer(
+                "⚠️ Хатолик юз берди. Илтимос, бироздан сўнг қайта уриниб кўринг.",
+                reply_markup=main_menu()
+            )
+        except Exception as e:
+            logging.info("answer: бажарилмади (%s)", e)
 
     await state.clear()
 
@@ -942,8 +978,13 @@ async def post_ad_to_matching_groups(ad_id, region, caption, media_list):
 
     # Ҳар бир гуруҳга ПАРАЛЛЕЛ юборамиз — кетма-кет юборилса, ҳар бир
     # гуруҳ учун алоҳида Telegram round-trip кутиш админни узоқ ушлаб турарди.
-    tasks = [_post_to_one_group(chat_id, chat_title, chat_username) for chat_id, chat_title, chat_username in groups]
-    results = await asyncio.gather(*tasks) if tasks else []
+    # fan_out тезликни Telegram лимитидан ошмайдиган даражада ушлаб туради
+    # ва 429 келса кутиб қайта уринади (аввал бундай хабарлар йўқоларди).
+    results = await fan_out(
+        lambda g: _post_to_one_group(g[0], g[1], g[2]),
+        list(groups),
+        description="Гуруҳларга жойлаш"
+    )
     return [r for r in results if r is not None]
 
 
@@ -1005,7 +1046,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
 
     user_id, a_type, qty, price, price_disp, desc, region, dist, mfy, phone, username = ad
 
-    bot_info = await bot.get_me()
+    bot_info = await bot.me()
     group_links = await get_public_group_links_for_region(region)
 
     caption = build_full_ad_caption(
@@ -1152,9 +1193,11 @@ async def approve_ad_callback(callback: types.CallbackQuery):
                     return False
 
             # Кузатувчиларга ПАРАЛЛЕЛ юборамиз (кетма-кет юборилса, кузатувчилар
-            # кўп бўлганда тасдиқлаш жараёни узоқ давом этарди).
+            # кўп бўлганда тасдиқлаш жараёни узоқ давом этарди). fan_out
+            # Telegram лимитини ҳисобга олади — кузатувчилар кўп бўлганда
+            # аввал бир қисм хабар 429 туфайли йўқоларди.
             target_ids = [row[0] for row in users if row[0] != user_id]
-            outcomes = await asyncio.gather(*[_notify_one(uid) for uid in target_ids]) if target_ids else []
+            outcomes = await fan_out(_notify_one, target_ids, description="Хабардорлик")
             sent_count = sum(1 for ok in outcomes if ok)
             logging.info(f"Хабардорлик: ad_id={ad_id} — {sent_count}/{len(users)} та юборилди")
         else:
@@ -1262,8 +1305,8 @@ async def reject_ad_callback(callback: types.CallbackQuery):
                     ),
                     parse_mode="Markdown"
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logging.info("send_message: бажарилмади (%s)", e)
 
             # Админларга фойдаланувчи блоклангани ҳақида хабар бериш
             for admin_id in await get_all_review_admin_ids():
@@ -1274,8 +1317,8 @@ async def reject_ad_callback(callback: types.CallbackQuery):
                         chat_id=admin_id,
                         text=f"🚫 Фойдаланувчи ID:{user_id} блокланди ({count} марта рад)"
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.info("send_message: бажарилмади (%s)", e)
 
         # ═══ 2-ХОЛАТ: ОДДИЙ РАД ЭТИШ (Блок эмас, уринишлар бор) ═══
         else:
@@ -1295,8 +1338,8 @@ async def reject_ad_callback(callback: types.CallbackQuery):
                     ),
                     parse_mode="Markdown"
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logging.info("send_message: бажарилмади (%s)", e)
 
     # ═══ БАРЧА АДМИНЛАРДАГИ REVIEW ХАБАРНИ ЎЧИРИШ (базада эмас, faqat chatdan) ═══
     await _clear_all_admin_review_messages(ad_id)
@@ -1316,24 +1359,11 @@ async def block_user_callback(callback: types.CallbackQuery):
 
     ad_id = int(callback.data.replace("block_", ""))
 
-    def _block_fetch_and_delete_sync():
-        p = get_placeholder()
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            f"SELECT user_id, animal_type FROM ads WHERE id = {p}",
-            (ad_id,)
-        )
-        ad_row = cursor.fetchone()
-
-        if ad_row:
-            # ═══ ЭЪЛОННИ БАЗАДАН ЎЧИРИШ (rad etish bilan bir xil) ═══
-            cursor.execute(f"DELETE FROM ads WHERE id = {p}", (ad_id,))
-            conn.commit()
-        conn.close()
-        return ad_row
-
-    ad = await asyncio.to_thread(_block_fetch_and_delete_sync)
+    # approve/reject билан бир xil атомар "эгаллаб олиш" — эълонни фақат
+    # ҳали pending бўлса ўчиради. Акс ҳолда бошқа админ тасдиқлаб,
+    # каналга/гуруҳларга жойлаб бўлган эълон эски тугма босилиши билан
+    # базадан ўчиб кетар эди.
+    ad = await claim_and_delete_pending_ad(ad_id)
 
     if not ad:
         await callback.answer("⚠️ Бу эълон бошқа админ томонидан кўрилган!")
@@ -1361,8 +1391,8 @@ async def block_user_callback(callback: types.CallbackQuery):
             ),
             parse_mode="Markdown"
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logging.info("send_message: бажарилмади (%s)", e)
 
     # ═══ БАРЧА АДМИНЛАРДАГИ REVIEW ХАБАРНИ ЎЧИРИШ ═══
     await _clear_all_admin_review_messages(ad_id)
@@ -1597,7 +1627,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
             except Exception:
                 await callback.answer("Постни таҳрирлаб бўлмади.")
         else:
-            await callback.message.edit_text("✅ Эълон 'Сотилди' ҳолатига ўтказилди (каналдаги ИД топилмаганлиги сабабли).")
+            await _safe_edit_text(callback.message, "✅ Эълон 'Сотилди' ҳолатига ўтказилди (каналдаги ИД топилмаганлиги сабабли).")
 
         # ═══ ГУРУҲЛАРДАГИ НУСХАЛАРНИ ҲАМ ЯНГИЛАШ ═══
         await _mark_ad_sold_in_all_groups(int(ad_id), a_type, qty, price, region, dist)
@@ -1606,19 +1636,21 @@ async def handle_ad_action(callback: types.CallbackQuery):
         def _mark_deleted_sync():
             p = get_placeholder()
             conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute(f"UPDATE ads SET status = 'deleted' WHERE id = {p}", (ad_id,))
-            conn.commit()
-            conn.close()
+            try:
+                cursor = conn.cursor()
+                cursor.execute(f"UPDATE ads SET status = 'deleted' WHERE id = {p}", (ad_id,))
+                conn.commit()
+            finally:
+                conn.close()
 
         await asyncio.to_thread(_mark_deleted_sync)
 
         for msg_id in msg_ids:
             try:
                 await bot.delete_message(chat_id=CHANNEL_ID, message_id=msg_id)
-            except Exception:
-                pass
-        await callback.message.edit_text("❌ Эълон каналдан бутунлай ўчирилди.")
+            except Exception as e:
+                logging.info(f"Каналдан хабар ({msg_id}) ўчирилмади: {e}")
+        await _safe_edit_text(callback.message, "❌ Эълон каналдан бутунлай ўчирилди.")
 
         # ═══ ГУРУҲЛАРДАГИ НУСХАЛАРНИ ҲАМ ЎЧИРИШ ═══
         await _delete_ad_from_all_groups(int(ad_id))
@@ -1641,7 +1673,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
             return rows
 
         media_list_db = await asyncio.to_thread(_fetch_media_sync)
-        bot_info = await bot.get_me()
+        bot_info = await bot.me()
 
         new_caption = (
             f"#️⃣ <b>#{html.escape(a_type)}</b>\n"
@@ -1681,8 +1713,8 @@ async def handle_ad_action(callback: types.CallbackQuery):
             for old_msg_id in msg_ids:
                 try:
                     await bot.delete_message(chat_id=CHANNEL_ID, message_id=old_msg_id)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.info("delete_message: бажарилмади (%s)", e)
 
             new_msg_str = ",".join(new_msg_ids)
             await repost_ad(int(ad_id))

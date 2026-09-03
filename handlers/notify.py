@@ -28,14 +28,11 @@ from database import (
     get_user_notifications,
     fmt_number,
     delete_notification,
-    is_premium_user
+    is_premium_user,
+    # Кузатувлар лимити — барча тариф лимитлари каби database.py'да
+    MAX_NOTIFICATIONS_PREMIUM,
+    MAX_NOTIFICATIONS_REGULAR,
 )
-
-# ═══════════════════════════════════════
-# КУЗАТУВЛАР ЛИМИТИ
-# ═══════════════════════════════════════
-MAX_NOTIFICATIONS_PREMIUM = 10
-MAX_NOTIFICATIONS_REGULAR = 1
 
 
 router = Router()
@@ -298,51 +295,53 @@ async def notify_max_price(message: types.Message, state: FSMContext):
     # Такрорий текшириш ва сақлаш
     def _save_notification_sync():
         p = get_placeholder()
+        params = (
+            message.from_user.id,
+            data["animal_type"],
+            data["region"],
+            data.get("district", "Барчаси"),
+            data["min_price"],
+            max_price
+        )
         conn = get_connection()
-        cur = conn.cursor()
-
-        cur.execute(
-            f"""
-            SELECT id FROM notifications
-            WHERE user_id = {p}
-            AND animal_type = {p}
-            AND region = {p}
-            AND district = {p}
-            AND min_price = {p}
-            AND max_price = {p}
-            """,
-            (
-                message.from_user.id,
-                data["animal_type"],
-                data["region"],
-                data.get("district", "Барчаси"),
-                data["min_price"],
-                max_price
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                SELECT id FROM notifications
+                WHERE user_id = {p}
+                AND animal_type = {p}
+                AND region = {p}
+                AND district = {p}
+                AND min_price = {p}
+                AND max_price = {p}
+                """,
+                params
             )
-        )
+            if cur.fetchone():
+                return "duplicate"
 
-        if cur.fetchone():
+            try:
+                cur.execute(
+                    f"""
+                    INSERT INTO notifications
+                    (user_id, animal_type, region, district, min_price, max_price)
+                    VALUES ({p},{p},{p},{p},{p},{p})
+                    """,
+                    params
+                )
+                conn.commit()
+                return "saved"
+            except Exception as e:
+                # Юқоридаги SELECT билан INSERT орасида фойдаланувчи
+                # худди шу кузатувни иккинчи марта юборса, базадаги
+                # UNIQUE чеклови ишлайди — бу хатолик эмас, "дубликат".
+                conn.rollback()
+                if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                    return "duplicate"
+                raise
+        finally:
             conn.close()
-            return "duplicate"
-
-        cur.execute(
-            f"""
-            INSERT INTO notifications
-            (user_id, animal_type, region, district, min_price, max_price)
-            VALUES ({p},{p},{p},{p},{p},{p})
-            """,
-            (
-                message.from_user.id,
-                data["animal_type"],
-                data["region"],
-                data.get("district", "Барчаси"),
-                data["min_price"],
-                max_price
-            )
-        )
-        conn.commit()
-        conn.close()
-        return "saved"
 
     result = await asyncio.to_thread(_save_notification_sync)
 
