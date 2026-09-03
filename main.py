@@ -1,11 +1,13 @@
 import asyncio
 import logging
+import sys
 
 from aiohttp import web
 from aiogram.types import (
     BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats,
     BotCommandScopeChat, BotCommandScopeDefault
 )
+from aiogram.types.error_event import ErrorEvent
 import os
 
 from config import bot, dp, ADMINS, REVIEW_ADMINS
@@ -14,7 +16,32 @@ from handlers import register_all_handlers
 from handlers.scheduler import start_scheduler
 from webapp import register_webapp_routes
 
-logging.basicConfig(level=logging.INFO)
+# Render каби контейнерларда stdout буферланиб, логлар умуман кўринмай
+# қолиши мумкин — шу сабабли line-buffering'ни мажбурий ёқамиз.
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+
+
+@dp.errors()
+async def handle_dispatcher_errors(event: ErrorEvent):
+    """
+    Handler ичида чиққан ҳар қандай хатоликни аниқ логга ёзади —
+    аввал бундай хатолар индамай ютилиб, /start каби буйруқларга
+    жавоб қайтмаслигига олиб келарди.
+    """
+    logging.exception(
+        "Update'ни қайта ишлашда хатолик: update=%s",
+        event.update,
+        exc_info=event.exception,
+    )
+    return True
 
 
 async def handle_render_health_check(request):
