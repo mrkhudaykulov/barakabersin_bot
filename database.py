@@ -896,6 +896,47 @@ async def get_user_profile(*args, **kwargs):
     return await asyncio.to_thread(_sync_get_user_profile, *args, **kwargs)
 
 
+def _sync_save_user_and_get_profile(user_id: int, full_name: str = None,
+                                    username: str = None) -> dict:
+    """
+    Фойдаланувчини сақлаб, ЎША сўровнинг ўзида профилини қайтаради.
+
+    Нима учун керак: /start'да аввал save_user, кейин get_user_profile
+    чақириларди — яъни базага ИККИ марта бориш. Узоқдаги базада ҳар бир
+    бориш ~0.5 сония, шунинг учун буни битта сўровга сиғдириш сезиларли
+    фарқ қилади (PostgreSQL'да ON CONFLICT ... RETURNING орқали).
+
+    SQLite (локал файл) учун кечикиш йўқ, шунинг учун у ерда эски
+    иккита функция шундайлигича ишлатилади.
+    """
+    if not DATABASE_URL:
+        _sync_save_user(user_id=user_id, full_name=full_name, username=username)
+        return _sync_get_user_profile(user_id)
+
+    p = get_placeholder()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            INSERT INTO users (user_id, full_name, username)
+            VALUES ({p}, {p}, {p})
+            ON CONFLICT (user_id) DO UPDATE SET
+                full_name = COALESCE(EXCLUDED.full_name, users.full_name),
+                username  = COALESCE(EXCLUDED.username, users.username)
+            RETURNING phone, region, district, mfy
+        """, (user_id, full_name, username))
+        row = cursor.fetchone()
+        conn.commit()
+
+    if not row:
+        return {"phone": None, "region": None, "district": None, "mfy": None}
+    phone, region, district, mfy = row
+    return {"phone": phone, "region": region, "district": district, "mfy": mfy}
+
+
+async def save_user_and_get_profile(*args, **kwargs):
+    return await asyncio.to_thread(_sync_save_user_and_get_profile, *args, **kwargs)
+
+
 def _sync_get_user_phone(user_id: int) -> str | None:
     """Базадан фойдаланувчи телефонини олиш"""
     p = get_placeholder()

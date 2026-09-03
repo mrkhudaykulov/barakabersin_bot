@@ -24,7 +24,10 @@ from states import (
     AdminStates, VetStates, VetSuggestStates, MarketStates, PriceIndexStates,
     OnboardingStates
 )
-from database import get_connection, get_placeholder, save_user, get_user_profile, fix_keyboard_text
+from database import (
+    get_connection, get_placeholder, save_user, get_user_profile,
+    save_user_and_get_profile, fix_keyboard_text
+)
 from config import ADMINS
 
 router = Router()
@@ -246,17 +249,15 @@ async def start_cmd(message: types.Message, state: FSMContext):
     # алоҳида боришни кутарди ва /start 6 сониягача чўзилиб кетарди
     # (фойдаланувчи буни "бот жим" деб қабул қилади).
     #
-    # save_user фақат исм/username'ни ёзади, get_user_profile эса
-    # вилоят/туман/телефонни ўқийди — улар бир-бирига боғлиқ эмас,
-    # шунинг учун параллел бажарса бўлади.
-    _, _, profile, managed = await asyncio.gather(
+    # Фойдаланувчини сақлаш ва профилини ўқиш — битта сўровда
+    # (save_user_and_get_profile), гуруҳ ваколати эса алоҳида.
+    _, profile, managed = await asyncio.gather(
         _awaited(message.answer("Ассалому алайкум! Чорва бозор ботига хуш келибсиз!")),
-        save_user(
+        save_user_and_get_profile(
             user_id=user_id,
             full_name=message.from_user.full_name,
             username=message.from_user.username
         ),
-        get_user_profile(user_id),
         _get_managed_groups(user_id),
     )
 
