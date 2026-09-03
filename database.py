@@ -19,42 +19,79 @@ _pg_pool = None
 _pg_pool_lock = threading.Lock()
 
 
+# Pool ҳажми: asyncio.to_thread'нинг стандарт thread pool'и 32 тагача
+# ипга эга, шунинг учун бир вақтда шунча DB сўрови бўлиши мумкин.
+PG_POOL_MIN = 1
+PG_POOL_MAX = int(os.getenv("PG_POOL_MAX", "32"))
+
+
 def _get_pg_pool():
     global _pg_pool
     if _pg_pool is None:
         with _pg_pool_lock:
             if _pg_pool is None:
                 from psycopg2 import pool as pg_pool_module
-                _pg_pool = pg_pool_module.ThreadedConnectionPool(1, 10, DATABASE_URL)
+                _pg_pool = pg_pool_module.ThreadedConnectionPool(
+                    PG_POOL_MIN, PG_POOL_MAX, DATABASE_URL
+                )
+                logging.info("PostgreSQL pool яратилди (макс. %s уланиш).", PG_POOL_MAX)
     return _pg_pool
 
 
 class _PooledConnection:
     """
     Pool'дан олинган psycopg2 connection'ни ўраб туради — .close()
-    чақирилганда уни ҳақиқатан ёпиш ўрниga poolga қайтаради, шунда
+    чақирилганда уни ҳақиқатан ёпиш ўрнига poolга қайтаради, шунда
     кейинги сўров учун қайта ишлатилади. Бошқа барча чақириқлар
     (cursor(), commit(), rollback() ва ҳ.к.) ҳақиқий connection'га
     ўзгаришсиз ўтказилади.
+
+    ⚠️ ХАВФСИЗЛИК ТЎРИ: кодда `conn = get_connection()` дан кейин
+    try/finally ишлатмайдиган ўнлаб жойлар бор — уларда SQL хатоси
+    чиқса, close() умуman чақирилмайди ва уланиш poolда "банд"
+    бўлиб қолиб кетарди. Бир нечта шундай хатодан кейин pool тугаб,
+    БУТУН бот жим бўлиб қоларди. Шунинг учун __del__ орқали ҳам
+    қайтарамиз: объект йўқолиши билан уланиш poolга тушади.
     """
-    __slots__ = ("_conn", "_pool")
+    __slots__ = ("_conn", "_pool", "_returned")
 
     def __init__(self, conn, pool):
         object.__setattr__(self, "_conn", conn)
         object.__setattr__(self, "_pool", pool)
+        object.__setattr__(self, "_returned", False)
 
-    def close(self):
+    def _release(self, broken=False):
+        if self._returned:
+            return
+        object.__setattr__(self, "_returned", True)
         try:
-            # Тугалланмаган транзакция (масалан, хатолик боис commit
-            # чақирилмаган ҳолат) кейинги фойдаланувчига ўтиб қолмаслиги
-            # учун poolga қайтаришдан олдин ҳар доим rollback қиламиз.
-            self._conn.rollback()
-            self._pool.putconn(self._conn)
+            if not broken:
+                # Тугалланмаган транзакция (масалан, хатолик боис commit
+                # чақирилмаган ҳолат) кейинги фойдаланувчига ўтиб
+                # қолмаслиги учун поolга қайтаришдан олдин rollback.
+                self._conn.rollback()
+            self._pool.putconn(self._conn, close=broken)
         except Exception:
             try:
                 self._pool.putconn(self._conn, close=True)
             except Exception:
                 pass
+
+    def close(self):
+        self._release()
+
+    def __del__(self):
+        # Функция close() чақирмасдан тугаган бўлса — уланиш барибир
+        # қайтарилади (акс ҳолда pool аста-секин тугарди).
+        try:
+            if not self._returned:
+                logging.warning(
+                    "DB уланиши close() чақирилмасдан қолди — pool'га "
+                    "автоматик қайтарилди (кодда try/finally етишмаяпти)."
+                )
+                self._release()
+        except Exception:
+            pass
 
     def __getattr__(self, name):
         return getattr(self._conn, name)
@@ -590,32 +627,58 @@ def _backfill_price_num(cursor, conn):
     Python'да таҳлил қиларди. Энди рақамли price_num устуни бор — бу
     функция ЭСКИ қаторларни бир марта тўлдиради (price_num IS NULL
     бўлганларини), кейинги ишга туширишларда ҳеч нарса қилмайди.
+
+    ⚠️ Тўплам-тўплам (batch) бажарилади. Аввал ҳар бир қатор учун
+    алоҳида UPDATE юбориларди — узоқдаги базада бу ҳар қаторга битта
+    тармоқ айланиши деганидир, яъни минглаб эълонда бот ишга тушишдан
+    ОЛДИН бир неча дақиқа қотиб турарди (init_db() polling'дан олдин
+    чақирилади).
     """
-    p = get_placeholder()
-    try:
-        cursor.execute("SELECT id, price FROM ads WHERE price_num IS NULL")
-        rows = cursor.fetchall()
-    except Exception as e:
-        logging.debug(f"price_num backfill ўтказиб юборилди: {e}")
-        return
-
-    if not rows:
-        return
-
-    updated = 0
-    for ad_id, price_text in rows:
-        value = parse_price_text(price_text) if price_text else 0
+    total = 0
+    while True:
         try:
-            cursor.execute(
-                f"UPDATE ads SET price_num = {p} WHERE id = {p}",
-                (int(value), ad_id)
-            )
-            updated += 1
+            cursor.execute("SELECT id, price FROM ads WHERE price_num IS NULL LIMIT 1000")
+            rows = cursor.fetchall()
         except Exception as e:
-            logging.warning(f"price_num тўлдирилмади (ad_id={ad_id}): {e}")
+            logging.debug(f"price_num backfill ўтказиб юборилди: {e}")
+            return
 
-    conn.commit()
-    logging.info(f"price_num: {updated} та эълон учун тўлдирилди.")
+        if not rows:
+            break
+
+        pairs = [
+            (int(parse_price_text(price_text) if price_text else 0), ad_id)
+            for ad_id, price_text in rows
+        ]
+
+        try:
+            if DATABASE_URL:
+                from psycopg2.extras import execute_values
+                execute_values(
+                    cursor,
+                    "UPDATE ads SET price_num = v.num::bigint "
+                    "FROM (VALUES %s) AS v(num, id) WHERE ads.id = v.id::int",
+                    pairs
+                )
+            else:
+                cursor.executemany(
+                    "UPDATE ads SET price_num = ? WHERE id = ?", pairs
+                )
+            conn.commit()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logging.warning(f"price_num тўлдиришда хатолик: {e}")
+            return
+
+        total += len(rows)
+        if len(rows) < 1000:
+            break
+
+    if total:
+        logging.info(f"price_num: {total} та эълон учун тўлдирилди.")
 
 async def migrate_db(*args, **kwargs):
     return await asyncio.to_thread(_sync_migrate_db, *args, **kwargs)
