@@ -93,6 +93,24 @@ def get_placeholder():
     return "%s" if DATABASE_URL else "?"
 
 
+def _try_create_indexes(cursor, conn, statements):
+    """
+    Индексларни битталаб яратади: биттаси хато берса (масалан жадвал
+    ҳали йўқ), қолганлари барибир яратилаверади.
+    CREATE INDEX IF NOT EXISTS синтаксиси PostgreSQL ва SQLite'да бир хил.
+    """
+    for sql in statements:
+        try:
+            cursor.execute(sql)
+            conn.commit()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logging.debug(f"Индекс (ўтказиб юборилди): {e}")
+
+
 # ═══════════════════════════════════════
 # ⚠️ Chegaralar
 
@@ -108,6 +126,21 @@ AD_EXPIRE_DAYS = 7
 
 def _sync_init_db():
     conn = get_connection()
+    try:
+        _init_with_connection(conn)
+    finally:
+        conn.close()
+
+    # Мавжуд базани янги устунлар билан янгилаш
+    _sync_migrate_db()
+
+    logging.info(
+        "Baza yaratildi (PostgreSQL)" if DATABASE_URL
+        else "Baza yaratildi (SQLite)"
+    )
+
+
+def _init_with_connection(conn):
     cursor = conn.cursor()
 
     if DATABASE_URL:
@@ -324,15 +357,7 @@ def _sync_init_db():
         """)
 
     conn.commit()
-    conn.close()
 
-    # Мавжуд базани янги устунлар билан янгилаш
-    _sync_migrate_db()
-
-    logging.info(
-        "Baza yaratildi (PostgreSQL)" if DATABASE_URL
-        else "Baza yaratildi (SQLite)"
-    )
 
 async def init_db(*args, **kwargs):
     return await asyncio.to_thread(_sync_init_db, *args, **kwargs)
@@ -343,7 +368,16 @@ def _sync_migrate_db():
     Мавжуд базага янги устунларни хавфсиз қўшиш.
     Бот аллақачон ишлаётган бўлса ҳам хатосиз ишлайди.
     """
+    # try/finally — миграция ярмида хатолик чиқса ҳам уланиш poolga
+    # қайтарилиши (ёки ёпилиши) кафолатланади.
     conn = get_connection()
+    try:
+        _migrate_with_connection(conn)
+    finally:
+        conn.close()
+
+
+def _migrate_with_connection(conn):
     cursor = conn.cursor()
 
     migrations = []
@@ -454,10 +488,32 @@ def _sync_migrate_db():
             try:
                 cursor.execute(sql)
                 conn.commit()
-            except Exception:                
+            except Exception:
                 pass
 
-    conn.close()
+    # ═══ ИНДЕКСЛАР ═══
+    # Аввал битта ҳам индекс йўқ эди — ҳар бир қидирув, админ рўйхати
+    # ва scheduler сўрови бутун жадвални тўлиқ ўқирди (full scan). Эълонлар
+    # сони ошган сайин бу энг катта секинлик манбаига айланади.
+    # Синтаксис PostgreSQL ва SQLite'да бир xil.
+    index_migrations = [
+        "CREATE INDEX IF NOT EXISTS idx_ads_status ON ads (status)",
+        "CREATE INDEX IF NOT EXISTS idx_ads_user_id ON ads (user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ads_expires_at ON ads (expires_at)",
+        "CREATE INDEX IF NOT EXISTS idx_ads_created_at ON ads (created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_ads_status_animal ON ads (status, animal_type)",
+        "CREATE INDEX IF NOT EXISTS idx_ads_status_region ON ads (status, region)",
+        "CREATE INDEX IF NOT EXISTS idx_ad_media_ad_id ON ad_media (ad_id)",
+        "CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_notifications_animal_region ON notifications (animal_type, region)",
+        "CREATE INDEX IF NOT EXISTS idx_market_prices_animal ON market_prices (animal_type)",
+        "CREATE INDEX IF NOT EXISTS idx_market_prices_created_at ON market_prices (created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_vet_suggestions_status ON vet_suggestions (status)",
+    ]
+    # Гуруҳ/блок жадваллари керак бўлганда яратилади — уларнинг индекслари
+    # ўша жадвал яратиладиган _ensure_*_table() функцияларида қўшилади.
+    _try_create_indexes(cursor, conn, index_migrations)
+
     logging.info("Миграция тугади.")
 
 async def migrate_db(*args, **kwargs):
@@ -621,6 +677,10 @@ def _sync_get_expiring_ads(days_left: int):
     Муддати days_left кун қолган АКТИВ эълонларни қайтаради.
     Scheduler эслатма юборади.
     """
+    # Кун сони SQL матнига қўшилгани учун — уни албатта бутун сонга
+    # айлантирамиз (SQL'га матн сифатида қўшилиши инъекция йўли бўлмасин).
+    days_left = int(days_left)
+
     p = get_placeholder()
     with db_connection() as conn:
         cursor = conn.cursor()
@@ -631,16 +691,16 @@ def _sync_get_expiring_ads(days_left: int):
                 FROM ads
                 WHERE status = {p}
                   AND expires_at IS NOT NULL
-                  AND expires_at::date = (NOW() + INTERVAL '{days_left} days')::date
-            """, ("active",))
+                  AND expires_at::date = (NOW() + ({p} || ' days')::interval)::date
+            """, ("active", str(days_left)))
         else:
             cursor.execute(f"""
                 SELECT id, user_id, animal_type, quantity, price, msg_id
                 FROM ads
                 WHERE status = {p}
                   AND expires_at IS NOT NULL
-                  AND date(expires_at) = date('now', '+{days_left} days')
-            """, ("active",))
+                  AND date(expires_at) = date('now', {p})
+            """, ("active", f"+{days_left} days"))
 
         rows = cursor.fetchall()
         return rows
@@ -1383,6 +1443,43 @@ async def reject_ad(*args, **kwargs):
     return await asyncio.to_thread(_sync_reject_ad, *args, **kwargs)
 
 
+def _sync_claim_and_delete_pending_ad(ad_id):
+    """
+    Кўриб чиқилмаган (pending) эълонни "эгаллаб олиб" ўчиради ва унинг
+    (user_id, animal_type) маълумотини қайтаради. Эълон аллақачон бошқа
+    админ томонидан кўрилган (status != 'pending') ёки ўчирилган бўлса —
+    None қайтаради.
+
+    approve_ad/reject_ad'даги каби status='pending' шарти билан ишлайди:
+    иккита админ бир вақтда босса, ФАҚАТ биттасида rowcount=1 бўлади.
+    Аввал бу ерда шартсиз DELETE бор эди — шу сабабли аллақачон каналга
+    жойланган эълон ҳам ўчиб кетиши мумкин эди.
+    """
+    p = get_placeholder()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT user_id, animal_type FROM ads WHERE id = {p} AND status = {p}",
+            (ad_id, 'pending')
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        cursor.execute(
+            f"DELETE FROM ads WHERE id = {p} AND status = {p}",
+            (ad_id, 'pending')
+        )
+        claimed = cursor.rowcount > 0
+        conn.commit()
+
+    return row if claimed else None
+
+
+async def claim_and_delete_pending_ad(*args, **kwargs):
+    return await asyncio.to_thread(_sync_claim_and_delete_pending_ad, *args, **kwargs)
+
+
 # ═══════════════════════════════════════
 # БЛОКЛАШ ТИЗИМИ
 # ═══════════════════════════════════════
@@ -1417,19 +1514,28 @@ def _sync_increment_rejection(user_id):
     with db_connection() as conn:
         cursor = conn.cursor()
 
-        # Рад сонини ошириш
-        cursor.execute(f"""
-            UPDATE users
-            SET rejection_count = rejection_count + 1
-            WHERE user_id = {p}
-        """, (user_id,))
-
-        # Янги қийматни олиш
-        cursor.execute(
-            f"SELECT rejection_count FROM users WHERE user_id = {p}",
-            (user_id,)
-        )
-        row = cursor.fetchone()
+        # Рад сонини ошириб, янги қийматни ЎША сўровнинг ўзида оламиз —
+        # алоҳида SELECT керак эмас (битта round-trip камаяди ва янги
+        # қиймат аниқ шу UPDATE натижаси эканига шубҳа қолмайди).
+        if DATABASE_URL:
+            cursor.execute(f"""
+                UPDATE users
+                SET rejection_count = rejection_count + 1
+                WHERE user_id = {p}
+                RETURNING rejection_count
+            """, (user_id,))
+            row = cursor.fetchone()
+        else:
+            cursor.execute(f"""
+                UPDATE users
+                SET rejection_count = rejection_count + 1
+                WHERE user_id = {p}
+            """, (user_id,))
+            cursor.execute(
+                f"SELECT rejection_count FROM users WHERE user_id = {p}",
+                (user_id,)
+            )
+            row = cursor.fetchone()
         count = row[0] if row else 0
 
         # Блоклаш текшириш
@@ -1928,6 +2034,11 @@ def _ensure_region_group_tables():
                 )
             """)
         conn.commit()
+        _try_create_indexes(cursor, conn, [
+            "CREATE INDEX IF NOT EXISTS idx_region_groups_region ON region_groups (region)",
+            "CREATE INDEX IF NOT EXISTS idx_ad_group_posts_ad_id ON ad_group_posts (ad_id)",
+            "CREATE INDEX IF NOT EXISTS idx_ad_group_posts_chat_msg ON ad_group_posts (chat_id, message_id)",
+        ])
 
 
 # init_db() ишга тушганда бу жадваллар ҳам яратилиши учун:
@@ -2152,6 +2263,10 @@ def _ensure_block_log_table():
                 )
             """)
         conn.commit()
+        _try_create_indexes(cursor, conn, [
+            "CREATE INDEX IF NOT EXISTS idx_block_log_user_id ON block_log (user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_block_log_blocked_by ON block_log (blocked_by)",
+        ])
 
 
 _block_log_ready = False
@@ -2304,6 +2419,12 @@ def _ensure_group_admins_table():
                 )
             """)
         conn.commit()
+        # UNIQUE (chat_id, user_id) chat_id бўйича қидиришни қоплайди,
+        # аммо "бу фойдаланувчи қайси гуруҳларда админ?" сўрови учун
+        # user_id бўйича алоҳида индекс керак.
+        _try_create_indexes(cursor, conn, [
+            "CREATE INDEX IF NOT EXISTS idx_group_admins_user_id ON group_admins (user_id)",
+        ])
 
 
 _group_admins_ready = False

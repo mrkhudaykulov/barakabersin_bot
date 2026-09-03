@@ -26,8 +26,8 @@ from database import (
     repost_ad, is_premium_user, 
     archive_ad, AD_EXPIRE_DAYS,
     get_notification_users, is_user_blocked, 
-    approve_ad, reject_ad,
-    get_pending_ad, increment_rejection, 
+    approve_ad, reject_ad, claim_and_delete_pending_ad,
+    get_pending_ad, increment_rejection,
     MAX_REJECTIONS, save_admin_review_message, 
     get_admin_review_messages, delete_admin_review_messages,
     get_monthly_ad_count, parse_price_with_type,
@@ -1316,24 +1316,11 @@ async def block_user_callback(callback: types.CallbackQuery):
 
     ad_id = int(callback.data.replace("block_", ""))
 
-    def _block_fetch_and_delete_sync():
-        p = get_placeholder()
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            f"SELECT user_id, animal_type FROM ads WHERE id = {p}",
-            (ad_id,)
-        )
-        ad_row = cursor.fetchone()
-
-        if ad_row:
-            # ═══ ЭЪЛОННИ БАЗАДАН ЎЧИРИШ (rad etish bilan bir xil) ═══
-            cursor.execute(f"DELETE FROM ads WHERE id = {p}", (ad_id,))
-            conn.commit()
-        conn.close()
-        return ad_row
-
-    ad = await asyncio.to_thread(_block_fetch_and_delete_sync)
+    # approve/reject билан бир xil атомар "эгаллаб олиш" — эълонни фақат
+    # ҳали pending бўлса ўчиради. Акс ҳолда бошқа админ тасдиқлаб,
+    # каналга/гуруҳларга жойлаб бўлган эълон эски тугма босилиши билан
+    # базадан ўчиб кетар эди.
+    ad = await claim_and_delete_pending_ad(ad_id)
 
     if not ad:
         await callback.answer("⚠️ Бу эълон бошқа админ томонидан кўрилган!")
