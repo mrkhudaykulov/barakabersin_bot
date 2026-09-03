@@ -35,6 +35,17 @@ def _get_home_kb(user_id: int):
     return main_menu_admin() if user_id in ADMINS else main_menu()
 
 
+async def _awaited(awaitable):
+    """
+    asyncio.gather() фақат coroutine/Future қабул қилади. aiogram'нинг
+    message.answer() эса coroutine эмас, SendMessage объектини қайтаради —
+    у await қилинади, лекин hashable эмас, шунинг учун gather'га
+    тўғридан-тўғри бериб бўлмайди ("unhashable type: 'SendMessage'").
+    Шу кичик ўровчи уни оддий coroutine'га айлантиради.
+    """
+    return await awaitable
+
+
 async def _get_managed_groups(user_id: int):
     """Фойдаланувчи тасдиқлаш ваколатига эга гуруҳлар (хатода — бўш рўйхат)."""
     try:
@@ -239,7 +250,7 @@ async def start_cmd(message: types.Message, state: FSMContext):
     # вилоят/туман/телефонни ўқийди — улар бир-бирига боғлиқ эмас,
     # шунинг учун параллел бажарса бўлади.
     _, _, profile, managed = await asyncio.gather(
-        message.answer("Ассалому алайкум! Чорва бозор ботига хуш келибсиз!"),
+        _awaited(message.answer("Ассалому алайкум! Чорва бозор ботига хуш келибсиз!")),
         save_user(
             user_id=user_id,
             full_name=message.from_user.full_name,
