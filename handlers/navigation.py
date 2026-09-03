@@ -36,26 +36,42 @@ def _get_home_kb(user_id: int):
 
 async def _add_group_admin_buttons_if_any(kb, user_id: int):
     """
-    Агар фойдаланувчи биror боғланган гуруҳда (ҳақиқий Telegram админи
+    Агар фойдаланувчи бирор боғланган гуруҳда (ҳақиқий Telegram админи
     сифатида) бўлса — "Менинг гуруҳларим"/"Мен блокладим" тугмаларини
-    мавжуд клавиатурага қўшиб қайтаради. Бош ADMINS'га ҳам, оддий
-    фойдаланувчиларга ҳам бир xil tarzda ishlaydi.
+    қўшилган ЯНГИ клавиатура қайтаради. Бош ADMINS'га ҳам, оддий
+    фойдаланувчиларга ҳам бир хил тарзда ишлайди.
+
+    ⚠️ Келган `kb` ЎЗГАРТИРИЛМАЙДИ. Аввал kb.keyboard.append(...) орқали
+    тўғридан-тўғри ўзгартирилар эди — бу клавиатура объекти бирор жойда
+    кэшланса, гуруҳ админи тугмалари БАРЧА фойдаланувчиларга кўриниб
+    кетишига олиб келарди.
     """
     try:
-        from groups import get_user_managed_groups
+        # Модул handlers пакети ичида — аввал "from groups import ..."
+        # деб ёзилган эди, бу ModuleNotFoundError берарди ва except
+        # блоки уни ютиб юборарди: натижада бу тугмалар ҲЕЧ КИМГА,
+        # ҳатто ҳақиқий гуруҳ админига ҳам кўринмаган.
+        from handlers.groups import get_user_managed_groups
         managed = await get_user_managed_groups(user_id)
     except Exception:
+        logging.exception("Гуруҳ админи тугмаларини аниқлаб бўлмади (user_id=%s)", user_id)
         managed = []
-    if managed:
-        kb.keyboard.append([
+
+    if not managed:
+        return kb
+
+    return ReplyKeyboardMarkup(
+        keyboard=[list(row) for row in kb.keyboard] + [[
             KeyboardButton(text="🏘 Менинг гуруҳларим"),
             KeyboardButton(text="🚫 Мен блокладим"),
-        ])
-    return kb
+        ]],
+        resize_keyboard=True
+    )
+
 
 def _get_ads_show_profile_summary():
     """Айланма импортни олдини олиш учун lazy import."""
-    from ads import _show_profile_summary
+    from handlers.ads import _show_profile_summary
     return _show_profile_summary
 
 async def _ask_next_onboarding_step(message: types.Message, state: FSMContext,

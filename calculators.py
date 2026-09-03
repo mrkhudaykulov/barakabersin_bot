@@ -122,7 +122,12 @@ def qm_hisobla_gosht(bosh, vazn, narx_kg, em_kg):
     r_gosh   = sotish * vazn * narx_kg
     buz_soni = bosh
     r_buzoq  = buz_soni * 1_500_000
-    r_total  = r_gosh + r_buzoq
+    # Кассация (брак она моллар гўшти) — сут йўналишидаги ҳисоб билан
+    # бир xil формула. Аввал гўшт йўналишида бу даромад қатори умуман
+    # йўқ эди, шу сабабли фойда камайтириб кўрсатиларди.
+    kass     = round(bosh * 0.05)
+    r_kass   = kass * 400 * 25_000
+    r_total  = r_gosh + r_buzoq + r_kass
 
     x_pich  = jami * 2_500 * 1_200
     x_silo  = jami * 3_000 * 300
@@ -146,6 +151,7 @@ def qm_hisobla_gosht(bosh, vazn, narx_kg, em_kg):
         f"📈 *Даромадлар*\n"
         f"• Гўшт ({sotish} бош): `{fmt(r_gosh)}` сўм\n"
         f"• Бузоқ ({buz_soni} та): `{fmt(r_buzoq)}` сўм\n"
+        f"• Гўшт кассация ({kass} бош): `{fmt(r_kass)}` сўм\n"
         f"▸ *Жами: `{fmt(r_total)}` сўм*\n\n"
         f"📉 *Харажатлар*\n"
         f"• Пичан: `{fmt(x_pich)}` сўм\n"
