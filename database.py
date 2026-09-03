@@ -1717,11 +1717,16 @@ async def is_premium_user(*args, **kwargs):
     return await asyncio.to_thread(_sync_is_premium_user, *args, **kwargs)
 
 # ═══════════════════════════════════════
-# ОЙЛИК ЭЪЛОН ЛИМИТИ
+# ТАРИФ ЛИМИТЛАРИ (оддий / премиум)
 # ═══════════════════════════════════════
+# Барча лимитлар ШУ ЕРДА — аввал кузатув лимитлари handlers/notify.py'да
+# алоҳида турарди, шу сабабли қоидаларни бир жойда кўриб бўлмасди.
 
 MAX_ADS_PER_MONTH_REGULAR = 15
 MAX_ADS_PER_MONTH_PREMIUM = 150
+
+MAX_NOTIFICATIONS_REGULAR = 1
+MAX_NOTIFICATIONS_PREMIUM = 10
 
 
 def _sync_get_monthly_ad_count(user_id: int) -> int:

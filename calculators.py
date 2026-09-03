@@ -1,7 +1,22 @@
 # calculators.py
 
+# "🟢 яхши рентабеллик" деб белгиланадиган энг кичик фоиз.
+# ⚠️ ДИҚҚАТ: қўй учун 20%, қорамол учун 15% — бу фарқ шу пайтгача
+# кодда изоҳсиз турган эди. Агар бу аталган бизнес қоидаси бўлмаса,
+# иккаласини бир хил қилиш керак.
+RENT_GOOD_QOY = 20
+RENT_GOOD_QORAMOL = 15
+
+
 def fmt(n):
     return f"{round(n):,}".replace(",", " ")
+
+
+def _rent_emoji(rent, good_threshold):
+    """Рентабелликни белгига айлантиради (учала калькулятор учун умумий)."""
+    if rent >= good_threshold:
+        return "🟢"
+    return "🟡" if rent >= 0 else "🔴"
 
 def qoy_hisobla(ona, narx, qozi_narx, em_kg):
     jami = round(ona * 1.1)
@@ -25,7 +40,7 @@ def qoy_hisobla(ona, narx, qozi_narx, em_kg):
     sof  = r_total - x_total
     rent = round((sof / x_total) * 100) if x_total else 0
     fe = "✅" if sof >= 0 else "❌"
-    re = "🟢" if rent >= 20 else ("🟡" if rent >= 0 else "🔴")
+    re = _rent_emoji(rent, RENT_GOOD_QOY)
 
     return (
         f"🐑 *Қўй боқиш — йиллик ҳисоб*\n"
@@ -73,7 +88,7 @@ def qm_hisobla_sut(bosh, kun_sut_l, sut_narx, em_kg):
     sof  = r_total - x_total
     rent = round((sof / x_total) * 100) if x_total else 0
     fe = "✅" if sof >= 0 else "❌"
-    re = "🟢" if rent >= 15 else ("🟡" if rent >= 0 else "🔴")
+    re = _rent_emoji(rent, RENT_GOOD_QORAMOL)
 
     return (
         f"🐄 *Қорамол (сут) — йиллик ҳисоб*\n"
@@ -121,7 +136,7 @@ def qm_hisobla_gosht(bosh, vazn, narx_kg, em_kg):
     sof  = r_total - x_total
     rent = round((sof / x_total) * 100) if x_total else 0
     fe = "✅" if sof >= 0 else "❌"
-    re = "🟢" if rent >= 15 else ("🟡" if rent >= 0 else "🔴")
+    re = _rent_emoji(rent, RENT_GOOD_QORAMOL)
 
     return (
         f"🐄 *Қорамол (гўшт) — йиллик ҳисоб*\n"
