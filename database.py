@@ -213,13 +213,26 @@ def _log_db_latency():
     кўчириш керак. Тахмин қилмаслик учун аниқ рақам.
     """
     try:
+        # 1) Аввал pool'ни "иситамиз" — уланиш очиш вақти ўлчовга
+        #    кирмаслиги учун (акс ҳолда 5 та уланиш очилиши сўров
+        #    вақтидек кўриниб, рақам бир неча марта катта чиқади).
+        warm_started = time.monotonic()
+        with db_connection() as conn:
+            conn.cursor().execute("SELECT 1")
+        warm_ms = (time.monotonic() - warm_started) * 1000
+
+        # 2) Энди ҳақиқий сўров вақти — уланиш аллақачон тайёр.
         started = time.monotonic()
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT 1")
             cursor.fetchone()
         elapsed_ms = (time.monotonic() - started) * 1000
-        logging.info("База кечикиши (SELECT 1): %.0f мс", elapsed_ms)
+
+        logging.info(
+            "База кечикиши: %.0f мс/сўров (уланишни очиш: %.0f мс)",
+            elapsed_ms, warm_ms
+        )
         if elapsed_ms > 100:
             logging.warning(
                 "⚠️ Базага ҳар бир сўров ~%.0f мс олмоқда. Бу жуда кўп — "

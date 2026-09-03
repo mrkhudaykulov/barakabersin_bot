@@ -110,16 +110,33 @@ async def main_loop():
     asyncio.create_task(start_scheduler(bot))
     print("[*] Scheduler ишга тушди.")
 
-    # Бот polling
+    # ═══ БОТ POLLING ═══
+    # ⚠️ start_polling() ХАТОСИЗ қайтса — бу "тўхта" сигнали (SIGTERM)
+    # келгани, яъни Render эски нусхани ўчираётгани дегани. Аввал бу
+    # ҳолатда ҳам цикл polling'ни ҚАЙТА бошларди: эски нусха ўлмай,
+    # янги деплой билан бир вақтда getUpdates сўрарди. Telegram эса
+    # фақат биттасига жавоб беради (TelegramConflictError), шу сабабли
+    # фойдаланувчи хабарлари "йўқолиб" қоларди.
+    first_attempt = True
     while True:
         try:
             print("[*] Бот Телеграм серверига уланмоқда...")
-            await bot.delete_webhook(drop_pending_updates=True)
-            await dp.start_polling(bot)
+            # Кутиб турган хабарларни фақат биринчи ишга туширишда
+            # ташлаймиз — қайта уринишда фойдаланувчи хабари йўқолмасин.
+            await bot.delete_webhook(drop_pending_updates=first_attempt)
+            first_attempt = False
+            await dp.start_polling(bot, handle_signals=True)
         except Exception as e:
             print(f"\n[!] Хатолик: {e}")
             print("[!] 15 сониядан кейин қайта уриниш...\n")
             await asyncio.sleep(15)
+            continue
+
+        # Хатосиз тугади — тўхтатиш сўралган, жараённи якунлаймиз.
+        print("[*] Polling тўхтатилди — жараён якунланмоқда.")
+        break
+
+    await runner.cleanup()
 
 
 if __name__ == "__main__":
