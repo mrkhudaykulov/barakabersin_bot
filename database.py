@@ -477,38 +477,48 @@ def _sync_save_ad_with_media(user_id: int, data: dict, media_list: list) -> int 
     cursor = conn.cursor()
     
     try:
-        # 1. Эълон матнини ва малумотларини сақлаш
-        cursor.execute(f"""
+        # 1. Эълон матнини ва малумотларини сақлаш.
+        # ⚠️ PostgreSQL'да cursor.lastrowid ДОИМ None қайтаради — шунинг
+        # учун ID'ни INSERT ... RETURNING id орқали оламиз. Акс ҳолда
+        # ad_id=None бўлиб, қуйидаги медиа сақлаш блоки ўтказиб юборилар
+        # ва эълоннинг барча расм/видеолари жимгина йўқоларди.
+        insert_sql = f"""
             INSERT INTO ads (user_id, animal_type, quantity, price, description, region, district, mfy, phone, username, status)
             VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'pending')
-        """, (
+        """
+        params = (
             user_id, data.get('animal_type'), data.get('quantity'), data.get('price'),
             data.get('description'), data.get('region'), data.get('district'), data.get('mfy'),
             data.get('phone'), data.get('username')
-        ))
-        
-        # Янги яратилган эълоннинг ID сини оламиз
-        ad_id = cursor.lastrowid
-        
-        # Агар SQLite бўлса ва lastrowid ўхшамаса, муқобил вариант:
-        if not ad_id and not DATABASE_URL:
-            cursor.execute("SELECT last_insert_rowid()")
+        )
+
+        if DATABASE_URL:
+            cursor.execute(insert_sql + " RETURNING id", params)
             ad_id = cursor.fetchone()[0]
+        else:
+            cursor.execute(insert_sql, params)
+            ad_id = cursor.lastrowid
+            if not ad_id:
+                cursor.execute("SELECT last_insert_rowid()")
+                ad_id = cursor.fetchone()[0]
+
+        if not ad_id:
+            raise RuntimeError("Эълон сақланди, лекин ID олинмади")
 
         # 2. Агар media_list ичида файллар бўлса, уларни айлантириб базага ёзиш
-        if media_list and ad_id:
+        if media_list:
             for media in media_list:
                 cursor.execute(f"""
                     INSERT INTO ad_media (ad_id, media_type, file_id)
                     VALUES ({p}, {p}, {p})
                 """, (ad_id, media.get('type'), media.get('file_id')))
-                
+
         conn.commit()
         return ad_id  # Муваффақиятли бўлса ID қайтади
-        
+
     except Exception as e:
         conn.rollback()
-        logging.error(f"Базага эълон ва медиани сақлашда хатолик: {e}")
+        logging.exception(f"Базага эълон ва медиани сақлашда хатолик: {e}")
         return None
     finally:
         conn.close()

@@ -1,5 +1,16 @@
+import logging
+
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
+
+# Вилоятлар рўйхати — клавиатура ҳам, киритилган матнни текшириш
+# (валидация) ҳам шу битта манбадан фойдаланиши учун модул даражасида.
+REGIONS = [
+    "Қашқадарё", "Сурхондарё", "Тошкент", "Фарғона",
+    "Андижон", "Наманган", "Самарқанд", "Бухоро",
+    "Навоий", "Жиззах", "Сирдарё", "Хоразм",
+    "Қорақалпоғистон"
+]
 
 DISTRICTS = {
     "Фарғона": [
@@ -143,13 +154,7 @@ def animal_types_keyboard():
 
 def regions_keyboard():
     builder = ReplyKeyboardBuilder()
-    regions = [
-        "Қашқадарё", "Сурхондарё", "Тошкент", "Фарғона",
-        "Андижон", "Наманган", "Самарқанд", "Бухоро",
-        "Навоий", "Жиззах", "Сирдарё", "Хоразм",
-        "Қорақалпоғистон"
-    ]
-    for r in regions:
+    for r in REGIONS:
         builder.add(KeyboardButton(text=r))
     builder.adjust(2)
     builder.row(
@@ -160,8 +165,14 @@ def regions_keyboard():
 
 
 def districts_keyboard(region):
-    builder = ReplyKeyboardBuilder()    
-    list_d = DISTRICTS.get(region, ["Марказ тумани", "Чет тумани"])
+    builder = ReplyKeyboardBuilder()
+    list_d = DISTRICTS.get(region)
+    if list_d is None:
+        # Бу ҳолат маълумотдаги камчиликни билдиради (нотўғри/эски вилоят
+        # номи) — жимгина сохта туманлар кўрсатиш ўрнига логга ёзамиз,
+        # акс ҳолда фойдаланувчи ҳеч нарса топилмайдиган кўчага киради.
+        logging.warning("districts_keyboard: '%s' вилояти DISTRICTS'да йўқ!", region)
+        list_d = ["Марказ тумани", "Чет тумани"]
 
     for d in list_d:
         builder.add(KeyboardButton(text=d))

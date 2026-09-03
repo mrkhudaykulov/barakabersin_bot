@@ -91,7 +91,10 @@ async def main_loop():
     await setup_bot_commands()
 
     # Веб-сервер (Render портини банд қилиш учун + Mini App backend)
-    app = web.Application(client_max_size=250 * 1024 * 1024)  # 250MB — бир нечта 50MB'лик видео учун жой
+    # webapp.py'даги MAX_TOTAL_UPLOAD_BYTES (100MB) дан бироз юқори — ундан
+    # катта сўровни aiohttp'нинг ўзи хотирага юкламай рад этсин. Аввалги
+    # 250MB процессни (бот polling'и ҳам шу ерда) OOM'га олиб келиши мумкин эди.
+    app = web.Application(client_max_size=110 * 1024 * 1024)
     app.router.add_get("/", handle_render_health_check)
     register_webapp_routes(app)  # /adform, /api/profile, /api/ads/submit
 

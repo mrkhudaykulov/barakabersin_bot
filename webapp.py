@@ -49,6 +49,15 @@ routes = web.RouteTableDef()
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "webapp_static")
 
+# ═══ ЮКЛАШ ЛИМИТЛАРИ ═══
+# Bot API'нинг бот орқали юклаш лимити — 50MB/файл. Умумий лимит эса
+# процесс хотирасини ҳимоя қилади (файллар Telegram'га юборилгунча
+# хотирада турадi, бот polling'и ҳам шу процессда ишлайди).
+MAX_FILE_BYTES = 50 * 1024 * 1024
+MAX_MEDIA_FILES = 10               # Telegram media group'нинг макс. ҳажми
+MAX_TOTAL_UPLOAD_BYTES = 100 * 1024 * 1024
+MAX_FIELD_BYTES = 64 * 1024        # оддий матн майдонлари учун етарли
+
 
 # ═══════════════════════════════════════
 # TELEGRAM initData ТЕКШИРУВИ
@@ -256,31 +265,104 @@ async def _send_to_reviewers_webapp(ad_id, fields, media_meta_list, user, phone)
 
 @routes.post("/api/ads/submit")
 async def api_submit_ad(request: web.Request):
+    try:
+        return await _api_submit_ad_inner(request)
+    except Exception:
+        # Кутилмаган ҳар қандай хатолик — хом aiohttp 500 (ва ичкаридаги
+        # техник тафсилотлар) ўрниға тоза JSON жавоб қайтарамиз.
+        logging.exception("Mini App: /api/ads/submit'да кутилмаган хатолик")
+        return web.json_response(
+            {"ok": False, "error": "Сервер хатоси. Кейинроқ қайта уриниб кўринг."},
+            status=500
+        )
+
+
+async def _read_part_limited(part, max_bytes: int):
+    """
+    Multipart қисмини бўлак-бўлак ўқийди ва лимитдан ошиши билан
+    ўқишни тўхтатади — бутун файлни хотирага юклаб, кейин "катта экан"
+    деб ташлаб юбормаслик учун (акс ҳолда бу DoS йўли бўларди).
+    Қайтаради: (bytes ёки None, лимитдан ошдими).
+    """
+    chunks = []
+    size = 0
+    while True:
+        chunk = await part.read_chunk()
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > max_bytes:
+            # Қолган қисмини хотирага йиғмасдан ўқиб тугатамиз
+            while await part.read_chunk():
+                pass
+            return None, True
+        chunks.append(chunk)
+    return b"".join(chunks), False
+
+
+async def _api_submit_ad_inner(request: web.Request):
     reader = await request.multipart()
 
     fields = {}
     media_files = []
     oversized_files = []
+    total_media_bytes = 0
+    user = None
 
     async for part in reader:
         if part.name == "media":
+            # ⚠️ Медиани ФАҚАТ имзо текширилгандан кейин хотирага ўқиймиз.
+            # Mini App формаси initData'ни файллардан олдин юборади, шунинг
+            # учун аутентификациясиз сўров бу ерга умуман етиб келмайди —
+            # бегона клиент юзлаб мегабайтни серверга буферлата олмайди.
+            if user is None:
+                return _unauthorized()
+
+            if len(media_files) + len(oversized_files) >= MAX_MEDIA_FILES:
+                return web.json_response(
+                    {"ok": False, "error": f"Файллар сони кўп (максимум {MAX_MEDIA_FILES} та)."},
+                    status=400
+                )
+
             content_type = part.headers.get("Content-Type", "")
             is_video = content_type.startswith("video/")
-            file_bytes = await part.read(decode=False)
-            if len(file_bytes) > 50 * 1024 * 1024:  # 50 MB — Bot API'нинг бот-юклаш лимити
+            file_bytes, too_big = await _read_part_limited(part, MAX_FILE_BYTES)
+            if too_big:
                 oversized_files.append(part.filename or "файл")
                 continue
+
+            total_media_bytes += len(file_bytes)
+            if total_media_bytes > MAX_TOTAL_UPLOAD_BYTES:
+                return web.json_response(
+                    {"ok": False, "error": "Юкланган файллар умумий ҳажми жуда катта."},
+                    status=413
+                )
+
             media_files.append({
                 "type": "video" if is_video else "photo",
                 "bytes": file_bytes,
                 "filename": part.filename or ("video.mp4" if is_video else "photo.jpg"),
             })
         else:
-            fields[part.name] = (await part.read()).decode("utf-8")
+            raw, too_big = await _read_part_limited(part, MAX_FIELD_BYTES)
+            if too_big:
+                return web.json_response(
+                    {"ok": False, "error": "Матн майдони жуда узун."}, status=400
+                )
+            try:
+                value = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                return web.json_response(
+                    {"ok": False, "error": "Маълумот форматида хатолик."}, status=400
+                )
+            fields[part.name] = value
 
-    init_data = fields.get("initData", "")
-    user = verify_init_data(init_data)
-    if not user:
+            if part.name == "initData":
+                user = verify_init_data(value)
+                if not user:
+                    return _unauthorized()
+
+    if user is None:
         return _unauthorized()
 
     if await is_user_blocked(user["id"]):
