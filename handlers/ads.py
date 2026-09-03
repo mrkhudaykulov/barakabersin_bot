@@ -36,6 +36,7 @@ from database import (
     clean_phone, get_price_range,
     force_block_user, log_block, get_all_review_admin_ids
 )
+from handlers.ratelimit import fan_out
 
 router = Router()
 router.message.filter(F.chat.type == "private")  # гуруҳларда мену/кнопкалар КЎРИНМАСИН (callback'larga tegmaydi)
@@ -942,8 +943,13 @@ async def post_ad_to_matching_groups(ad_id, region, caption, media_list):
 
     # Ҳар бир гуруҳга ПАРАЛЛЕЛ юборамиз — кетма-кет юборилса, ҳар бир
     # гуруҳ учун алоҳида Telegram round-trip кутиш админни узоқ ушлаб турарди.
-    tasks = [_post_to_one_group(chat_id, chat_title, chat_username) for chat_id, chat_title, chat_username in groups]
-    results = await asyncio.gather(*tasks) if tasks else []
+    # fan_out тезликни Telegram лимитидан ошмайдиган даражада ушлаб туради
+    # ва 429 келса кутиб қайта уринади (аввал бундай хабарлар йўқоларди).
+    results = await fan_out(
+        lambda g: _post_to_one_group(g[0], g[1], g[2]),
+        list(groups),
+        description="Гуруҳларга жойлаш"
+    )
     return [r for r in results if r is not None]
 
 
@@ -1152,9 +1158,11 @@ async def approve_ad_callback(callback: types.CallbackQuery):
                     return False
 
             # Кузатувчиларга ПАРАЛЛЕЛ юборамиз (кетма-кет юборилса, кузатувчилар
-            # кўп бўлганда тасдиқлаш жараёни узоқ давом этарди).
+            # кўп бўлганда тасдиқлаш жараёни узоқ давом этарди). fan_out
+            # Telegram лимитини ҳисобга олади — кузатувчилар кўп бўлганда
+            # аввал бир қисм хабар 429 туфайли йўқоларди.
             target_ids = [row[0] for row in users if row[0] != user_id]
-            outcomes = await asyncio.gather(*[_notify_one(uid) for uid in target_ids]) if target_ids else []
+            outcomes = await fan_out(_notify_one, target_ids, description="Хабардорлик")
             sent_count = sum(1 for ok in outcomes if ok)
             logging.info(f"Хабардорлик: ad_id={ad_id} — {sent_count}/{len(users)} та юборилди")
         else:
