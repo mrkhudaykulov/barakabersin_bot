@@ -3,8 +3,7 @@ scheduler.py — Фонда ишлайдиган вазифалар
 
 Вазифалар:
 1. Ҳар куни соат 10:00 да муддати 2 кун қолган эълонлар эгасига эслатма
-2. Ҳар куни соат 09:00 да муддати 7 кун қолган эълонлар эгасига огоҳлантириш
-3. Ҳар соатда муддати ўтган эълонларни 'expired' статусига ўтказиш
+2. Ҳар 2 соатда муддати ўтган эълонларни архивлаш
 
 Ишга тушириш: main.py дан asyncio.create_task(start_scheduler(bot)) орқали
 """
@@ -46,7 +45,7 @@ async def send_expiry_reminder(bot: Bot, days_left: int = 2):
     Муддати days_left кун қолган эълон эгаларига хабар юбориш.
 
     ⚠️ Аввал бу функция days_left аргументини умуман ишлатмасдан доим
-    get_expiring_ads(2) чақирарди, устига task_2day_reminder уни
+    get_expiring_ads(2) чақирарди, устига уни чақирувчи вазифа
     аргументсиз чақирар эди — яъни ҳар куни соат 10:00 да TypeError
     билан йиқилиб, эслатмалар ҲЕЧ ҚАЧОН юборилмаган.
     """
@@ -60,15 +59,10 @@ async def send_expiry_reminder(bot: Bot, days_left: int = 2):
         f"эслатма юборилмоқда..."
     )
 
-    if days_left <= 2:
-        headline = f"🔴 <b>Эълон муддати ОХИРГИ {days_left} кун қолди!</b>"
-    else:
-        headline = f"🟡 <b>Эълон муддатига {days_left} кун қолди.</b>"
-
     async def _remind_one(ad):
         ad_id, user_id, animal_type, quantity, price, msg_id = ad
         text = (
-            f"{headline}\n\n"
+            f"🔴 <b>Эълон муддати ОХИРГИ {days_left} кун қолди!</b>\n\n"
             f"📦 <b>{animal_type}</b> — {quantity}\n"
             f"💰 <b>Нарх:</b> {price}\n\n"
             f"💎 <b>Премиум</b> аъзолар эълонни "
@@ -80,7 +74,7 @@ async def send_expiry_reminder(bot: Bot, days_left: int = 2):
             chat_id=user_id,
             text=text,
             parse_mode="HTML",
-            reply_markup=repost_keyboard(ad_id) if days_left <= 2 else None
+            reply_markup=repost_keyboard(ad_id)
         )
         return True
 
@@ -175,26 +169,13 @@ async def _safe(coro_factory, name: str):
         logger.exception(f"[Scheduler] '{name}' вазифасида хатолик")
 
 
-async def task_daily_reminders(bot: Bot):
-    """
-    Ҳар куни соат 09:00 да 7 кун қолганларга,
-    соат 10:00 да эса 2 кун қолганларга огоҳлантириш.
-    """
+async def task_2day_reminder(bot: Bot):
+    """Ҳар куни соат 10:00 да 2 кун қолган эълонларга огоҳлантириш."""
     while True:
-        wait_7 = await seconds_until(hour=9, minute=0)
-        wait_2 = await seconds_until(hour=10, minute=0)
-
-        if wait_7 <= wait_2:
-            logger.info(f"[Scheduler] 7-кун эслатмаси {wait_7/3600:.1f} соатдан кейин.")
-            await asyncio.sleep(wait_7)
-            await _safe(lambda: send_expiry_reminder(bot, days_left=7), "7-кун эслатмаси")
-        else:
-            logger.info(f"[Scheduler] 2-кун эслатмаси {wait_2/3600:.1f} соатдан кейин.")
-            await asyncio.sleep(wait_2)
-            await _safe(lambda: send_expiry_reminder(bot, days_left=2), "2-кун эслатмаси")
-
-        # Бир xil дақиқада иккинчи марта ишламаслиги учун
-        await asyncio.sleep(61)
+        wait = await seconds_until(hour=10, minute=0)
+        logger.info(f"[Scheduler] 2-кун эслатмаси {wait/3600:.1f} соатдан кейин.")
+        await asyncio.sleep(wait)
+        await _safe(lambda: send_expiry_reminder(bot, days_left=2), "2-кун эслатмаси")
 
 
 async def task_archive_expired(bot: Bot):
@@ -217,7 +198,7 @@ async def start_scheduler(bot: Bot):
 
     # Параллел вазифалар — биттаси йиқилса, бошқаси давом этсин
     await asyncio.gather(
-        task_daily_reminders(bot),
+        task_2day_reminder(bot),
         task_archive_expired(bot),
         return_exceptions=True,
     )
