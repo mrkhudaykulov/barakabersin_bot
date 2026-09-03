@@ -40,7 +40,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, BufferedIn
 from config import bot, BOT_TOKEN
 from database import (
     get_user_profile, save_user, get_connection, get_placeholder,
-    contains_bad_word, AD_EXPIRE_DAYS, save_admin_review_message,
+    contains_bad_word, parse_price_text, AD_EXPIRE_DAYS, save_admin_review_message,
     get_all_review_admin_ids, is_user_blocked, is_premium_user,
     get_monthly_ad_count, MAX_ADS_PER_MONTH_REGULAR, MAX_ADS_PER_MONTH_PREMIUM
 )
@@ -445,24 +445,26 @@ async def _api_submit_ad_inner(request: web.Request):
             if os.getenv("DATABASE_URL"):
                 cursor.execute(f"""
                     INSERT INTO ads
-                    (user_id, msg_id, animal_type, quantity, price,
+                    (user_id, msg_id, animal_type, quantity, price, price_num,
                      price_display, description, region, district, mfy, phone, username,
                      status, expires_at)
                     VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
-                            {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
+                            {p}, {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
                     RETURNING id
-                """, (user["id"], '', animal_type, qty, price, price,
+                """, (user["id"], '', animal_type, qty, price,
+                      int(parse_price_text(price) or 0), price,
                       description, region, district, mfy, phone, db_username, 'pending'))
             else:
                 cursor.execute(f"""
                     INSERT INTO ads
-                    (user_id, msg_id, animal_type, quantity, price,
+                    (user_id, msg_id, animal_type, quantity, price, price_num,
                      price_display, description, region, district, mfy, phone, username,
                      status, expires_at)
                     VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
-                            {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
+                            {p}, {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
                     RETURNING id
-                """, (user["id"], '', animal_type, qty, price, price,
+                """, (user["id"], '', animal_type, qty, price,
+                      int(parse_price_text(price) or 0), price,
                       description, region, district, mfy, phone, db_username, 'pending'))
 
             new_ad_id = cursor.fetchone()[0]

@@ -398,6 +398,7 @@ def _migrate_with_connection(conn):
             "ALTER TABLE notifications ADD CONSTRAINT unique_notification UNIQUE (user_id, animal_type, region, district, min_price, max_price)",            
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS reviewed_by BIGINT",
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS price_display TEXT",
+            "ALTER TABLE ads ADD COLUMN IF NOT EXISTS price_num BIGINT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS rejection_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP",
@@ -452,6 +453,7 @@ def _migrate_with_connection(conn):
             "ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",                  
             "ALTER TABLE ads ADD COLUMN reviewed_by INTEGER",
             "ALTER TABLE ads ADD COLUMN price_display TEXT",
+            "ALTER TABLE ads ADD COLUMN price_num INTEGER",
             "ALTER TABLE users ADD COLUMN rejection_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN blocked_at TIMESTAMP",
@@ -509,12 +511,111 @@ def _migrate_with_connection(conn):
         "CREATE INDEX IF NOT EXISTS idx_market_prices_animal ON market_prices (animal_type)",
         "CREATE INDEX IF NOT EXISTS idx_market_prices_created_at ON market_prices (created_at)",
         "CREATE INDEX IF NOT EXISTS idx_vet_suggestions_status ON vet_suggestions (status)",
+        "CREATE INDEX IF NOT EXISTS idx_ads_animal_price ON ads (animal_type, price_num)",
     ]
     # Гуруҳ/блок жадваллари керак бўлганда яратилади — уларнинг индекслари
     # ўша жадвал яратиладиган _ensure_*_table() функцияларида қўшилади.
     _try_create_indexes(cursor, conn, index_migrations)
 
+    _add_ad_foreign_keys(cursor, conn)
+    _backfill_price_num(cursor, conn)
+
     logging.info("Миграция тугади.")
+
+
+def _add_ad_foreign_keys(cursor, conn):
+    """
+    Эълонга боғлиқ ёрдамчи жадвалларга ON DELETE CASCADE қўшади.
+
+    Нима учун фақат шу иккитаси: эълон ўчирилганда ad_group_posts
+    қаторлари ҳеч қачон тозаланмас эди (жадвалда "етим" қаторлар
+    тўпланарди). Бу иккала жадвалга ёзув доим ҳозиргина яратилган
+    эълон учун қўшилади, шунинг учун чеклов янги хатолик манбаи
+    бўлмайди.
+
+    ⚠️ ads.user_id → users.user_id БИЛА ТУРИБ қўшилмади: у эълон
+    сақлашнинг ЯНГИ йиқилиш йўлини очарди (users'да қатор бўлмаса,
+    эълон умуман сақланмасди). SQLite мавжуд жадвалга чеклов
+    қўшишни умуман қўллаб-қувватламайди — у ерда фақат етим
+    қаторлар тозаланади.
+    """
+    # Аввал мавжуд етим қаторларни тозалаймиз (иккала базада ҳам)
+    cleanups = [
+        "DELETE FROM admin_review_messages WHERE ad_id NOT IN (SELECT id FROM ads)",
+        "DELETE FROM ad_group_posts WHERE ad_id NOT IN (SELECT id FROM ads)",
+    ]
+    for sql in cleanups:
+        try:
+            cursor.execute(sql)
+            if cursor.rowcount and cursor.rowcount > 0:
+                logging.info(f"Етим қаторлар тозаланди: {cursor.rowcount} та ({sql[12:40]}...)")
+            conn.commit()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logging.debug(f"Тозалаш ўтказиб юборилди: {e}")
+
+    if not DATABASE_URL:
+        # SQLite мавжуд жадвалга FOREIGN KEY қўша олмайди
+        return
+
+    constraints = [
+        """ALTER TABLE admin_review_messages
+           ADD CONSTRAINT fk_arm_ad FOREIGN KEY (ad_id)
+           REFERENCES ads (id) ON DELETE CASCADE""",
+        """ALTER TABLE ad_group_posts
+           ADD CONSTRAINT fk_agp_ad FOREIGN KEY (ad_id)
+           REFERENCES ads (id) ON DELETE CASCADE""",
+    ]
+    for sql in constraints:
+        try:
+            cursor.execute(sql)
+            conn.commit()
+            logging.info("Foreign key қўшилди.")
+        except Exception as e:
+            # Аллақачон мавжуд бўлса — оддий ҳол
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logging.debug(f"Foreign key (ўтказиб юборилди): {e}")
+
+
+def _backfill_price_num(cursor, conn):
+    """
+    ads.price матн сифатида сақланади ("5 000 000", "5 mln", ...), шунинг
+    учун ҳар бир нарх статистикаси бутун жадвални ўқиб, ҳар қаторни
+    Python'да таҳлил қиларди. Энди рақамли price_num устуни бор — бу
+    функция ЭСКИ қаторларни бир марта тўлдиради (price_num IS NULL
+    бўлганларини), кейинги ишга туширишларда ҳеч нарса қилмайди.
+    """
+    p = get_placeholder()
+    try:
+        cursor.execute("SELECT id, price FROM ads WHERE price_num IS NULL")
+        rows = cursor.fetchall()
+    except Exception as e:
+        logging.debug(f"price_num backfill ўтказиб юборилди: {e}")
+        return
+
+    if not rows:
+        return
+
+    updated = 0
+    for ad_id, price_text in rows:
+        value = parse_price_text(price_text) if price_text else 0
+        try:
+            cursor.execute(
+                f"UPDATE ads SET price_num = {p} WHERE id = {p}",
+                (int(value), ad_id)
+            )
+            updated += 1
+        except Exception as e:
+            logging.warning(f"price_num тўлдирилмади (ad_id={ad_id}): {e}")
+
+    conn.commit()
+    logging.info(f"price_num: {updated} та эълон учун тўлдирилди.")
 
 async def migrate_db(*args, **kwargs):
     return await asyncio.to_thread(_sync_migrate_db, *args, **kwargs)
@@ -539,11 +640,12 @@ def _sync_save_ad_with_media(user_id: int, data: dict, media_list: list) -> int 
         # ad_id=None бўлиб, қуйидаги медиа сақлаш блоки ўтказиб юборилар
         # ва эълоннинг барча расм/видеолари жимгина йўқоларди.
         insert_sql = f"""
-            INSERT INTO ads (user_id, animal_type, quantity, price, description, region, district, mfy, phone, username, status)
-            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'pending')
+            INSERT INTO ads (user_id, animal_type, quantity, price, price_num, description, region, district, mfy, phone, username, status)
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'pending')
         """
         params = (
             user_id, data.get('animal_type'), data.get('quantity'), data.get('price'),
+            int(parse_price_text(data.get('price')) or 0),
             data.get('description'), data.get('region'), data.get('district'), data.get('mfy'),
             data.get('phone'), data.get('username')
         )
@@ -1032,21 +1134,18 @@ def _sync_search_ads_db(animal_type=None, region=None, district=None, max_price=
             query += f" AND district = {p}"
             params.append(district)
 
+        # Нарх фильтри энди SQL'да — аввал LIMIT қўлланилгандан КЕЙИН
+        # Python'да фильтрланарди, яъни сўралган limit'дан кам натижа
+        # қайтиши мумкин эди (қиммат эълонлар ўринни эгаллаб оларди).
+        if max_price:
+            query += f" AND price_num > 0 AND price_num <= {p}"
+            params.append(int(max_price))
+
         query += f" ORDER BY id DESC LIMIT {p}"
         params.append(limit)
 
         cursor.execute(query, params)
-        rows = cursor.fetchall()
-
-        if max_price:
-            filtered = []
-            for row in rows:
-                price = parse_price_text(row[3])
-                if price > 0 and price <= max_price:
-                    filtered.append(row)
-            return filtered
-
-        return rows
+        return cursor.fetchall()
 
 async def search_ads_db(*args, **kwargs):
     return await asyncio.to_thread(_sync_search_ads_db, *args, **kwargs)
@@ -1769,34 +1868,32 @@ def clean_phone(phone: str) -> str:
 def _sync_get_price_range(animal_type):
     """Ҳайвон тури учун ўртача нарх"""
     p = get_placeholder()
-    prices = []
     with db_connection() as conn:
         cursor = conn.cursor()
 
-        # price матн сифатида сақланади (масалан "5 000 000" ёки "5 mln"),
-        # шунинг учун Постгрес/SQLite'га хос cast/regex ўрнига
-        # parse_price_text ишлатилади — иккала базада ҳам бир хил ишлайди.
+        # Нарх энди рақамли price_num устунида ҳам сақланади, шунинг учун
+        # ўртачани базанинг ўзи ҳисоблайди — аввал бу ерда шу турдаги
+        # БАРЧА фаол эълонлар ўқилиб, ҳар бири Python'да таҳлил қилинарди
+        # (эълон бериш жараёнида ҳар бир нарх киритилганда чақирилади).
         cursor.execute(f"""
-            SELECT price FROM ads
-            WHERE animal_type = {p} AND status = 'active'
+            SELECT COALESCE(SUM(price_num), 0), COUNT(*)
+            FROM ads
+            WHERE animal_type = {p} AND status = 'active' AND price_num > 0
         """, (animal_type,))
-        for (price_text,) in cursor.fetchall():
-            price = parse_price_text(price_text)
-            if price > 0:
-                prices.append(price)
+        ads_sum, ads_count = cursor.fetchone()
 
         cursor.execute(f"""
-            SELECT price FROM market_prices
-            WHERE animal_type = {p}
+            SELECT COALESCE(SUM(price), 0), COUNT(*)
+            FROM market_prices
+            WHERE animal_type = {p} AND price > 0
         """, (animal_type,))
-        for (price,) in cursor.fetchall():
-            if price and price > 0:
-                prices.append(price)
+        mp_sum, mp_count = cursor.fetchone()
 
-    if not prices:
+    total_count = (ads_count or 0) + (mp_count or 0)
+    if not total_count:
         return 0
 
-    return sum(prices) // len(prices)
+    return int((ads_sum or 0) + (mp_sum or 0)) // total_count
 
 async def get_price_range(*args, **kwargs):
     return await asyncio.to_thread(_sync_get_price_range, *args, **kwargs)

@@ -674,15 +674,16 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             if __import__('os').getenv("DATABASE_URL"):
                 cursor.execute(f"""
                     INSERT INTO ads
-                    (user_id, msg_id, animal_type, quantity, price,
+                    (user_id, msg_id, animal_type, quantity, price, price_num,
                      price_display, description, region, district, mfy, phone, username,
                      status, expires_at)
                     VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
-                            {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
+                            {p}, {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
                     RETURNING id
                 """, (
                     user.id, '',
                     data['animal_type'], data['quantity'], data['price'],
+                    int(parse_price_text(data['price']) or 0),
                     data.get('price_display', data['price']),
                     data['description'], data['region'], data['district'],
                     data['mfy'], phone, db_username, 'pending'
@@ -690,15 +691,16 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             else:
                 cursor.execute(f"""
                     INSERT INTO ads
-                    (user_id, msg_id, animal_type, quantity, price,
+                    (user_id, msg_id, animal_type, quantity, price, price_num,
                      price_display, description, region, district, mfy, phone, username,
                      status, expires_at)
                     VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
-                            {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
+                            {p}, {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
                     RETURNING id
                 """, (
                     user.id, '',
                     data['animal_type'], data['quantity'], data['price'],
+                    int(parse_price_text(data['price']) or 0),
                     data.get('price_display', data['price']),
                     data['description'], data['region'], data['district'],
                     data['mfy'], phone, db_username, 'pending'
