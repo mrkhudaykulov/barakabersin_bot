@@ -659,10 +659,19 @@ async def global_back_handler(message: types.Message, state: FSMContext):
         )
         return
 
-    elif current_state == AdStates.price.state:
+    elif current_state == AdStates.passport.state:
         await state.set_state(AdStates.quantity)
         await message.answer(
             "🔙 Сонини қайта киритинг:",
+            reply_markup=standard_step_keyboard()
+        )
+        return
+
+    elif current_state == AdStates.price.state:
+        # Нархдан орқага — паспорт қадамига (сонга эмас)
+        await state.set_state(AdStates.passport)
+        await message.answer(
+            "🔙 Ҳайвон паспорти (ID/стикер) рақамини қайта киритинг:",
             reply_markup=standard_step_keyboard()
         )
         return

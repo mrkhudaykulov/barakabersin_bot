@@ -15,7 +15,8 @@ from states import AdStates
 from keyboards import (
     main_menu, cancel_keyboard, photo_confirm_keyboard,
     animal_types_keyboard, regions_keyboard, districts_keyboard,
-    standard_step_keyboard, description_keyboard, phone_keyboard
+    standard_step_keyboard, description_keyboard, phone_keyboard,
+    passport_keyboard, SKIP_PASSPORT_TEXT
 )
 from database import (
     contains_bad_word, parse_price_text, 
@@ -34,12 +35,27 @@ from database import (
     MAX_ADS_PER_MONTH_REGULAR,
     MAX_ADS_PER_MONTH_PREMIUM,
     clean_phone, get_price_range,
-    force_block_user, log_block, get_all_review_admin_ids
+    force_block_user, log_block, get_all_review_admin_ids,
+    validate_passport, MIN_PASSPORT_DIGITS, format_ad_id,
 )
 from handlers.ratelimit import fan_out
 
 router = Router()
 router.message.filter(F.chat.type == "private")  # гуруҳларда мену/кнопкалар КЎРИНМАСИН (callback'larga tegmaydi)
+
+PASSPORT_PROMPT = (
+    "🏷 <b>Ҳайвон паспорти (ID/стикер) рақами</b> — <i>ихтиёрий</i>:\n\n"
+    "• Қулоқдаги стикер ёки ветеринария паспортидаги рақам\n"
+    "• Бир нечта бош бўлса — вергул билан ажратинг\n"
+    "<i>Масалан: UZ 1234567 ёки 1234567, 7654321</i>\n\n"
+    "Рақам бўлмаса — пастдаги тугма орқали ўтказиб юборинг."
+)
+
+PASSPORT_ERROR = (
+    f"⚠️ Паспорт рақами тўғри кўринмаяпти "
+    f"(камида {MIN_PASSPORT_DIGITS} та рақам бўлиши керак).\n\n"
+    f"Тўғри рақамни киритинг ёки «{SKIP_PASSPORT_TEXT}» тугмасини босинг."
+)
 
 
 async def _safe_edit_text(message, text: str) -> bool:
@@ -349,11 +365,46 @@ async def process_quantity(message: types.Message, state: FSMContext):
         )
         return
     await state.update_data(quantity=message.text)
+    await state.set_state(AdStates.passport)
+    await message.answer(
+        PASSPORT_PROMPT,
+        parse_mode="HTML",
+        reply_markup=passport_keyboard()
+    )
+
+
+async def _ask_price(message: types.Message, state: FSMContext):
     await state.set_state(AdStates.price)
     await message.answer(
         "Нархини киритинг (масалан: 15 000 000 сўм):",
         reply_markup=standard_step_keyboard()
     )
+
+
+@router.message(AdStates.passport)
+async def process_passport(message: types.Message, state: FSMContext):
+    if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
+        return
+
+    # Паспорт рақами ИХТИЁРИЙ — ўтказиб юборилса, эълон рақамсиз кетади
+    # (эълон матнида "Паспорт" қатори умуман кўринмайди).
+    if message.text == SKIP_PASSPORT_TEXT:
+        await state.update_data(passport=None)
+        await _ask_price(message, state)
+        return
+
+    # Аммо ниманидир ёзган бўлса — у тўғри рақам бўлиши керак, акс ҳолда
+    # базага маънисиз матн тушади. Хоҳласа ўтказиб юбориши мумкин.
+    passport = validate_passport(message.text)
+    if not passport:
+        await message.answer(
+            PASSPORT_ERROR,
+            reply_markup=passport_keyboard()
+        )
+        return
+
+    await state.update_data(passport=passport)
+    await _ask_price(message, state)
 
 
 @router.message(AdStates.price)
@@ -642,23 +693,37 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
     price_display = html.escape(data.get('price_display', data['price']))
     mfy_display = html.escape(data.get('mfy') or "Кўрсатилмаган")
 
-    caption = (
-        f"#️⃣ #{html.escape(data['animal_type'])}\n"
-        f"🔢 <b>Сони:</b> {html.escape(data['quantity'])}\n"
-        f"💰 <b>Нархи:</b> {price_display}\n"
-        f"📝 <b>Изоҳ:</b> {html.escape(data['description'])}\n"
-        f"📍 <b>Манзил:</b> {html.escape(data['region'])} в, "
-        f"{html.escape(data['district'])} т, "
-        f"{mfy_display} МФЙ\n\n"
-        f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
-    )
-    if user.id not in await get_all_review_admin_ids():
-        caption += f"💬 <b>Телеграм:</b> {username_text}\n"
-    caption += (
-        f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
-        f" | "
-        f"<a href='https://t.me/{bot_info.username}'>Бошқариш</a>"
-    )
+    is_reviewer = user.id in await get_all_review_admin_ids()
+
+    def _build_caption(ad_id=None):
+        """
+        Эълон матни. Эълон рақами (ID) базага ёзилгандан КЕЙИН маълум
+        бўлади, шунинг учун caption шу ердаги функция орқали, ID қўлга
+        киргач қурилади.
+        """
+        id_prefix = f"{format_ad_id(ad_id)} " if ad_id else ""
+        text = (
+            f"{id_prefix}#️⃣ #{html.escape(data['animal_type'])}\n"
+            f"🔢 <b>Сони:</b> {html.escape(data['quantity'])}\n"
+        )
+        if data.get('passport'):
+            text += f"🏷 <b>Паспорт:</b> {html.escape(data['passport'])}\n"
+        text += (
+            f"💰 <b>Нархи:</b> {price_display}\n"
+            f"📝 <b>Изоҳ:</b> {html.escape(data['description'])}\n"
+            f"📍 <b>Манзил:</b> {html.escape(data['region'])} в, "
+            f"{html.escape(data['district'])} т, "
+            f"{mfy_display} МФЙ\n\n"
+            f"📞 <b>Алоқа:</b> {html.escape(phone)}\n"
+        )
+        if not is_reviewer:
+            text += f"💬 <b>Телеграм:</b> {username_text}\n"
+        text += (
+            f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
+            f" | "
+            f"<a href='https://t.me/{bot_info.username}'>Бошқариш</a>"
+        )
+        return text
 
     media_list = data.get("media_list", [])
 
@@ -675,9 +740,9 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
                 cursor.execute(f"""
                     INSERT INTO ads
                     (user_id, msg_id, animal_type, quantity, price, price_num,
-                     price_display, description, region, district, mfy, phone, username,
+                     price_display, passport, description, region, district, mfy, phone, username,
                      status, expires_at)
-                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
+                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
                             {p}, {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
                     RETURNING id
                 """, (
@@ -685,6 +750,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
                     data['animal_type'], data['quantity'], data['price'],
                     int(parse_price_text(data['price']) or 0),
                     data.get('price_display', data['price']),
+                    data.get('passport'),
                     data['description'], data['region'], data['district'],
                     data['mfy'], phone, db_username, 'pending'
                 ))
@@ -692,9 +758,9 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
                 cursor.execute(f"""
                     INSERT INTO ads
                     (user_id, msg_id, animal_type, quantity, price, price_num,
-                     price_display, description, region, district, mfy, phone, username,
+                     price_display, passport, description, region, district, mfy, phone, username,
                      status, expires_at)
-                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
+                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
                             {p}, {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
                     RETURNING id
                 """, (
@@ -702,6 +768,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
                     data['animal_type'], data['quantity'], data['price'],
                     int(parse_price_text(data['price']) or 0),
                     data.get('price_display', data['price']),
+                    data.get('passport'),
                     data['description'], data['region'], data['district'],
                     data['mfy'], phone, db_username, 'pending'
                 ))
@@ -750,7 +817,7 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         await _send_to_reviewers(
             ad_id=ad_id,
             data=data,
-            caption=caption,
+            caption=_build_caption(ad_id),
             media_list=media_list,
             user=user,
             phone=phone
@@ -791,10 +858,14 @@ async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
         ]
     ])
  
+    passport_line = (
+        f"🏷 {html.escape(data['passport'])}\n" if data.get('passport') else ""
+    )
     review_text = (
         f"🔔 *ЯНГИ ЭЪЛОН — ТАСДИҚЛАШ КУТИЛМОQДА*\n\n"
-        f"#️⃣ {html.escape(data['animal_type'])}\n"
+        f"{format_ad_id(ad_id)} #️⃣ {html.escape(data['animal_type'])}\n"
         f"🔢 {html.escape(data['quantity'])}\n"
+        f"{passport_line}"
         f"💰 {html.escape(data['price'])}\n"
         f"📝 {html.escape(data['description'])}\n"
         f"📍 {html.escape(data['region'])} в, "
@@ -858,15 +929,23 @@ async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
 
 def build_full_ad_caption(a_type, qty, price_display, desc, region, dist, mfy,
                            phone, user_id, username, bot_username, is_review_admin=False,
-                           group_links=None):
+                           group_links=None, passport=None, ad_id=None):
     """
     Канал ва гуруҳларда БИР ХИЛ форматдаги эълон caption'ини қуради.
     `group_links` — шу вилоятга боғланган PUBLIC гуруҳлар ҳаволалари
     рўйхати (агар бўлса, footer'да "Гуруҳ" сифатида кўринади).
+    `passport` — ҳайвон паспорти (ID/стикер) рақами; эски эълонларда
+    бўлмаслиги мумкин, шунда бу қатор умуман кўрсатилмайди.
+    `ad_id` — эълон рақами; ҳайвон туридан ОЛДИН "(ID-042)" кўринишида.
     """
+    id_prefix = f"{format_ad_id(ad_id)} " if ad_id else ""
     caption = (
-        f"#️⃣ #{html.escape(a_type)}\n"
+        f"{id_prefix}#️⃣ #{html.escape(a_type)}\n"
         f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
+    )
+    if passport:
+        caption += f"🏷 <b>Паспорт:</b> {html.escape(str(passport))}\n"
+    caption += (
         f"💰 <b>Нархи:</b> {html.escape(price_display)}\n"
         f"📝 <b>Изоҳ:</b> {html.escape(desc)}\n"
         f"📍 <b>Манзил:</b> {html.escape(region)} в, "
@@ -1020,7 +1099,8 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         try:
             cursor.execute(f"""
                 SELECT user_id, animal_type, quantity, price,
-                       price_display, description, region, district, mfy, phone, username
+                       price_display, description, region, district, mfy, phone, username,
+                       passport
                 FROM ads WHERE id = {p}
             """, (ad_id,))
             ad_row = cursor.fetchone()
@@ -1044,7 +1124,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Эълон топилмади.")
         return
 
-    user_id, a_type, qty, price, price_disp, desc, region, dist, mfy, phone, username = ad
+    user_id, a_type, qty, price, price_disp, desc, region, dist, mfy, phone, username, passport = ad
 
     bot_info = await bot.me()
     group_links = await get_public_group_links_for_region(region)
@@ -1054,7 +1134,7 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         region=region, dist=dist, mfy=mfy, phone=phone,
         user_id=user_id, username=username, bot_username=bot_info.username,
         is_review_admin=(user_id in await get_all_review_admin_ids()),
-        group_links=group_links,
+        group_links=group_links, passport=passport, ad_id=ad_id,
     )
 
     # Медиаларни олиш (база ёпилгандан кейин, list'дан)
@@ -1442,7 +1522,7 @@ async def _mark_ad_sold_in_all_groups(ad_id: int, a_type: str, qty: str, price: 
     from database import get_ad_group_message_ids
     new_caption = (
         f"🔴 <b>СОТИЛДИ!</b> 🔴\n\n"
-        f"#️⃣ #{html.escape(a_type)}\n"
+        f"{format_ad_id(ad_id)} #️⃣ #{html.escape(a_type)}\n"
         f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
         f"💰 <b>Нархи:</b> {html.escape(price)}\n"
         f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т\n"
@@ -1580,7 +1660,8 @@ async def handle_ad_action(callback: types.CallbackQuery):
         cursor = conn.cursor()
         try:
             cursor.execute(f"""
-                SELECT user_id, msg_id, animal_type, quantity, price, region, district, mfy, phone, username
+                SELECT user_id, msg_id, animal_type, quantity, price, region, district, mfy, phone, username,
+                       passport
                 FROM ads WHERE id = {p}
             """, (int(ad_id),))
             return cursor.fetchone()
@@ -1598,7 +1679,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
         await callback.answer("⛔ Сиз бу эълон эгаси эмассиз!")
         return
 
-    msg_ids_str, a_type, qty, price, region, dist, mfy, phone, username = ad[1:]
+    msg_ids_str, a_type, qty, price, region, dist, mfy, phone, username, passport = ad[1:]
     msg_ids = [int(mid) for mid in str(msg_ids_str).split(",") if mid.strip().isdigit()]
 
     if action == "sold":
@@ -1615,7 +1696,7 @@ async def handle_ad_action(callback: types.CallbackQuery):
         if msg_ids:
             new_caption = (
                 f"🔴 <b>СОТИЛДИ!</b> 🔴\n\n"
-                f"#️⃣ #{html.escape(a_type)}\n"
+                f"{format_ad_id(ad_id)} #️⃣ #{html.escape(a_type)}\n"
                 f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
                 f"💰 <b>Нархи:</b> {html.escape(price)}\n"
                 f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т\n"
@@ -1676,9 +1757,10 @@ async def handle_ad_action(callback: types.CallbackQuery):
         bot_info = await bot.me()
 
         new_caption = (
-            f"#️⃣ <b>#{html.escape(a_type)}</b>\n"
+            f"{format_ad_id(ad_id)} #️⃣ <b>#{html.escape(a_type)}</b>\n"
             f"🔢 <b>Сони:</b> {html.escape(qty)}\n"
-            f"💰 <b>Нархи:</b> {html.escape(price)}\n"
+            + (f"🏷 <b>Паспорт:</b> {html.escape(str(passport))}\n" if passport else "")
+            + f"💰 <b>Нархи:</b> {html.escape(price)}\n"
             f"📍 <b>Манзил:</b> {html.escape(region)} в, {html.escape(dist)} т, {html.escape(mfy or 'Кўрсатилмаган')} МФЙ\n"
             f"\n📞 {html.escape(phone)}\n"
             f"\n<a href='https://t.me/internetmolbozor'>Channel</a>"
