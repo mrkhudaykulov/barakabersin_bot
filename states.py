@@ -8,6 +8,7 @@ class AdStates(StatesGroup):
     district = State()
     mfy = State()
     quantity = State()
+    passport = State()      # ҳайвон паспорти (ID/стикер) рақами
     price = State()
     description = State()
     phone = State()

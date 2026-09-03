@@ -516,6 +516,11 @@
         </div>
       </div>
       <div class="field">
+        <label class="field-label">Ҳайвон паспорти (ID/стикер) рақами (ихтиёрий)</label>
+        <input type="text" id="passportInput" maxlength="120" placeholder="UZ 1234567">
+        <div class="char-count">Бир нечта бош бўлса вергул билан ажратинг</div>
+      </div>
+      <div class="field">
         <label class="field-label">Изоҳ (ихтиёрий)</label>
         <textarea id="descInput" maxlength="300" placeholder="Ҳайвон ҳақида қўшимча маълумот..."></textarea>
         <div class="char-count"><span id="descCount">0</span>/300</div>
@@ -605,6 +610,7 @@
     district: "",
     mfy: "",
     qty: "",
+    passport: "",
     price: "",
     desc: "",
     phone: ""
@@ -736,6 +742,21 @@
     renderFullPreview();
     updateProgress();
   });
+
+  // ── Ҳайвон паспорти (ID/стикер) ──
+  const passportInput = document.getElementById('passportInput');
+  passportInput.addEventListener('input', e => {
+    state.passport = e.target.value;
+    renderFullPreview();
+    updateProgress();
+  });
+
+  // Камида шунча рақам бўлиши керак — backend'даги validate_passport
+  // билан бир хил қоида (database.py: MIN_PASSPORT_DIGITS).
+  const MIN_PASSPORT_DIGITS = 4;
+  function passportIsValid(v){
+    return (String(v || '').match(/\d/g) || []).length >= MIN_PASSPORT_DIGITS;
+  }
 
   function formatPrice(v){
     const digits = v.replace(/[^0-9]/g,'');
@@ -869,6 +890,7 @@
   }
 
   // ── Прогресс ──
+  // Паспорт рақами ИХТИЁРИЙ — шунинг учун бу рўйхатда йўқ.
   const REQUIRED_FIELDS = ['media','animal','region','district','qty','price','phone'];
   function countFilled(){
     let n = 0;
@@ -928,6 +950,7 @@
       formData.append('district', state.district);
       formData.append('mfy', state.mfy || '');
       formData.append('qty', state.qty);
+      formData.append('passport', state.passport);
       formData.append('price', state.price);
       formData.append('description', state.desc || '');
       formData.append('phone', state.phone);
@@ -983,9 +1006,16 @@
       usernameLine = '—';
     }
 
+    const passportLine = state.passport.trim()
+      ? `🏷 <b>Паспорт:</b> ${escapeHtml(state.passport.trim())}\n`
+      : '';
+
+    // Эълон рақами базага ёзилгандан кейин берилади — бу ерда
+    // фақат қандай кўринишини кўрсатамиз.
     let body =
-      `#️⃣ #${escapeHtml(animalName)}\n` +
+      `(ID-000) #️⃣ #${escapeHtml(animalName)}\n` +
       `🔢 <b>Сони:</b> ${escapeHtml(qty)}\n` +
+      passportLine +
       `💰 <b>Нархи:</b> ${escapeHtml(price)}\n` +
       `📝 <b>Изоҳ:</b> ${escapeHtml(desc)}\n` +
       `📍 <b>Манзил:</b> ${escapeHtml(region)} в, ${escapeHtml(district)} т, ${escapeHtml(mfy)} МФЙ\n\n` +

@@ -41,6 +41,7 @@ from config import bot, BOT_TOKEN
 from database import (
     get_user_profile, save_user, get_connection, get_placeholder,
     contains_bad_word, parse_price_text, AD_EXPIRE_DAYS, save_admin_review_message,
+    validate_passport, MIN_PASSPORT_DIGITS, format_ad_id,
     get_all_review_admin_ids, is_user_blocked, is_premium_user,
     get_monthly_ad_count, MAX_ADS_PER_MONTH_REGULAR, MAX_ADS_PER_MONTH_PREMIUM
 )
@@ -177,8 +178,10 @@ async def _send_to_reviewers_webapp(ad_id, fields, media_meta_list, user, phone)
     review_text = (
         f"🔔 *ЯНГИ ЭЪЛОН — ТАСДИҚЛАШ КУТИЛМОҚДА*\n"
         f"_(Mini App орқали юборилди)_\n\n"
-        f"#️⃣ {html.escape(fields['animal_type'])}\n"
+        f"{format_ad_id(ad_id)} #️⃣ {html.escape(fields['animal_type'])}\n"
         f"🔢 {html.escape(fields['qty'])}\n"
+        + (f"🏷 {html.escape(fields['passport'])}\n" if fields.get('passport') else "")
+        +
         f"💰 {html.escape(fields['price'])}\n"
         f"📝 {html.escape(fields['description'])}\n"
         f"📍 {html.escape(fields['region'])} в, "
@@ -411,6 +414,20 @@ async def _api_submit_ad_inner(request: web.Request):
             status=400
         )
 
+    # Паспорт рақами ИХТИЁРИЙ — бўш бўлса эълон рақамсиз кетаверади.
+    # Аммо ниманидир ёзилган бўлса, у бот оқимидаги билан БИР ХИЛ
+    # қоидадан (database.validate_passport) ўтиши керак.
+    passport_raw = fields.get("passport", "").strip()
+    passport = validate_passport(passport_raw) if passport_raw else None
+    if passport_raw and not passport:
+        return web.json_response(
+            {"ok": False,
+             "error": f"Ҳайвон паспорти рақами тўғри эмас "
+                      f"(камида {MIN_PASSPORT_DIGITS} та рақам бўлиши керак). "
+                      f"Ёки уни бўш қолдиринг."},
+            status=400
+        )
+
     animal_type = fields["animal_type"].strip()
     region = fields["region"].strip()
     district = fields["district"].strip()
@@ -423,10 +440,11 @@ async def _api_submit_ad_inner(request: web.Request):
     fields_clean = {
         "animal_type": animal_type, "region": region, "district": district,
         "mfy": mfy, "qty": qty, "price": price, "description": description,
+        "passport": passport,
     }
 
     # ═══ ЁМОН СЎЗЛАРНИ ТЕКШИРИШ (ads.py билан бир хил майдонлар) ═══
-    for check_field in [description, qty, price, mfy, district, phone]:
+    for check_field in [description, qty, price, mfy, district, phone, passport or ""]:
         if contains_bad_word(check_field):
             return web.json_response(
                 {"ok": False, "error": "Матнда ножўя сўз аниқланди. Илтимос, тузатинг."},
@@ -446,25 +464,25 @@ async def _api_submit_ad_inner(request: web.Request):
                 cursor.execute(f"""
                     INSERT INTO ads
                     (user_id, msg_id, animal_type, quantity, price, price_num,
-                     price_display, description, region, district, mfy, phone, username,
+                     price_display, passport, description, region, district, mfy, phone, username,
                      status, expires_at)
-                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
+                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
                             {p}, {p}, NOW() + INTERVAL '{AD_EXPIRE_DAYS} days')
                     RETURNING id
                 """, (user["id"], '', animal_type, qty, price,
-                      int(parse_price_text(price) or 0), price,
+                      int(parse_price_text(price) or 0), price, passport,
                       description, region, district, mfy, phone, db_username, 'pending'))
             else:
                 cursor.execute(f"""
                     INSERT INTO ads
                     (user_id, msg_id, animal_type, quantity, price, price_num,
-                     price_display, description, region, district, mfy, phone, username,
+                     price_display, passport, description, region, district, mfy, phone, username,
                      status, expires_at)
-                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
+                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p},
                             {p}, {p}, datetime('now', '+{AD_EXPIRE_DAYS} days'))
                     RETURNING id
                 """, (user["id"], '', animal_type, qty, price,
-                      int(parse_price_text(price) or 0), price,
+                      int(parse_price_text(price) or 0), price, passport,
                       description, region, district, mfy, phone, db_username, 'pending'))
 
             new_ad_id = cursor.fetchone()[0]

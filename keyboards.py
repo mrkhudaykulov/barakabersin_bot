@@ -236,6 +236,17 @@ def description_keyboard():
     ], resize_keyboard=True)
 
 
+SKIP_PASSPORT_TEXT = "⏭ Паспортсиз давом этиш"
+
+
+def passport_keyboard():
+    """Ҳайвон паспорти қадами — рақам ихтиёрий, ўтказиб юборса бўлади."""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text=SKIP_PASSPORT_TEXT)],
+        step_navigation()
+    ], resize_keyboard=True)
+
+
 def phone_keyboard():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="📱 Рақамни юбориш", request_contact=True)],

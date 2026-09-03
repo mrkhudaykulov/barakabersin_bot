@@ -442,6 +442,7 @@ def _migrate_with_connection(conn):
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS reviewed_by BIGINT",
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS price_display TEXT",
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS price_num BIGINT",
+            "ALTER TABLE ads ADD COLUMN IF NOT EXISTS passport TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS rejection_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP",
@@ -497,6 +498,7 @@ def _migrate_with_connection(conn):
             "ALTER TABLE ads ADD COLUMN reviewed_by INTEGER",
             "ALTER TABLE ads ADD COLUMN price_display TEXT",
             "ALTER TABLE ads ADD COLUMN price_num INTEGER",
+            "ALTER TABLE ads ADD COLUMN passport TEXT",
             "ALTER TABLE users ADD COLUMN rejection_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN blocked_at TIMESTAMP",
@@ -697,24 +699,30 @@ def _sync_save_ad_with_media(user_id: int, data: dict, media_list: list) -> int 
     """
     Эълон малумотларини 'ads' жадвалига қўшади ва унга тегишли
     барча расм/видеоларни 'ad_media' жадвалига боғлаб сақлайди.
+
+    ⚠️ ЭСЛАТМА: бу функция ҲОЗИРДА ҲЕЧ ҚАЕРДАН ЧАҚИРИЛМАЙДИ. Ботнинг
+    ўз оқими handlers/ads.py'даги _save_ad_sync'ни, Mini App эса
+    webapp.py'даги _insert_pending_ad_sync'ни ишлатади. Иккаласи ҳам
+    ўз INSERT'ига эга. Бу ерда фақат жадвал схемаси билан мослик
+    сақланмоқда — акс ҳолда кимдир кейинчалик буни ишлатса, янги
+    устунлар (price_num, passport) тўлдирилмай қоларди.
     """
     p = get_placeholder()
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     try:
         # 1. Эълон матнини ва малумотларини сақлаш.
         # ⚠️ PostgreSQL'да cursor.lastrowid ДОИМ None қайтаради — шунинг
-        # учун ID'ни INSERT ... RETURNING id орқали оламиз. Акс ҳолда
-        # ad_id=None бўлиб, қуйидаги медиа сақлаш блоки ўтказиб юборилар
-        # ва эълоннинг барча расм/видеолари жимгина йўқоларди.
+        # учун ID'ни INSERT ... RETURNING id орқали оламиз.
         insert_sql = f"""
-            INSERT INTO ads (user_id, animal_type, quantity, price, price_num, description, region, district, mfy, phone, username, status)
-            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'pending')
+            INSERT INTO ads (user_id, animal_type, quantity, price, price_num, passport, description, region, district, mfy, phone, username, status)
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'pending')
         """
         params = (
             user_id, data.get('animal_type'), data.get('quantity'), data.get('price'),
             int(parse_price_text(data.get('price')) or 0),
+            data.get('passport'),
             data.get('description'), data.get('region'), data.get('district'), data.get('mfy'),
             data.get('phone'), data.get('username')
         )
@@ -1932,6 +1940,49 @@ def clean_phone(phone: str) -> str:
         return phone
     import re
     cleaned = re.sub(r'[\s\-\.\,\(\)\[\]\/]', '', phone)
+    return cleaned
+
+
+def format_ad_id(ad_id) -> str:
+    """
+    Эълон рақамини кўрсатиш кўриниши: 42 -> "(ID-042)".
+
+    Эълон матнида ҳайвон туридан олдин чиқади, шунда харидор ҳам,
+    админ ҳам эълонга рақам орқали мурожаат қила олади. Камида 3 хона
+    (000) — рўйхатда бир хил кенгликда кўринсин.
+    """
+    try:
+        return f"(ID-{int(ad_id):03d})"
+    except (TypeError, ValueError):
+        return ""
+
+
+# ═══════════════════════════════════════
+# ҲАЙВОН ПАСПОРТИ (ID/СТИКЕР) РАҚАМИ
+# ═══════════════════════════════════════
+
+MIN_PASSPORT_DIGITS = 4     # камида шунча рақам бўлиши керак
+MAX_PASSPORT_LEN = 120      # бир нечта ҳайвон учун ҳам етарли
+
+
+def validate_passport(text) -> str | None:
+    """
+    Ҳайвон паспорти (ID/стикер) рақамини текширади ва тозалаб қайтаради.
+
+    Бир нечта бош бўлса вергул билан санаш мумкин, шунинг учун ҳарф,
+    рақам, вергул ва тире эркин қолдирилади — асосий шарт: камида
+    MIN_PASSPORT_DIGITS та рақам бўлсин.
+
+    Нотўғри бўлса None қайтаради. Бот ва Mini App ШУ БИТТА
+    функциядан фойдаланади, шунда қоида иккала жойда бир хил бўлади.
+    """
+    if not text:
+        return None
+    cleaned = " ".join(str(text).split())
+    if not cleaned or len(cleaned) > MAX_PASSPORT_LEN:
+        return None
+    if sum(ch.isdigit() for ch in cleaned) < MIN_PASSPORT_DIGITS:
+        return None
     return cleaned
 
 def _sync_get_price_range(animal_type):
