@@ -5,7 +5,12 @@ from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 
 from database import get_connection, get_placeholder, parse_price_text, fmt_number, get_full_statistics, MAX_PRICE, MIN_PRICE, fix_keyboard_text, match_price_index 
-from states import CalcStates, PriceInputStates
+# ⚠️ Нархлар индекси аввал CalcStates.menu'ни ишлатарди — яъни
+# калькулятор бўлими билан БИР ХИЛ ҳолатда эди. Шу сабабли калькулятор
+# ичида нотўғри тугма босилса, қуйидаги price_index_fallback ишлаб,
+# фойдаланувчига нархлар индекси клавиатураси кўрсатиларди (ва аксинча,
+# "Бекор қилиш" нархлар индексидан калькулятор менюсига олиб борарди).
+from states import PriceIndexStates, PriceInputStates
 from keyboards import (
     main_menu, price_index_keyboard, search_animal_keyboard,
     regions_keyboard, standard_step_keyboard
@@ -35,7 +40,7 @@ ANIMAL_EMOJI = {
 
 @router.message(F.text == "📊 Нархлар индекси")
 async def price_index_start(message: types.Message, state: FSMContext):
-    await state.set_state(CalcStates.menu)
+    await state.set_state(PriceIndexStates.menu)
     await message.answer(
         "📊 *Нархлар индекси*\n\n"
         "Эълонлар асосида ўртача нархларни кўрсатади.\n"
@@ -48,7 +53,7 @@ async def price_index_start(message: types.Message, state: FSMContext):
 @router.message(F.text.in_(list(ANIMAL_EMOJI.keys())))
 async def price_index_show(message: types.Message, state: FSMContext):
     current = await state.get_state()
-    if current is not None and current != CalcStates.menu.state:
+    if current is not None and current != PriceIndexStates.menu.state:
         return
 
     animal_type = ANIMAL_EMOJI.get(message.text)
@@ -293,7 +298,7 @@ VALID_REGIONS = [
 @router.message(PriceInputStates.animal_type)
 async def market_price_animal(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
-        await state.set_state(CalcStates.menu)
+        await state.set_state(PriceIndexStates.menu)
         await message.answer(
             "📊 Нархлар индексига қайтдингиз.",
             reply_markup=price_index_keyboard()
@@ -320,7 +325,7 @@ async def market_price_animal(message: types.Message, state: FSMContext):
 @router.message(PriceInputStates.region)
 async def market_price_region(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
-        await state.set_state(CalcStates.menu)
+        await state.set_state(PriceIndexStates.menu)
         await message.answer(
             "📊 Нархлар индексига қайтдингиз.",
             reply_markup=price_index_keyboard()
@@ -353,7 +358,7 @@ async def market_price_region(message: types.Message, state: FSMContext):
 @router.message(PriceInputStates.price)
 async def market_price_save(message: types.Message, state: FSMContext):
     if message.text in ["🔙 Орқага", "❌ Бекор қилиш"]:
-        await state.set_state(CalcStates.menu)
+        await state.set_state(PriceIndexStates.menu)
         await message.answer(
             "📊 Нархлар индексига қайтдингиз.",
             reply_markup=price_index_keyboard()
@@ -412,7 +417,7 @@ async def market_price_save(message: types.Message, state: FSMContext):
         parse_mode="Markdown"
     )
 
-    await state.set_state(CalcStates.menu)
+    await state.set_state(PriceIndexStates.menu)
     await message.answer(
         "📊 *Нархлар индексига қайтдингиз.*\n\n"
         "Қайси ҳайвон турини кўрмоқчисиз?",
@@ -421,7 +426,7 @@ async def market_price_save(message: types.Message, state: FSMContext):
     )
 
 
-@router.message(CalcStates.menu)
+@router.message(PriceIndexStates.menu)
 async def price_index_fallback(message: types.Message, state: FSMContext):
     await message.answer(
         "⚠️ Тугмалардан бирини танланг:",

@@ -455,15 +455,9 @@ async def global_back_handler(message: types.Message, state: FSMContext):
         return
 
     # ═══ Бозор таҳлили субменюси ═══
-    elif current_state == CalcStates.menu.state:
-        await state.set_state(MarketStates.menu)
-        await message.answer(
-            "📊 Бозор таҳлили бўлимига қайтдингиз:",
-            reply_markup=market_analysis_menu()
-        )
-        return
-
-    elif current_state == PriceIndexStates.menu.state:
+    # Калькулятор ҳам, нархлар индекси ҳам шу менюдан кирилади —
+    # иккаласидан "Орқага" бир жойга, Бозор таҳлилига қайтаради.
+    elif current_state in (CalcStates.menu.state, PriceIndexStates.menu.state):
         await state.set_state(MarketStates.menu)
         await message.answer(
             "📊 Бозор таҳлили бўлимига қайтдингиз:",

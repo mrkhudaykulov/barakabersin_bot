@@ -273,20 +273,53 @@ async def vet_admin_edit_fish_ask(message: types.Message, state: FSMContext):
     await message.answer("👤 Янги Ф.И.Ш ни киритинг:", reply_markup=vet_admin_edit_field_keyboard())
 
 
-@router.message(VetAdminStates.edit_fish)
-async def vet_admin_edit_fish_save(message: types.Message, state: FSMContext):
+# Навигация тугмалари — булар ҲЕЧ ҚАЧОН майдон қиймати сифатида
+# сақланмаслиги керак. Эслатма: vet_admin роутери navigation'дан ОЛДИН
+# уланган, шунинг учун бу ерда "❌ Бекор қилиш" глобал handler'га
+# етиб бормайди — уни шу ерда ушлаш ШАРТ, акс ҳолда у ходимнинг
+# исми/телефони сифатида базага ёзилиб қоларди.
+_CONTROL_TEXTS = {"🔙 Орқага", "❌ Бекор қилиш", "🏠 Бош меню"}
+
+
+async def _save_edited_field(message: types.Message, state: FSMContext,
+                             field: str, label: str):
+    """Таклифнинг битта майдонини таҳрирлаб сақлаш (учала майдон учун умумий)."""
     if not is_admin(message.from_user.id):
         return
-    if message.text == "🔙 Орқага":
+
+    # message.text расм/стикерда None бўлади — .strip() йиқилмаслиги учун
+    text = (message.text or "").strip()
+
+    if text in _CONTROL_TEXTS:
         await state.set_state(VetAdminStates.reviewing)
         await message.answer("Таҳрирлашга қайтдингиз:", reply_markup=vet_admin_edit_keyboard())
         return
 
+    if not text:
+        await message.answer(
+            f"⚠️ {label} матн кўринишида киритилиши керак:",
+            reply_markup=vet_admin_edit_field_keyboard()
+        )
+        return
+
     data = await state.get_data()
     sid = data.get("current_suggestion_id")
-    await update_vet_suggestion_fields(sid, fish=message.text.strip())
+    if not sid:
+        await state.clear()
+        await message.answer(
+            "⚠️ Таклиф топилмади — рўйхатни қайта очинг.",
+            reply_markup=main_menu_admin()
+        )
+        return
+
+    await update_vet_suggestion_fields(sid, **{field: text})
     await state.set_state(VetAdminStates.reviewing)
-    await message.answer("✅ Ф.И.Ш янгиланди.", reply_markup=vet_admin_edit_keyboard())
+    await message.answer(f"✅ {label} янгиланди.", reply_markup=vet_admin_edit_keyboard())
+
+
+@router.message(VetAdminStates.edit_fish)
+async def vet_admin_edit_fish_save(message: types.Message, state: FSMContext):
+    await _save_edited_field(message, state, "fish", "Ф.И.Ш")
 
 
 @router.message(VetAdminStates.reviewing, F.text == "💼 Лавозим")
@@ -299,18 +332,7 @@ async def vet_admin_edit_lavozim_ask(message: types.Message, state: FSMContext):
 
 @router.message(VetAdminStates.edit_lavozim)
 async def vet_admin_edit_lavozim_save(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    if message.text == "🔙 Орқага":
-        await state.set_state(VetAdminStates.reviewing)
-        await message.answer("Таҳрирлашга қайтдингиз:", reply_markup=vet_admin_edit_keyboard())
-        return
-
-    data = await state.get_data()
-    sid = data.get("current_suggestion_id")
-    await update_vet_suggestion_fields(sid, lavozim=message.text.strip())
-    await state.set_state(VetAdminStates.reviewing)
-    await message.answer("✅ Лавозим янгиланди.", reply_markup=vet_admin_edit_keyboard())
+    await _save_edited_field(message, state, "lavozim", "Лавозим")
 
 
 @router.message(VetAdminStates.reviewing, F.text == "📞 Телефон")
@@ -323,18 +345,7 @@ async def vet_admin_edit_tel_ask(message: types.Message, state: FSMContext):
 
 @router.message(VetAdminStates.edit_tel)
 async def vet_admin_edit_tel_save(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    if message.text == "🔙 Орқага":
-        await state.set_state(VetAdminStates.reviewing)
-        await message.answer("Таҳрирлашга қайтдингиз:", reply_markup=vet_admin_edit_keyboard())
-        return
-
-    data = await state.get_data()
-    sid = data.get("current_suggestion_id")
-    await update_vet_suggestion_fields(sid, tel=message.text.strip())
-    await state.set_state(VetAdminStates.reviewing)
-    await message.answer("✅ Телефон янгиланди.", reply_markup=vet_admin_edit_keyboard())
+    await _save_edited_field(message, state, "tel", "Телефон")
 
 
 @router.message(VetAdminStates.reviewing, F.text == "✅ Таҳрирни сақлаш")
@@ -376,13 +387,24 @@ async def vet_admin_edit_back(message: types.Message, state: FSMContext):
 async def vet_admin_skip(message: types.Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    pending = await get_pending_vet_suggestions(limit=2)
-    if len(pending) <= 1:
+    # Аввал pending[0] ҳозир экранда турган таклиф деб фараз қилинарди ва
+    # кўр-кўрона pending[1] олинарди. Агар шу орада бошқа админ ўша
+    # таклифни кўриб чиққан бўлса, битта таклиф ўтказиб юбориларди.
+    # Энди рўйхатдан ҳозиргисидан КЕЙИНГИСИ (id бўйича) танланади.
+    data = await state.get_data()
+    current_sid = data.get("current_suggestion_id")
+
+    pending = await get_pending_vet_suggestions(limit=50)
+    row = next((r for r in pending if current_sid is None or r[0] > current_sid), None)
+    if row is None:
+        # Охирига етдик — бошидан бошлаймиз (ҳозиргисидан бошқаси бўлса)
+        row = next((r for r in pending if r[0] != current_sid), None)
+
+    if row is None:
         await message.answer("ℹ️ Бошқа кутилаётган таклиф йўқ.", reply_markup=main_menu_admin())
         await state.clear()
         return
 
-    row = pending[1]
     sid = row[0]
     await state.update_data(current_suggestion_id=sid)
     text = await _format_suggestion(row)

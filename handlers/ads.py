@@ -690,31 +690,45 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
                     data['mfy'], phone, db_username, 'pending'
                 ))
 
-            ad_id = cursor.fetchone()[0]
-            # ═══ МЕДИАЛАРНИ ad_media ЖАДВАЛИГА САҚЛАШ
-            if media_list and ad_id:
-                for media in media_list:
-                    cursor.execute(f"""
-                        INSERT INTO ad_media (ad_id, media_type, file_id)
-                        VALUES ({p}, {p}, {p})
-                    """, (ad_id, media.get('type'), media.get('file_id')))
+            try:
+                ad_id = cursor.fetchone()[0]
+                # ═══ МЕДИАЛАРНИ ad_media ЖАДВАЛИГА САҚЛАШ
+                if media_list and ad_id:
+                    for media in media_list:
+                        cursor.execute(f"""
+                            INSERT INTO ad_media (ad_id, media_type, file_id)
+                            VALUES ({p}, {p}, {p})
+                        """, (ad_id, media.get('type'), media.get('file_id')))
 
-            conn.commit()
-            conn.close()
-            return ad_id
+                conn.commit()
+                return ad_id
+            finally:
+                # Хатолик чиқса ҳам уланиш poolga қайтарилсин
+                conn.close()
 
         ad_id = await asyncio.to_thread(_save_ad_sync)
 
         # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══
-        await message.answer(
-            f"📩 *Эълонингиз қабул қилинди!*\n\n"
-            f"Эълонингиз қисқача кўриб чиқилади.\n"
-            f"Тасдиқлангандан кейин @internetmolbozor каналга, шунингдек "
-            f"тегишли вилоят гуруҳ(лар)ига автомат жойланади.\n\n"
-            f"⏳ Одатда бир неча дақиқа ичида жавоб оласиз.",
-            parse_mode="Markdown",
-            reply_markup=main_menu()
-        )
+        # Бу қадам алоҳида try ичида: фойдаланувчи ботни блоклаган бўлса
+        # (ёки бошқа Telegram хатоси чиқса) хабар юборилмайди, аммо эълон
+        # админларга барибир кетиши ШАРТ. Аввал бу иккиси битта try'да
+        # эди — шу сабабли эълон базада "pending" бўлиб қолиб, ҳеч бир
+        # админ уни кўрмас, фойдаланувчи эса жавоб кутиб ўтираверарди.
+        try:
+            await message.answer(
+                f"📩 *Эълонингиз қабул қилинди!*\n\n"
+                f"Эълонингиз қисқача кўриб чиқилади.\n"
+                f"Тасдиқлангандан кейин @internetmolbozor каналга, шунингдек "
+                f"тегишли вилоят гуруҳ(лар)ига автомат жойланади.\n\n"
+                f"⏳ Одатда бир неча дақиқа ичида жавоб оласиз.",
+                parse_mode="Markdown",
+                reply_markup=main_menu()
+            )
+        except Exception:
+            logging.exception(
+                f"Эълон қабул қилинди, лекин фойдаланувчига хабар "
+                f"юборилмади (ad_id={ad_id}, user_id={user.id})"
+            )
 
         # ═══ АДМИНЛАРГА ЮБОРИШ ═══
         await _send_to_reviewers(
@@ -728,12 +742,17 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
         # ДИҚҚАТ: Гуруҳларга ЭНДИ фақат тасдиқлангандан кейин
         # (approve_ad_callback ичида) юборилади — марказлашган занжир.
 
-    except Exception as e:
-        logging.error(f"Эълон жойлашда хато: {e}")
-        await message.answer(
-            f"Хатолик юз берди: {e}",
-            reply_markup=main_menu()
-        )
+    except Exception:
+        # Хатоликнинг ички тафсилотлари (база/драйвер хабарлари) оддий
+        # фойдаланувчига кўрсатилмайди — фақат логга ёзилади.
+        logging.exception(f"Эълон жойлашда хато (user_id={user.id})")
+        try:
+            await message.answer(
+                "⚠️ Хатолик юз берди. Илтимос, бироздан сўнг қайта уриниб кўринг.",
+                reply_markup=main_menu()
+            )
+        except Exception:
+            pass
 
     await state.clear()
 
