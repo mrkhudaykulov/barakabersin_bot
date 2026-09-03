@@ -2,6 +2,7 @@ import re
 import os
 import logging
 import asyncio
+import threading
 from contextlib import contextmanager
 
 
@@ -11,12 +12,59 @@ from contextlib import contextmanager
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# PostgreSQL учун connection pool — ҳар бир сўровда янги TCP/TLS
+# уланиш очиш (~1-2 сония) /start ва бошқа ҳар бир amalни сезиларли
+# секинлаштирган эди (лог: ҳар бир update ~3.7 сония давом этарди).
+_pg_pool = None
+_pg_pool_lock = threading.Lock()
+
+
+def _get_pg_pool():
+    global _pg_pool
+    if _pg_pool is None:
+        with _pg_pool_lock:
+            if _pg_pool is None:
+                from psycopg2 import pool as pg_pool_module
+                _pg_pool = pg_pool_module.ThreadedConnectionPool(1, 10, DATABASE_URL)
+    return _pg_pool
+
+
+class _PooledConnection:
+    """
+    Pool'дан олинган psycopg2 connection'ни ўраб туради — .close()
+    чақирилганда уни ҳақиқатан ёпиш ўрниga poolga қайтаради, шунда
+    кейинги сўров учун қайта ишлатилади. Бошқа барча чақириқлар
+    (cursor(), commit(), rollback() ва ҳ.к.) ҳақиқий connection'га
+    ўзгаришсиз ўтказилади.
+    """
+    __slots__ = ("_conn", "_pool")
+
+    def __init__(self, conn, pool):
+        object.__setattr__(self, "_conn", conn)
+        object.__setattr__(self, "_pool", pool)
+
+    def close(self):
+        try:
+            # Тугалланмаган транзакция (масалан, хатолик боис commit
+            # чақирилмаган ҳолат) кейинги фойдаланувчига ўтиб қолмаслиги
+            # учун poolga қайтаришдан олдин ҳар доим rollback қиламиз.
+            self._conn.rollback()
+            self._pool.putconn(self._conn)
+        except Exception:
+            try:
+                self._pool.putconn(self._conn, close=True)
+            except Exception:
+                pass
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
 
 def get_connection():
     """PostgreSQL yoki SQLite — qaysi biri bor bo'lsa"""
     if DATABASE_URL:
-        import psycopg2
-        return psycopg2.connect(DATABASE_URL)
+        pool = _get_pg_pool()
+        return _PooledConnection(pool.getconn(), pool)
     else:
         import sqlite3
         return sqlite3.connect("chorva.db")
