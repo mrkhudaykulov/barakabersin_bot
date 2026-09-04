@@ -33,62 +33,14 @@ from config import bot
 from keyboards import DISTRICTS
 from database import (
     add_region_group, remove_region_group, deactivate_chat, get_regions_for_chat,
-    get_all_active_group_chat_ids, get_blocks_by_admin,
-    add_group_admin, remove_group_admin, is_group_admin, get_chats_managed_by,
+    get_all_active_group_chat_ids,
+    add_group_admin, remove_group_admin, is_group_admin,
     get_group_admin_ids,
 )
 
 router = Router()
 
 REGIONS = list(DISTRICTS.keys())
-
-
-async def get_user_managed_groups(user_id: int):
-    """
-    Фойдаланувчи ТАСДИҚЛАШ ВАКОЛАТИГА эга бўлган гуруҳлар — БИЗНИНГ
-    group_admins жадвалидан (Telegram API'га мурожаат қилинмайди, тезроқ).
-    Қайтаради: [(chat_id, chat_title, regions_list), ...]
-    """
-    chat_ids = await get_chats_managed_by(user_id)
-    if not chat_ids:
-        return []
-    all_groups = await get_all_active_group_chat_ids()
-    result = []
-    for chat_id in chat_ids:
-        info = all_groups.get(chat_id)
-        if info:
-            result.append((chat_id, info["chat_title"], info["regions"]))
-    return result
-
-
-@router.message(F.text == "🏘 Менинг гуруҳларим")
-async def my_managed_groups(message: types.Message):
-    groups = await get_user_managed_groups(message.from_user.id)
-    if not groups:
-        await message.answer(
-            "ℹ️ Сиз ҳозирча ҳеч қандай боғланган гуруҳ учун тасдиқлаш "
-            "ваколатига эга эмассиз."
-        )
-        return
-
-    text = "🏘 <b>Сиз тасдиқлаш ваколатига эга гуруҳлар:</b>\n\n"
-    for chat_id, chat_title, regions in groups:
-        text += f"• <b>{chat_title}</b>\n   Вилоят(лар): {', '.join(regions)}\n\n"
-    await message.answer(text, parse_mode="HTML")
-
-
-@router.message(F.text == "🚫 Мен блокладим")
-async def my_blocked_users(message: types.Message):
-    blocks = await get_blocks_by_admin(message.from_user.id)
-    if not blocks:
-        await message.answer("ℹ️ Сиз ҳозирча ҳеч кимни блокламагансиз.")
-        return
-
-    text = f"🚫 <b>Сиз блоклаган фойдаланувчилар ({len(blocks)} та):</b>\n\n"
-    for user_id, ad_id, reason, created_at, full_name, username in blocks[:30]:
-        uname = f"@{username}" if username else f"ID:{user_id}"
-        text += f"• {full_name or '—'} ({uname})\n   {created_at}\n\n"
-    await message.answer(text, parse_mode="HTML")
 
 
 @router.message(F.text == "🏘 Уланган гуруҳлар")

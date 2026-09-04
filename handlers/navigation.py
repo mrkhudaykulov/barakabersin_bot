@@ -5,7 +5,6 @@ import sqlite3
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 from keyboards import (
     notify_menu_keyboard, notification_districts_keyboard,
@@ -47,47 +46,6 @@ async def _awaited(awaitable):
     Шу кичик ўровчи уни оддий coroutine'га айлантиради.
     """
     return await awaitable
-
-
-async def _get_managed_groups(user_id: int):
-    """Фойдаланувчи тасдиқлаш ваколатига эга гуруҳлар (хатода — бўш рўйхат)."""
-    try:
-        # Модул handlers пакети ичида — аввал "from groups import ..."
-        # деб ёзилган эди, бу ModuleNotFoundError берарди ва except
-        # блоки уни ютиб юборарди: натижада бу тугмалар ҲЕЧ КИМГА,
-        # ҳатто ҳақиқий гуруҳ админига ҳам кўринмаган.
-        from handlers.groups import get_user_managed_groups
-        return await get_user_managed_groups(user_id)
-    except Exception:
-        logging.exception("Гуруҳ админи тугмаларини аниқлаб бўлмади (user_id=%s)", user_id)
-        return []
-
-
-def _with_group_admin_buttons(kb, managed):
-    """
-    `managed` бўш бўлмаса — "Менинг гуруҳларим"/"Мен блокладим"
-    тугмалари қўшилган ЯНГИ клавиатура қайтаради.
-
-    ⚠️ Келган `kb` ЎЗГАРТИРИЛМАЙДИ. Аввал kb.keyboard.append(...) орқали
-    тўғридан-тўғри ўзгартирилар эди — бу клавиатура объекти бирор жойда
-    кэшланса, гуруҳ админи тугмалари БАРЧА фойдаланувчиларга кўриниб
-    кетишига олиб келарди.
-    """
-    if not managed:
-        return kb
-
-    return ReplyKeyboardMarkup(
-        keyboard=[list(row) for row in kb.keyboard] + [[
-            KeyboardButton(text="🏘 Менинг гуруҳларим"),
-            KeyboardButton(text="🚫 Мен блокладим"),
-        ]],
-        resize_keyboard=True
-    )
-
-
-async def _add_group_admin_buttons_if_any(kb, user_id: int):
-    """Юқоридаги иккисининг қулай бирикмаси (кетма-кет чақириш учун)."""
-    return _with_group_admin_buttons(kb, await _get_managed_groups(user_id))
 
 
 def _get_ads_show_profile_summary():
@@ -250,15 +208,14 @@ async def start_cmd(message: types.Message, state: FSMContext):
     # (фойдаланувчи буни "бот жим" деб қабул қилади).
     #
     # Фойдаланувчини сақлаш ва профилини ўқиш — битта сўровда
-    # (save_user_and_get_profile), гуруҳ ваколати эса алоҳида.
-    _, profile, managed = await asyncio.gather(
+    # (save_user_and_get_profile).
+    _, profile = await asyncio.gather(
         _awaited(message.answer("Ассалому алайкум! Чорва бозор ботига хуш келибсиз!")),
         save_user_and_get_profile(
             user_id=user_id,
             full_name=message.from_user.full_name,
             username=message.from_user.username
         ),
-        _get_managed_groups(user_id),
     )
 
     # ═══ ПРОФИЛ ТЎЛИҚМИ? Бўлмаса — онбординг ═══
@@ -268,7 +225,7 @@ async def start_cmd(message: types.Message, state: FSMContext):
         await _ask_next_onboarding_step(message, state, profile)
         return
 
-    kb = _with_group_admin_buttons(_get_home_kb(user_id), managed)
+    kb = _get_home_kb(user_id)
     await message.answer(
         "Керакли бўлимни менюдаги тугмаларда танланг!",
         reply_markup=kb
@@ -332,7 +289,6 @@ async def help_cmd(message: types.Message):
 async def home_menu(message: types.Message, state: FSMContext):
     await state.clear()
     kb = _get_home_kb(message.from_user.id)
-    kb = await _add_group_admin_buttons_if_any(kb, message.from_user.id)
     await message.answer("🏠 Асосий меню", reply_markup=kb)
 
 
