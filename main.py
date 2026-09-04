@@ -56,24 +56,39 @@ async def setup_bot_commands():
     орқали аллақачон мавjud — "/" менюсида кўрсатишга ҳожат йўқ.
     Гуруҳларда — ҳеч қандай буйруқ кўринмайди.
     """
+    # ⚠️ БУ ФУНКЦИЯДАГИ ҲАР БИР ЧАҚИРИҚ ТАШҚИ (Telegram) API'га мурожаат —
+    # шунинг учун ҲАР БИРИ ўз try/except'ига ўралган. Аввал бирортаси
+    # (масалан, чат меню тугмасини ўрнатиш) хатога учраса, БУТУН
+    # setup_bot_commands() йиқиларди, у эса main_loop()'да polling
+    # бошланишидан ОЛДИН чақирилади — яъни бир марталик тармоқ хатоси
+    # ҳам бутун ботни (веб-сервер ва polling'нинг ҳеч бири ишга
+    # тушмасдан) ишдан чиқарарди, "/start"га умуман жавоб бўлмасди.
+
     # Аввал БАРЧА scope'ларни тозалаймиз — олдинги деплойда бош админга
     # BotCommandScopeChat орқали ўрнатилган тўлиқ рўйхат бўлса, у энг юқори
     # устуворликка эга бўлгани учун очиқ равишда ўчирилмаса, қолиб кетади.
-    await bot.delete_my_commands(scope=BotCommandScopeDefault())
-    await bot.delete_my_commands(scope=BotCommandScopeAllGroupChats())
+    try:
+        await bot.delete_my_commands(scope=BotCommandScopeDefault())
+        await bot.delete_my_commands(scope=BotCommandScopeAllGroupChats())
+    except Exception as e:
+        logging.warning(f"Эски буйруқлар (default/group) тозаланмади: {e}")
+
     for admin_id in ADMINS:
         try:
             await bot.delete_my_commands(scope=BotCommandScopeChat(chat_id=admin_id))
         except Exception as e:
             logging.warning(f"Админ {admin_id} учун эски буйруқлар тозаланмади: {e}")
 
-    await bot.set_my_commands(
-        commands=[
-            BotCommand(command="start", description="Ботни бошлаш"),
-            BotCommand(command="help", description="Йўриқнома"),
-        ],
-        scope=BotCommandScopeAllPrivateChats()
-    )
+    try:
+        await bot.set_my_commands(
+            commands=[
+                BotCommand(command="start", description="Ботни бошлаш"),
+                BotCommand(command="help", description="Йўриқнома"),
+            ],
+            scope=BotCommandScopeAllPrivateChats()
+        )
+    except Exception as e:
+        logging.warning(f"'/' буйруқлар менюси ўрнатилмади: {e}")
 
     # ═══ ЧАТ МЕНЮ ТУГМАСИ — "Menu" ўрнига тўғридан-тўғри Mini App ═══
     # Хабар ёзиш қутиси ёнидаги стандарт "Menu" тугмаси (буйруқлар
@@ -81,12 +96,15 @@ async def setup_bot_commands():
     # App'ини очади. Гуруҳларда бу тугма умуман кўринмайди (Telegram
     # уни фақат хусусий чатларда кўрсатади), шунинг учун алоҳида
     # scope керак эмас.
-    await bot.set_chat_menu_button(
-        menu_button=MenuButtonWebApp(
-            text="Эълон",
-            web_app=WebAppInfo(url=f"{WEBAPP_URL}/adform")
+    try:
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="Эълон",
+                web_app=WebAppInfo(url=f"{WEBAPP_URL}/adform")
+            )
         )
-    )
+    except Exception as e:
+        logging.warning(f"Чат меню тугмаси ('Эълон') ўрнатилмади: {e}")
 
 
 async def main_loop():
