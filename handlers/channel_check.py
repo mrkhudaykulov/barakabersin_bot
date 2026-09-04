@@ -1,10 +1,11 @@
 """
 channel_check.py
 
-Эълон беришдан олдин фойдаланувчи профилига бириктирилган ШАХСИЙ
-КАНАЛни (Telegram'нинг "Personal chat" функцияси) текширади. Агар
-каналнинг номи/username'ида очиқ 18+ белгиси топилса, фойдаланувчи
-дарҳол блокланади — худди ножўя сўз текшируви каби.
+Эълон беришдан олдин фойдаланувчи ПРОФИЛИНИ 18+ мазмунга текширади:
+  1. Ўз исми, фамилияси, nickname'и (username) ва bio'си
+  2. Профилга бириктирилган ШАХСИЙ КАНАЛ (Telegram'нинг "Personal chat"
+     функцияси) номи/username'и
+Иккаласи ҳам bot.get_chat(user_id) орқали БИТТА сўровда олинади.
 
 ⚠️ ЧЕКЛОВЛАР (фойдаланувчига айтилган):
   1. Каналнинг ИЧКИ КОНТЕНТИ текширилмайди — фақат номи/username'и.
@@ -20,13 +21,17 @@ channel_check.py
 import logging
 
 from config import bot
-from database import contains_bad_word, contains_adult_keyword, block_for_adult_channel
+from database import (
+    contains_bad_word, contains_adult_keyword,
+    block_for_adult_channel, block_for_adult_profile,
+)
 
 
-async def check_personal_channel_and_maybe_block(user_id: int, ad_id: int = None) -> bool:
+async def check_profile_and_maybe_block(user_id: int, ad_id: int = None) -> bool:
     """
-    Фойдаланувчининг профилига бириктирилган шахсий канали (агар бор
-    бўлса) номида 18+ калит сўзи топилса — дарҳол блоклайди.
+    Фойдаланувчининг ЎЗ исми/nickname'и/bio'сида, ЁКИ профилига
+    бириктирилган шахсий каналининг номи/username'ида 18+ калит сўзи
+    топилса — дарҳол блоклайди.
 
     Қайтаради: True — блокланди (чақирувчи эълонни рад этиши керак),
                False — хавфсиз ёки текшириб бўлмади (давом этавериш мумкин).
@@ -36,25 +41,40 @@ async def check_personal_channel_and_maybe_block(user_id: int, ad_id: int = None
     except Exception as e:
         # Профиль ўқилмаса (тармоқ, рухсат ва ҳ.к.) — текширувни
         # ўтказиб юборамиз, эълон беришни тўсмаймиз.
-        logging.info("Профиль (шахсий канал) текширилмади (user_id=%s): %s", user_id, e)
+        logging.info("Профиль текширилмади (user_id=%s): %s", user_id, e)
         return False
 
-    personal = getattr(chat, "personal_chat", None)
-    if not personal:
-        return False
+    # ═══ 1. ЎЗ ИСМ / NICKNAME / BIO ═══
+    first_name = getattr(chat, "first_name", None) or ""
+    last_name = getattr(chat, "last_name", None) or ""
+    own_username = getattr(chat, "username", None) or ""
+    bio = getattr(chat, "bio", None) or ""
+    own_combined = " ".join([first_name, last_name, own_username, bio])
 
-    title = personal.title or ""
-    username = personal.username or ""
-    combined = f"{title} {username}"
-
-    if contains_adult_keyword(combined) or contains_bad_word(combined):
+    if contains_adult_keyword(own_combined) or contains_bad_word(own_combined):
+        detail = f"@{own_username}" if own_username else f"{first_name} {last_name}".strip()
         logging.warning(
-            "18+ шахсий канал аниқланди: user_id=%s, канал=%s (@%s) — блокланди",
-            user_id, title, username
+            "18+ профиль (исм/nickname) аниқланди: user_id=%s (%s) — блокланди",
+            user_id, detail
         )
-        await block_for_adult_channel(
-            user_id, channel_title=title, channel_username=username, ad_id=ad_id
-        )
+        await block_for_adult_profile(user_id, detail=detail, ad_id=ad_id)
         return True
+
+    # ═══ 2. ШАХСИЙ КАНАЛ (personal_chat) ═══
+    personal = getattr(chat, "personal_chat", None)
+    if personal:
+        title = personal.title or ""
+        username = personal.username or ""
+        combined = f"{title} {username}"
+
+        if contains_adult_keyword(combined) or contains_bad_word(combined):
+            logging.warning(
+                "18+ шахсий канал аниқланди: user_id=%s, канал=%s (@%s) — блокланди",
+                user_id, title, username
+            )
+            await block_for_adult_channel(
+                user_id, channel_title=title, channel_username=username, ad_id=ad_id
+            )
+            return True
 
     return False

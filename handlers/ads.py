@@ -40,7 +40,7 @@ from database import (
     block_for_bad_words,
 )
 from handlers.ratelimit import fan_out
-from handlers.channel_check import check_personal_channel_and_maybe_block
+from handlers.channel_check import check_profile_and_maybe_block
 
 router = Router()
 router.message.filter(F.chat.type == "private")  # гуруҳларда мену/кнопкалар КЎРИНМАСИН (callback'larga tegmaydi)
@@ -665,12 +665,12 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
             await state.clear()
             return
 
-    # ═══ ПРОФИЛГА БИРИКТИРИЛГАН ШАХСИЙ КАНАЛ (18+) ТЕКШИРУВИ ═══
-    if await check_personal_channel_and_maybe_block(user.id):
+    # ═══ ПРОФИЛЬ (исм/nickname/шахсий канал) — 18+ ТЕКШИРУВИ ═══
+    if await check_profile_and_maybe_block(user.id):
         await message.answer(
             "🚫 *Сиз блокландингиз!*\n\n"
-            "Профилингизга бириктирилган шахсий канал номида мос "
-            "бўлмаган (18+) мазмун аниқланди.",
+            "Профилингизда (исм, nickname ёки бириктирилган шахсий "
+            "канал) мос бўлмаган (18+) мазмун аниқланди.",
             parse_mode="Markdown",
             reply_markup=main_menu()
         )

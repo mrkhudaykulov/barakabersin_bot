@@ -2589,25 +2589,26 @@ async def block_for_bad_words(user_id: int, ad_id: int = None):
 
 
 # ═══════════════════════════════════════
-# ПРОФИЛГА БИРИКТИРИЛГАН ШАХСИЙ КАНАЛ — 18+ ТЕКШИРУВИ
+# ПРОФИЛЬ ТЕКШИРУВИ — 18+ (исм, nickname, шахсий канал)
 # ═══════════════════════════════════════
-# Telegram фойдаланувчилар ўз профилига "шахсий канал"ни кўрсатиш
-# имконига эга (Bot API'да Chat.personal_chat орқали кўринади). Бу
-# рўйхат — ўша каналнинг номи/username'ида очиқ 18+ белгиси борми деб
-# текширадиган калит сўзлар. Асосан лотин алифбосида ёзилади, шунинг
-# учун BAD_WORDS'даги кириллча ҳарф алмаштириш мантиғи керак эмас —
-# оддий пастки регистр substring қидируви етарли.
-ADULT_CHANNEL_KEYWORDS = [
+# Текширилади: фойдаланувчининг ЎЗ исми/фамилияси/nickname'и (username)
+# ва bio'си, ШУНИНГДЕК профилга бириктирилган "шахсий канал"и (Bot
+# API'да Chat.personal_chat орқали кўринади). Калит сўзлар асосан
+# лотин алифбосида ёзилади (ва баъзилари эможи), шунинг учун
+# BAD_WORDS'даги кириллча ҳарф алмаштириш мантиғи керак эмас — оддий
+# пастки регистр substring қидируви етарли.
+ADULT_KEYWORDS = [
     "18+", "adult", "xxx", "porn", "porno", "nsfw", "erotic", "onlyfans",
+    "🔞", "🍆", "🍑", "💦",
 ]
 
 
 def contains_adult_keyword(text: str) -> bool:
-    """Матнда (канал номи/username) очиқ 18+ калит сўзи борми?"""
+    """Матнда (исм/nickname/bio/канал номи) очиқ 18+ белгиси борми?"""
     if not text:
         return False
     lowered = text.lower()
-    return any(k in lowered for k in ADULT_CHANNEL_KEYWORDS)
+    return any(k in lowered for k in ADULT_KEYWORDS)
 
 
 async def block_for_adult_channel(user_id: int, channel_title: str = None,
@@ -2623,6 +2624,20 @@ async def block_for_adult_channel(user_id: int, channel_title: str = None,
         blocked_by=SYSTEM_BLOCK_ID,
         ad_id=ad_id,
         reason=f"Профилдаги шахсий канал ({detail}) номида 18+ калит сўзи топилди"
+    )
+
+
+async def block_for_adult_profile(user_id: int, detail: str = None, ad_id: int = None):
+    """
+    Фойдаланувчининг ЎЗ исми, nickname'и (username) ёки bio'сида 18+
+    калит сўзи топилганда дарҳол блоклайди.
+    """
+    await force_block_user(user_id)
+    await log_block(
+        user_id=user_id,
+        blocked_by=SYSTEM_BLOCK_ID,
+        ad_id=ad_id,
+        reason=f"Профиль исми/nickname'ида 18+ калит сўзи топилди ({detail or 'номаълум'})"
     )
 
 
