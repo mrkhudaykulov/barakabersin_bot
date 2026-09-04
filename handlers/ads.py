@@ -37,6 +37,7 @@ from database import (
     clean_phone, get_price_range,
     force_block_user, log_block, get_all_review_admin_ids,
     validate_passport, MIN_PASSPORT_DIGITS, format_ad_id,
+    block_for_bad_words,
 )
 from handlers.ratelimit import fan_out
 
@@ -648,10 +649,15 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
 
     for field in check_fields:
         if contains_bad_word(field):
+            # ⚠️ Аввал бу ерда фақат эълон рад этилар, фойдаланувчи эса
+            # исталганча қайта уриниши мумкин эди. Энди ножўя сўз биринчи
+            # уринишдаёқ дарҳол (рад сонини санамасдан) блоклайди.
+            await block_for_bad_words(user.id)
             await message.answer(
-                "🚫 *Эълонингизда ножўя матн аниқланди!*\n\n"
-                "Илтимос, тоза матн билан ёзинг.\n"
-                "Чорва сотиш бўлимида илтимос одобли бўлинг.",
+                "🚫 *Сиз блокландингиз!*\n\n"
+                "Эълонингизда ножўя матн аниқланди. Чорва сотиш бўлимида "
+                "одобли бўлиш шарт — шу сабабли эълон бериш ҳуқуқингиз "
+                "чекланди.",
                 parse_mode="Markdown",
                 reply_markup=main_menu()
             )

@@ -2562,6 +2562,27 @@ async def force_block_user(*args, **kwargs):
     return await asyncio.to_thread(_sync_force_block_user, *args, **kwargs)
 
 
+# Ножўя сўз аниқланганда — birinchi urinishdayoq avtomatik bloklashda
+# blocked_by учун ишлатиладиган "тизим" ID'си (block_log'да NOT NULL,
+# ҳақиқий одам эмаслигини кўрсатиш учун 0).
+SYSTEM_BLOCK_ID = 0
+
+
+async def block_for_bad_words(user_id: int, ad_id: int = None):
+    """
+    Эълонда ножўя сўз топилганда фойдаланувчини ДАРҲОЛ (биринчи
+    уринишдаёқ) блоклайди — рад сонини санашни кутмасдан. Бот ва
+    Mini App иккала оқими ҳам шу битта функцияни ишлатади.
+    """
+    await force_block_user(user_id)
+    await log_block(
+        user_id=user_id,
+        blocked_by=SYSTEM_BLOCK_ID,
+        ad_id=ad_id,
+        reason="Эълон матнида ножўя сўз аниқланди — автоматик блокланди"
+    )
+
+
 def _ensure_block_log_table():
     with db_connection() as conn:
         cursor = conn.cursor()

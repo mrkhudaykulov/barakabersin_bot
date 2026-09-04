@@ -41,6 +41,7 @@ from config import bot, BOT_TOKEN
 from database import (
     get_user_profile, save_user, get_connection, get_placeholder,
     contains_bad_word, parse_price_text, AD_EXPIRE_DAYS, save_admin_review_message,
+    block_for_bad_words,
     validate_passport, MIN_PASSPORT_DIGITS, format_ad_id,
     get_all_review_admin_ids, is_user_blocked, is_premium_user,
     get_monthly_ad_count, MAX_ADS_PER_MONTH_REGULAR, MAX_ADS_PER_MONTH_PREMIUM
@@ -444,11 +445,15 @@ async def _api_submit_ad_inner(request: web.Request):
     }
 
     # ═══ ЁМОН СЎЗЛАРНИ ТЕКШИРИШ (ads.py билан бир хил майдонлар) ═══
+    # ⚠️ Аввал бу ерда эълон фақат рад этиларди — энди бот оқимидаги
+    # каби биринчи уринишдаёқ дарҳол блокланади (block_for_bad_words).
     for check_field in [description, qty, price, mfy, district, phone, passport or ""]:
         if contains_bad_word(check_field):
+            await block_for_bad_words(user["id"])
             return web.json_response(
-                {"ok": False, "error": "Матнда ножўя сўз аниқланди. Илтимос, тузатинг."},
-                status=400
+                {"ok": False,
+                 "error": "🚫 Сиз блокландингиз! Матнда ножўя сўз аниқланди."},
+                status=403
             )
 
     tg_username = user.get("username")
