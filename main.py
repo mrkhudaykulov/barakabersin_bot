@@ -152,10 +152,21 @@ async def main_loop():
     while True:
         try:
             print("[*] Бот Телеграм серверига уланмоқда...")
-            # Кутиб турган хабарларни фақат биринчи ишга туширишда
-            # ташлаймиз — қайта уринишда фойдаланувчи хабари йўқолмасин.
-            await bot.delete_webhook(drop_pending_updates=first_attempt)
+            # ⚠️ Аввал бу чақириққа timeout йўқ эди — агар Telegram'га
+            # тармоқ сўрови "осилиб қолса" (жавоб ҳам, хатолик ҳам
+            # келмаса), жараён шу ерда абадий тўхтаб қоларди: веб-сервер
+            # (ва Render'нинг health check'и) аллақачон ишлагани учун
+            # деплой "live" деб кўринарди, лекин polling ҳеч қачон
+            # бошланмасди — /start'га жавоб йўқолиб қоларди, логда эса
+            # ҳеч қандай хатолик чиқмасди (чунки хатолик умуман бўлмаган,
+            # чақириқ шунчаки жавоб кутиб турарди).
+            await asyncio.wait_for(
+                bot.delete_webhook(drop_pending_updates=first_attempt),
+                timeout=20
+            )
+            print("[*] Webhook тозаланди.")
             first_attempt = False
+            print("[*] Polling бошланмоқда...")
             await dp.start_polling(bot, handle_signals=True)
         except Exception as e:
             print(f"\n[!] Хатолик: {e}")
