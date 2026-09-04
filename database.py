@@ -2599,7 +2599,7 @@ async def block_for_bad_words(user_id: int, ad_id: int = None):
 # пастки регистр substring қидируви етарли.
 ADULT_KEYWORDS = [
     "18+", "adult", "xxx", "porn", "porno", "nsfw", "erotic", "onlyfans",
-    "🔞", "🍆", "🍑", "💦",
+    "🔞", "🍆", "🍑", "💦", "💋", "🫦", "👄", "💕", "🏳️‍🌈",
 ]
 
 
@@ -2638,6 +2638,31 @@ async def block_for_adult_profile(user_id: int, detail: str = None, ad_id: int =
         blocked_by=SYSTEM_BLOCK_ID,
         ad_id=ad_id,
         reason=f"Профиль исми/nickname'ида 18+ калит сўзи топилди ({detail or 'номаълум'})"
+    )
+
+
+def starts_with_generic_username(username: str) -> bool:
+    """
+    Nickname (username) "user" сўзи билан бошланадими? Бу кўпинча
+    Telegram'нинг ўзи автоматик берадиган ёки spam/бот аккаунтларда
+    учрайдиган андоза (масалан "user123456", "User_98765").
+    """
+    if not username:
+        return False
+    return username.lower().startswith("user")
+
+
+async def block_for_suspicious_username(user_id: int, username: str, ad_id: int = None):
+    """
+    Nickname "user" билан бошланганда (одатий/шубҳали ном андозаси)
+    фойдаланувчини дарҳол блоклайди.
+    """
+    await force_block_user(user_id)
+    await log_block(
+        user_id=user_id,
+        blocked_by=SYSTEM_BLOCK_ID,
+        ad_id=ad_id,
+        reason=f"Nickname (@{username}) 'user' билан бошланади — шубҳали андоза, автоматик блокланди"
     )
 
 
