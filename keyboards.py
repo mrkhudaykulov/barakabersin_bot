@@ -412,6 +412,7 @@ def admin_block_keyboard():
     """Блок бошқариши"""
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="🚫 Блокланганлар рўйхати")],
+        [KeyboardButton(text="🗒 Блок логи")],
         [KeyboardButton(text="🔓 Блокдан чиқариш")],
         [KeyboardButton(text="🔙 Орқага")]
     ], resize_keyboard=True)

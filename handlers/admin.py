@@ -11,7 +11,7 @@ from config import bot, ADMINS, CHANNEL_ID
 from database import (
     get_full_statistics, fmt_number, get_connection, get_placeholder,
     unblock_user, get_blocked_users, get_rejection_count, is_premium_user,
-    parse_price_text
+    parse_price_text, get_block_log, SYSTEM_BLOCK_ID
 )
 from keyboards import (
     main_menu, admin_menu_keyboard, admin_ads_keyboard,
@@ -784,6 +784,56 @@ async def show_blocked(message: types.Message, state: FSMContext):
         )
 
     await message.answer(text, parse_mode="Markdown")
+
+
+@router.message(AdminStates.block_menu, F.text == "🗒 Блок логи")
+async def show_block_log(message: types.Message, state: FSMContext):
+    """
+    Ким, кимни, қачон ва нима сабабдан блоклагани — админ рад қилиб
+    (MAX_REJECTIONS дан кейин), reviewer "🚫 Блоклаш" тугмасини босиб,
+    ёки тизим ножўя сўз аниқлаб автоматик блоклаган бўлиши мумкин;
+    учаласи ҳам шу битта логда кўринади.
+    """
+    rows = await get_block_log(limit=30)
+    if not rows:
+        await message.answer("✅ Блоклашлар тарихи бўш.")
+        return
+
+    text = f"🗒 *Блок логи (охирги {len(rows)} та):*\n\n"
+    for (user_id, blocked_by, ad_id, reason, created_at,
+         u_name, u_username, admin_name, admin_username) in rows:
+        who = u_username and f"@{u_username}" or u_name or "—"
+
+        if blocked_by == SYSTEM_BLOCK_ID:
+            by = "🤖 Тизим (автомат)"
+        elif admin_username:
+            by = f"@{admin_username}"
+        elif admin_name:
+            by = admin_name
+        else:
+            by = f"ID:{blocked_by}"
+
+        ad_line = f" | Эълон: #{ad_id}" if ad_id else ""
+        text += (
+            f"👤 {who} (`{user_id}`)\n"
+            f"   Ким: {by}{ad_line}\n"
+            f"   Сабаб: {reason or '—'}\n"
+            f"   🕐 {created_at}\n\n"
+        )
+
+    if len(text) > 4000:
+        parts = text.split("\n\n")
+        current = ""
+        for part in parts:
+            if len(current) + len(part) > 3800:
+                await message.answer(current, parse_mode="Markdown")
+                current = part + "\n\n"
+            else:
+                current += part + "\n\n"
+        if current:
+            await message.answer(current, parse_mode="Markdown")
+    else:
+        await message.answer(text, parse_mode="Markdown")
 
 
 @router.message(AdminStates.block_menu, F.text == "🔓 Блокдан чиқариш")

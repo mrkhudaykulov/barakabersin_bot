@@ -2660,6 +2660,38 @@ async def get_blocks_by_admin(*args, **kwargs):
     return await asyncio.to_thread(_sync_get_blocks_by_admin, *args, **kwargs)
 
 
+def _sync_get_block_log(limit=30):
+    """
+    Барча блоклашлар тарихи (охиргидан бошлаб) — админ панелдаги
+    "🗒 Блок логи" учун. `blocked_by` фойдаланувчи (u2) исми/юзернейми
+    билан бирга қайтарилади — SYSTEM_BLOCK_ID (0) бўлса, у ерда JOIN
+    ҳеч нарса топмайди ва NULL қайтади, чақирувчи буни "Тизим" деб
+    кўрсатади.
+    """
+    global _block_log_ready
+    if not _block_log_ready:
+        _ensure_block_log_table()
+        _block_log_ready = True
+    p = get_placeholder()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT bl.user_id, bl.blocked_by, bl.ad_id, bl.reason, bl.created_at,
+                   u1.full_name, u1.username,
+                   u2.full_name, u2.username
+            FROM block_log bl
+            LEFT JOIN users u1 ON bl.user_id = u1.user_id
+            LEFT JOIN users u2 ON bl.blocked_by = u2.user_id
+            ORDER BY bl.created_at DESC
+            LIMIT {p}
+        """, (limit,))
+        return cursor.fetchall()
+
+
+async def get_block_log(*args, **kwargs):
+    return await asyncio.to_thread(_sync_get_block_log, *args, **kwargs)
+
+
 def _sync_get_all_active_group_chat_ids():
     """
     Барча актив гуруҳларнинг (chat_id, chat_title, chat_username) рўйхати —
