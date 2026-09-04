@@ -104,8 +104,11 @@ DISTRICTS = {
 
 
 def main_menu():
+    # ⚠️ "🌐 Тез эълон бериш" тугмаси аввал шу ерда эди — Mini App'ни
+    # энди Telegram'нинг ЧАТ МЕНЮ тугмаси (хабар қутиси ёнидаги, main.py
+    # setup_bot_commands'да "Эълон" деб созланган) очади, шунинг учун
+    # менюда такрор тугма шарт эмас.
     buttons = [
-        [KeyboardButton(text="🌐 Тез эълон бериш (янги!)")],
         [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
         [KeyboardButton(text="📊 Бозор таҳлили"), KeyboardButton(text="🗂 Менинг эълонларим")],
         [KeyboardButton(text="🩺 Ветеринария"), KeyboardButton(text="🔔 Хабардор қил")],
@@ -366,7 +369,6 @@ def notification_districts_keyboard(region):
 def main_menu_admin():
     """Админ учун бош меню"""
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="🌐 Тез эълон бериш (янги!)")],
         [KeyboardButton(text="➕ Эълон бериш"), KeyboardButton(text="🔍 Эълон қидириш")],
         [KeyboardButton(text="📊 Бозор таҳлили"), KeyboardButton(text="🗂 Менинг эълонларим")],
         [KeyboardButton(text="🩺 Ветеринария"), KeyboardButton(text="🔔 Хабардор қил")],

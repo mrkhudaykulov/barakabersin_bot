@@ -5,12 +5,12 @@ import sys
 from aiohttp import web
 from aiogram.types import (
     BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats,
-    BotCommandScopeChat, BotCommandScopeDefault
+    BotCommandScopeChat, BotCommandScopeDefault, MenuButtonWebApp, WebAppInfo
 )
 from aiogram.types.error_event import ErrorEvent
 import os
 
-from config import bot, dp, ADMINS, REVIEW_ADMINS
+from config import bot, dp, ADMINS, REVIEW_ADMINS, WEBAPP_URL
 from database import init_db, seed_review_admins_from_config
 from handlers import register_all_handlers
 from handlers.scheduler import start_scheduler
@@ -73,6 +73,19 @@ async def setup_bot_commands():
             BotCommand(command="help", description="Йўриқнома"),
         ],
         scope=BotCommandScopeAllPrivateChats()
+    )
+
+    # ═══ ЧАТ МЕНЮ ТУГМАСИ — "Menu" ўрнига тўғридан-тўғри Mini App ═══
+    # Хабар ёзиш қутиси ёнидаги стандарт "Menu" тугмаси (буйруқлар
+    # рўйхатини очадиган) ўрнига, энди у бевосита эълон бериш Mini
+    # App'ини очади. Гуруҳларда бу тугма умуман кўринмайди (Telegram
+    # уни фақат хусусий чатларда кўрсатади), шунинг учун алоҳида
+    # scope керак эмас.
+    await bot.set_chat_menu_button(
+        menu_button=MenuButtonWebApp(
+            text="Эълон",
+            web_app=WebAppInfo(url=f"{WEBAPP_URL}/adform")
+        )
     )
 
 
