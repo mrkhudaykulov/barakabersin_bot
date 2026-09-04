@@ -3,12 +3,18 @@ groups.py
 
 Ботни гуруҳга қўшилганда — қайси вилоят(лар)га боғлашни сўрайди.
 
-ТАСДИҚЛАШ ВАКОЛАТИ: Telegram'нинг ЖОНЛИ admin ро'йхатидан эмас, БИЗНИНГ
-`group_admins` жадвалидан текширилади. Бот гуруҳга қўшилганда, УНИ
-ҚЎШГАН ОДАМ автоматик равишда шу гуруҳ учун ваколатли деб белгиланади.
-Бош админ (ADMINS) буни исталган вақтда ўзгартириши/қўшимча одам
-қўшиши мумкин: /addgroupadmin ва /removegroupadmin буйруқлари орқали
-(гуруҳда, керакли одамнинг хабарига REPLY қилиб).
+ТАСДИҚЛАШ ВАКОЛАТИ: аввало БИЗНИНГ `group_admins` жадвалидан текширилади
+(тезроқ). Бот гуруҳга қўшилганда, УНИ ҚЎШГАН ОДАМ автоматик равишда шу
+гуруҳ учун ваколатли деб белгиланади. Бош админ (ADMINS) буни исталган
+вақтда ўзгартириши/қўшимча одам қўшиши мумкин: /addgroupadmin ва
+/removegroupadmin буйруқлари орқали (гуруҳда, керакли одамнинг хабарига
+REPLY қилиб).
+
+ШУНИНГДЕК: жадвалда топилмаса, Telegram'нинг ЖОНЛИ admin рўйхати ҳам
+текширилади (_is_authorized_for_group_regions) — гуруҳни ким қўшгани
+билан боғлиқ бўлмаган ҳолда, ҳақиқий Telegram администратори/creator ҳам
+вилоят(лар)ни созлай олади (масалан, ботни оддий аъзо қўшган бўлса-да,
+кейин ҳақиқий гуруҳ админи ботга admin ҳуқуқи берган бўлса).
 
 Эълон яратилганда (ads.py'даги _finalize_ad'дан), шу вилоятга боғланган
 барча актив гуруҳларга ✅/❌ тугмали хабар юборилади — КАНАЛДАГИ БИЛАН
@@ -139,6 +145,33 @@ async def remove_connected_group_callback(callback: types.CallbackQuery):
         )
     except Exception as e:
         logging.info("edit_text: бажарилмади (%s)", e)
+
+
+async def _is_authorized_for_group_regions(chat_id: int, user_id: int) -> bool:
+    """
+    Шу одам, шу гуруҳ учун вилоят(лар) созлашга ҳақлими?
+
+    Аввал БИЗНИНГ group_admins жадвалидан текширамиз (тезроқ, Telegram'га
+    сўров кетмайди). Топилмаса — Telegram'нинг ЖОНЛИ admin рўйхатидан ҳам
+    текширамиз: гуруҳни ким қўшгани билан боғлиқ бўлмаган ҳолда, ҳақиқий
+    Telegram администратори/creator ҳам ваколатли бўлиши керак (масалан,
+    ботни оддий аъзо қўшган, кейин ҳақиқий гуруҳ админи ботга admin ҳуқуқи
+    берган — шу админ ҳам вилоят(лар)ни созлай олиши керак).
+
+    Telegram орқали тасдиқланса — келгуси сафар тезроқ (ва "Менинг
+    гуруҳларим" рўйхатида ҳам кўринсин деб) БИЗНИНГ жадвалга ҳам ёзиб
+    қўямиз.
+    """
+    if await is_group_admin(chat_id, user_id):
+        return True
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+        if member.status in ("administrator", "creator"):
+            await add_group_admin(chat_id, user_id, granted_by=None)
+            return True
+    except Exception as e:
+        logging.info("get_chat_member: бажарилмади (%s)", e)
+    return False
 
 
 def _build_region_inline_kb(selected_regions=None):
@@ -554,7 +587,7 @@ async def viloyat_command(message: types.Message):
         await message.answer("ℹ️ Бу буйруқ фақат гуруҳларда ишлайди.")
         return
 
-    if not await is_group_admin(message.chat.id, message.from_user.id):
+    if not await _is_authorized_for_group_regions(message.chat.id, message.from_user.id):
         await message.answer("⚠️ Фақат шу гуруҳ учун тасдиқлаш ваколатига эга одам вилоят(лар)ни созлай олади.")
         return
 
@@ -632,7 +665,7 @@ async def region_group_callback(callback: types.CallbackQuery):
     # кетма-кет 4 та алоҳида DB сўрови ўрнига, тугма босилгандан тортиб
     # хабар янгилангунча кечикиш сезиларли қисқаради ═══
     is_admin, current_regions = await asyncio.gather(
-        is_group_admin(chat_id, callback.from_user.id),
+        _is_authorized_for_group_regions(chat_id, callback.from_user.id),
         get_regions_for_chat(chat_id),
     )
 
