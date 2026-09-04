@@ -51,5 +51,11 @@ DATABASE_URL = os.getenv("DATABASE_URL") # PostgreSQL yoki SQLite
 # WEBAPP_URL=https://sizning-app-nomi.onrender.com
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://barakabersin-bot.onrender.com")
 
+# Эълонларни админ тасдиғисиз автомат тарзда каналга/гуруҳларга жойлаш.
+# Кодлар (қўлда тасдиқлаш/рад қилиш/блоклаш) ЎЧИРИЛМАЙДИ — фақат шу флаг
+# орқали четлаб ўтилади (bypass). Ёқиш учун Render Environment'да:
+# AUTO_APPROVE_ADS=true
+AUTO_APPROVE_ADS = os.getenv("AUTO_APPROVE_ADS", "false").strip().lower() in ("1", "true", "yes")
+
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()

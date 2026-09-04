@@ -10,7 +10,7 @@ from aiogram.types import (
     InputMediaPhoto, InputMediaVideo
 )
 
-from config import bot, CHANNEL_ID
+from config import bot, CHANNEL_ID, AUTO_APPROVE_ADS
 from states import AdStates
 from keyboards import (
     main_menu, cancel_keyboard, photo_confirm_keyboard,
@@ -37,7 +37,7 @@ from database import (
     clean_phone, get_price_range,
     force_block_user, log_block, get_all_review_admin_ids,
     validate_passport, MIN_PASSPORT_DIGITS, format_ad_id,
-    block_for_bad_words,
+    block_for_bad_words, SYSTEM_BLOCK_ID,
 )
 from handlers.ratelimit import fan_out
 from handlers.channel_check import check_profile_and_maybe_block
@@ -788,39 +788,94 @@ async def _finalize_ad(message: types.Message, state: FSMContext, phone: str, us
 
         ad_id = await asyncio.to_thread(_save_ad_sync)
 
-        # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══
-        # Бу қадам алоҳида try ичида: фойдаланувчи ботни блоклаган бўлса
-        # (ёки бошқа Telegram хатоси чиқса) хабар юборилмайди, аммо эълон
-        # админларга барибир кетиши ШАРТ. Аввал бу иккиси битта try'да
-        # эди — шу сабабли эълон базада "pending" бўлиб қолиб, ҳеч бир
-        # админ уни кўрмас, фойдаланувчи эса жавоб кутиб ўтираверарди.
-        try:
-            await message.answer(
-                f"📩 *Эълонингиз қабул қилинди!*\n\n"
-                f"Эълонингиз қисқача кўриб чиқилади.\n"
-                f"Тасдиқлангандан кейин @internetmolbozor каналга, шунингдек "
-                f"тегишли вилоят гуруҳ(лар)ига автомат жойланади.\n\n"
-                f"⏳ Одатда бир неча дақиқа ичида жавоб оласиз.",
-                parse_mode="Markdown",
-                reply_markup=main_menu()
+        if AUTO_APPROVE_ADS:
+            # ═══ АВТОМАТ ТАСДИҚЛАШ (админ кўрмасдан) ═══
+            # Кучайтирилган филтрлар (ёмон сўз, 18+ профиль/канал, шубҳали
+            # nickname) юқорида аллақачон ўтилди — шу сабабли ад бу ерга
+            # фақат "тоза" ҳолда етиб келади. Қўлда тасдиқлаш занжири
+            # (_send_to_reviewers/approve_ad_callback/reject_ad_callback/
+            # block_user_callback) ЎЧИРИЛМАЙДИ — фақат шу флаг бор пайтда
+            # четлаб ўтилади, керак бўлса қайта ёқилади.
+            # ДИҚҚАТ: аввал КАНАЛГА ЖОЙЛАЙМИЗ (status ҳали 'pending', лекин
+            # _publish_ad_to_channel_and_groups статусни текширмайди), ва
+            # ФАҚАТ муваффақиятли бўлса status='active' қиламиз. Акс ҳолда
+            # (масалан, каналга юборишда хато) status 'pending' бўлиб қолади
+            # ва пастдаги fallback (қўлда тасдиқлаш) занжири тўғри ишлайверади
+            # — акс ҳолда 'active' бўлиб қолиб, approve_ad_callback ҳеч қачон
+            # уни топа олмас эди (у status='pending' шартини кутади).
+            published = await _publish_ad_to_channel_and_groups(
+                ad_id, fallback_media=media_list
             )
-        except Exception:
-            logging.exception(
-                f"Эълон қабул қилинди, лекин фойдаланувчига хабар "
-                f"юборилмади (ad_id={ad_id}, user_id={user.id})"
-            )
+            if published:
+                await approve_ad(ad_id, SYSTEM_BLOCK_ID)
 
-        # ═══ АДМИНЛАРГА ЮБОРИШ ═══
-        await _send_to_reviewers(
-            ad_id=ad_id,
-            data=data,
-            caption=_build_caption(ad_id),
-            media_list=media_list,
-            user=user,
-            phone=phone
-        )
-        # ДИҚҚАТ: Гуруҳларга ЭНДИ фақат тасдиқлангандан кейин
-        # (approve_ad_callback ичида) юборилади — марказлашган занжир.
+            if published:
+                await _notify_reviewers_auto_published(
+                    ad_id=ad_id,
+                    animal_type=data['animal_type'], quantity=data['quantity'],
+                    price=data['price'], description=data['description'],
+                    region=data['region'], district=data['district'],
+                    mfy=data.get('mfy'), phone=phone, passport=data.get('passport'),
+                    user_id=user.id, user_display=user.full_name,
+                )
+            else:
+                # Автомат жойлашда хато чиқса — эски (қўлда тасдиқлаш)
+                # занжирга қайтамиз, эълон йўқолиб қолмасин.
+                logging.error(
+                    f"Автомат тасдиқлашда хато (ad_id={ad_id}) — "
+                    f"қўлда кўриб чиқиш занжирига ўтказилди."
+                )
+                try:
+                    await message.answer(
+                        f"📩 *Эълонингиз қабул қилинди!*\n\n"
+                        f"Эълонингиз қисқача кўриб чиқилади.\n"
+                        f"⏳ Одатда бир неча дақиқа ичида жавоб оласиз.",
+                        parse_mode="Markdown",
+                        reply_markup=main_menu()
+                    )
+                except Exception:
+                    logging.exception(
+                        f"Эълон қабул қилинди, лекин фойдаланувчига хабар "
+                        f"юборилмади (ad_id={ad_id}, user_id={user.id})"
+                    )
+                await _send_to_reviewers(
+                    ad_id=ad_id, data=data, caption=_build_caption(ad_id),
+                    media_list=media_list, user=user, phone=phone
+                )
+        else:
+            # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══
+            # Бу қадам алоҳида try ичида: фойдаланувчи ботни блоклаган бўлса
+            # (ёки бошқа Telegram хатоси чиқса) хабар юборилмайди, аммо эълон
+            # админларга барибир кетиши ШАРТ. Аввал бу иккиси битта try'да
+            # эди — шу сабабли эълон базада "pending" бўлиб қолиб, ҳеч бир
+            # админ уни кўрмас, фойдаланувчи эса жавоб кутиб ўтираверарди.
+            try:
+                await message.answer(
+                    f"📩 *Эълонингиз қабул қилинди!*\n\n"
+                    f"Эълонингиз қисқача кўриб чиқилади.\n"
+                    f"Тасдиқлангандан кейин @internetmolbozor каналга, шунингдек "
+                    f"тегишли вилоят гуруҳ(лар)ига автомат жойланади.\n\n"
+                    f"⏳ Одатда бир неча дақиқа ичида жавоб оласиз.",
+                    parse_mode="Markdown",
+                    reply_markup=main_menu()
+                )
+            except Exception:
+                logging.exception(
+                    f"Эълон қабул қилинди, лекин фойдаланувчига хабар "
+                    f"юборилмади (ad_id={ad_id}, user_id={user.id})"
+                )
+
+            # ═══ АДМИНЛАРГА ЮБОРИШ ═══
+            await _send_to_reviewers(
+                ad_id=ad_id,
+                data=data,
+                caption=_build_caption(ad_id),
+                media_list=media_list,
+                user=user,
+                phone=phone
+            )
+            # ДИҚҚАТ: Гуруҳларга ЭНДИ фақат тасдиқлангандан кейин
+            # (approve_ad_callback ичида) юборилади — марказлашган занжир.
 
     except Exception:
         # Хатоликнинг ички тафсилотлари (база/драйвер хабарлари) оддий
@@ -918,7 +973,54 @@ async def _send_to_reviewers(ad_id, data, caption, media_list, user, phone):
  
         except Exception as e:
             logging.error(f"Админ {admin_id} га юборишда хато: {e}")
- 
+
+
+async def _notify_reviewers_auto_published(
+    ad_id, animal_type, quantity, price, description, region, district, mfy,
+    phone, passport, user_id, user_display
+):
+    """
+    AUTO_APPROVE_ADS=true бўлганда эълон админ кўрмасдан автомат
+    тасдиқланиб каналга/гуруҳларга жойланади. Шунга қарамай, тасдиқловчи
+    админлар (get_all_review_admin_ids) хабардор бўлиши керак — фақат
+    маълумот сифатида, битта «🚫 Блоклаш» тугмаси билан (Тасдиқлаш/Рад
+    қилиш ЙЎҚ, чунки эълон аллақачон жонли).
+
+    Ботнинг ичкарисидан ХАМ, Mini App'дан ХАМ (webapp.py) чақирилади —
+    шу сабабли `data`/`user` объекти эмас, ЯХХИ майдонлар қабул қилинади
+    (иккала оқимда майдон номлари бир хил эмас: масалан "quantity" vs "qty").
+    """
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🚫 Блоклаш", callback_data=f"autoblock_{ad_id}")]
+    ])
+
+    passport_line = f"🏷 {html.escape(str(passport))}\n" if passport else ""
+    text = (
+        f"🤖 *АВТОМАТ ТАСДИҚЛАНДИ* (каналга/гуруҳларга жойланди)\n\n"
+        f"{format_ad_id(ad_id)} #️⃣ {html.escape(animal_type)}\n"
+        f"🔢 {html.escape(quantity)}\n"
+        f"{passport_line}"
+        f"💰 {html.escape(price)}\n"
+        f"📝 {html.escape(description)}\n"
+        f"📍 {html.escape(region)} в, "
+        f"{html.escape(district)} т, "
+        f"{html.escape(mfy or 'Кўрсатилмаган')} МФЙ\n\n"
+        f"📞 {html.escape(phone)}\n"
+        f"👤 {html.escape(user_display)} (ID: {user_id})\n\n"
+        f"🆔 Эълон ID: {ad_id}"
+    )
+
+    for admin_id in await get_all_review_admin_ids():
+        try:
+            await bot.send_message(
+                chat_id=admin_id,
+                text=text,
+                parse_mode="Markdown",
+                reply_markup=kb
+            )
+        except Exception as e:
+            logging.error(f"Админ {admin_id}га автомат-тасдиқ хабари юборилмади: {e}")
+
 
 # ═══════════════════════════════════════
 # ВИЛОЯТГА БОҒЛАНГАН ГУРУҲЛАРГА ЮБОРИШ
@@ -1068,26 +1170,20 @@ async def post_ad_to_matching_groups(ad_id, region, caption, media_list):
 # ТАСДИҚЛАШ КАЛЛБЕК
 # ═══════════════════════════════════════
 
-@router.callback_query(F.data.startswith("approve_"))
-async def approve_ad_callback(callback: types.CallbackQuery):
-    
-    if callback.from_user.id not in await get_all_review_admin_ids():
-        await callback.answer("⛔ Сиз админ эмассиз!")
-        return
+async def _publish_ad_to_channel_and_groups(ad_id: int, fallback_media: list = None) -> bool:
+    """
+    Аллақачон 'active' (тасдиқланган) эълонни каналга ва мос вилоят
+    гуруҳларига жойлайди, кузатувчиларга хабардорлик юборади, эгасига
+    тасдиқ хабарини йўллайди.
 
-    ad_id = int(callback.data.replace("approve_", ""))
+    ЭСКАТ: бу функция ҳам ҚЎЛДА тасдиқлаш (approve_ad_callback), ҳам
+    АВТОМАТ тасдиқлаш (AUTO_APPROVE_ADS=true бўлганда _finalize_ad)
+    томонидан чақирилади — икки жойда такрорланмаслиги учун бир марта
+    ёзилган (аввал бу код фақат approve_ad_callback ичида эди).
 
-    success = await approve_ad(ad_id, callback.from_user.id)
-
-    if not success:
-        await callback.answer("⚠️ Бу эълон бошқа админ томонидан тасдиқланган!")
-        return
-
-    # ═══ ТУГМАДАГИ "кутиш" ҳолатини дарҳол олиб ташлаймиз — қолган иш
-    # (каналга/гуруҳларга жойлаш, хабардорлик) фонда давом этади, лекин
-    # админ буни кутиб ўтирмайди ва тугма "осилиб қолгандек" кўринмайди ═══
-    await callback.answer("✅ Тасдиқланди! Жараён давом этмоқда...")
-
+    Қайтаради: True — каналга муваффақиятли жойланди,
+               False — каналга юборишда хато (чақирувчи ўзи хабар берсин).
+    """
     # ═══ ЭЪЛОН МАЪЛУМОТЛАРИНИ ОЛИШ ═══
     def _fetch_ad_and_media_sync():
         p = get_placeholder()
@@ -1118,8 +1214,8 @@ async def approve_ad_callback(callback: types.CallbackQuery):
     ad, db_media = await asyncio.to_thread(_fetch_ad_and_media_sync)
 
     if not ad:
-        await callback.answer("❌ Эълон топилмади.")
-        return
+        logging.error(f"Эълон топилмади (ad_id={ad_id}) — каналга жойлаб бўлмади.")
+        return False
 
     user_id, a_type, qty, price, price_disp, desc, region, dist, mfy, phone, username, passport = ad
 
@@ -1139,11 +1235,8 @@ async def approve_ad_callback(callback: types.CallbackQuery):
     for m_type, m_file_id in db_media:
         media_list.append({"type": m_type, "file_id": m_file_id})
 
-    if not media_list:
-        if callback.message.photo:
-            media_list.append({"type": "photo", "file_id": callback.message.photo[-1].file_id})
-        elif callback.message.video:
-            media_list.append({"type": "video", "file_id": callback.message.video.file_id})
+    if not media_list and fallback_media:
+        media_list = fallback_media
     
     # ═══ КАНАЛГА ЮБОРИШ (АЛЬБОМ ЁКИ ОДДИЙ) ═══
     sent_msg_ids = []
@@ -1211,9 +1304,8 @@ async def approve_ad_callback(callback: types.CallbackQuery):
         await asyncio.to_thread(_save_msg_id_sync)
 
     except Exception as e:
-        logging.error(f"Каналга юборишда хато: {e}")
-        await callback.answer("⚠️ Каналга юборишда хатолик бўлди.")
-        return
+        logging.error(f"Каналга юборишда хато (ad_id={ad_id}): {e}")
+        return False
 
     # ═══ ВИЛОЯТГА БОҒЛАНГАН ГУРУҲЛАРГА ЮБОРИШ (энди — тасдиқлангандан кейин, БИР ХИЛ caption) ═══
     groups_sent_results = []
@@ -1322,6 +1414,44 @@ async def approve_ad_callback(callback: types.CallbackQuery):
             f"Фойдаланувчига хабар юборилмади: "
             f"user_id={user_id}, ad_id={ad_id}, хато={e}"
         )
+
+    return True
+
+
+# ═══════════════════════════════════════
+# ТАСДИҚЛАШ КАЛЛБЕК (қўлда, админ томонидан)
+# ═══════════════════════════════════════
+
+@router.callback_query(F.data.startswith("approve_"))
+async def approve_ad_callback(callback: types.CallbackQuery):
+
+    if callback.from_user.id not in await get_all_review_admin_ids():
+        await callback.answer("⛔ Сиз админ эмассиз!")
+        return
+
+    ad_id = int(callback.data.replace("approve_", ""))
+
+    success = await approve_ad(ad_id, callback.from_user.id)
+
+    if not success:
+        await callback.answer("⚠️ Бу эълон бошқа админ томонидан тасдиқланган!")
+        return
+
+    # ═══ ТУГМАДАГИ "кутиш" ҳолатини дарҳол олиб ташлаймиз — қолган иш
+    # (каналга/гуруҳларга жойлаш, хабардорлик) фонда давом этади, лекин
+    # админ буни кутиб ўтирмайди ва тугма "осилиб қолгандек" кўринмайди ═══
+    await callback.answer("✅ Тасдиқланди! Жараён давом этмоқда...")
+
+    fallback_media = []
+    if callback.message.photo:
+        fallback_media.append({"type": "photo", "file_id": callback.message.photo[-1].file_id})
+    elif callback.message.video:
+        fallback_media.append({"type": "video", "file_id": callback.message.video.file_id})
+
+    ok = await _publish_ad_to_channel_and_groups(ad_id, fallback_media=fallback_media)
+    if not ok:
+        await callback.answer("⚠️ Каналга юборишда хатолик бўлди.")
+        return
 
     # ═══ БАРЧА АДМИНЛАРДАГИ REVIEW ХАБАРНИ ЎЧИРИШ (базада эмас, faqat chatdan) ═══
     await _clear_all_admin_review_messages(ad_id)
@@ -1475,6 +1605,98 @@ async def block_user_callback(callback: types.CallbackQuery):
     await _clear_all_admin_review_messages(ad_id)
 
     await callback.answer("🚫 Фойдаланувчи блокланди!")
+
+
+# ═══════════════════════════════════════
+# 🚫 АВТОМАТ ТАСДИҚЛАНГАН ЭЪЛОННИ БЛОКЛАШ
+# (AUTO_APPROVE_ADS=true пайтида — эълон аллақачон
+#  каналга/гуруҳларга жойланган, шунинг учун "pending" ёзувини
+#  эгаллаб ўчирадиган claim_and_delete_pending_ad бу ерда ишламайди —
+#  status='active' ёзувни эгаллаб оламиз ва жонли постларни ўчирамиз)
+# ═══════════════════════════════════════
+
+@router.callback_query(F.data.startswith("autoblock_"))
+async def auto_published_block_callback(callback: types.CallbackQuery):
+    if callback.from_user.id not in await get_all_review_admin_ids():
+        await callback.answer("⛔ Сиз админ эмассиз!")
+        return
+
+    ad_id = int(callback.data.replace("autoblock_", ""))
+
+    def _claim_active_ad_sync():
+        p = get_placeholder()
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                f"SELECT user_id, animal_type, msg_id FROM ads WHERE id = {p} AND status = {p}",
+                (ad_id, 'active')
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            cursor.execute(
+                f"UPDATE ads SET status = {p} WHERE id = {p} AND status = {p}",
+                ('deleted', ad_id, 'active')
+            )
+            claimed = cursor.rowcount > 0
+            conn.commit()
+            return row if claimed else None
+        finally:
+            conn.close()
+
+    ad = await asyncio.to_thread(_claim_active_ad_sync)
+
+    if not ad:
+        await callback.answer("⚠️ Бу эълон топилмади ёки аллақачон ўчирилган/блокланган!")
+        return
+
+    user_id, a_type, msg_id_str = ad
+
+    # ═══ ЖОНЛИ ПОСТЛАРНИ КАНАЛДАН ВА ГУРУҲЛАРДАН ЎЧИРИШ ═══
+    if msg_id_str:
+        for msg_id in str(msg_id_str).split(","):
+            msg_id = msg_id.strip()
+            if not msg_id:
+                continue
+            try:
+                await bot.delete_message(chat_id=CHANNEL_ID, message_id=int(msg_id))
+            except Exception as e:
+                logging.info(f"Каналдан хабар ({msg_id}) ўчирилмади: {e}")
+    await _delete_ad_from_all_groups(ad_id)
+
+    # ═══ ДАРҲОЛ БЛОКЛАШ ═══
+    await force_block_user(user_id)
+    await log_block(
+        user_id=user_id,
+        blocked_by=callback.from_user.id,
+        ad_id=ad_id,
+        reason="Автомат тасдиқланган эълон админ томонидан блокланди (пост каналдан/гуруҳлардан ўчирилди)"
+    )
+
+    # ═══ ФОЙДАЛАНУВЧИГА ХАБАР ═══
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            text=(
+                f"🚫 *Сиз блокландингиз!*\n\n"
+                f"Админ томонидан эълонингиз ({a_type}) сабабли "
+                f"эълон бериш ҳуқуқингиз чекланди ва эълонингиз каналдан/"
+                f"гуруҳлардан ўчирилди."
+            ),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logging.info("send_message: бажарилмади (%s)", e)
+
+    try:
+        await callback.message.edit_text(
+            f"🚫 Блокланди! Эълон ({format_ad_id(ad_id)}) каналдан/гуруҳлардан ўчирилди."
+        )
+    except Exception:
+        pass
+
+    await callback.answer("🚫 Фойдаланувчи блокланди ва эълон ўчирилди!")
 
 
 # ═══════════════════════════════════════

@@ -37,12 +37,13 @@ from urllib.parse import parse_qsl
 from aiohttp import web
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
 
-from config import bot, BOT_TOKEN
+from config import bot, BOT_TOKEN, AUTO_APPROVE_ADS
 from handlers.channel_check import check_profile_and_maybe_block
+from handlers.ads import _publish_ad_to_channel_and_groups, _notify_reviewers_auto_published
 from database import (
     get_user_profile, save_user, get_connection, get_placeholder,
     contains_bad_word, parse_price_text, AD_EXPIRE_DAYS, save_admin_review_message,
-    block_for_bad_words,
+    block_for_bad_words, approve_ad, SYSTEM_BLOCK_ID,
     validate_passport, MIN_PASSPORT_DIGITS, format_ad_id,
     get_all_review_admin_ids, is_user_blocked, is_premium_user,
     get_monthly_ad_count, MAX_ADS_PER_MONTH_REGULAR, MAX_ADS_PER_MONTH_PREMIUM
@@ -274,6 +275,30 @@ async def _send_to_reviewers_webapp(ad_id, fields, media_meta_list, user, phone)
             logging.error(f"Админ {admin_id} га юборишда хато: {e}")
 
     return media_meta_list
+
+
+async def _get_file_ids_via_scratch_upload(media_files, scratch_chat_id):
+    """
+    AUTO_APPROVE_ADS=true пайтида хом (bytes) медиани channel'ga
+    жойлашдан олдин file_id'га айлантириш керак — лекин reviewer'ga
+    (review tugmalari bilan) юбормаймиз, чунки эълон аллақачон автомат
+    тасдиқланади. Шунинг учун бир админ chat'ига (scratch) юклаб,
+    file_id'ни олиб, дарҳол ЎЧИРАМИЗ — фойдаланувчига кўринмайдиган
+    вақтинчалик қадам.
+    """
+    for media in media_files:
+        input_file = BufferedInputFile(media["bytes"], filename=media["filename"])
+        try:
+            if media["type"] == "video":
+                tmp = await bot.send_video(chat_id=scratch_chat_id, video=input_file)
+                media["file_id"] = tmp.video.file_id
+            else:
+                tmp = await bot.send_photo(chat_id=scratch_chat_id, photo=input_file)
+                media["file_id"] = tmp.photo[-1].file_id
+            await bot.delete_message(chat_id=scratch_chat_id, message_id=tmp.message_id)
+        except Exception as e:
+            logging.error(f"Mini App: scratch upload xato (auto-approve): {e}")
+    return media_files
 
 
 # ═══════════════════════════════════════
@@ -558,15 +583,7 @@ async def _process_ad_after_insert(
     Фойдаланувчи Mini App'да дарҳол "қабул қилинди" кўради, шу орада
     бу функция реал ишни (юклаш, юбориш) орқа фонда давом эттиради.
     """
-    # ═══ АДМИНЛАРГА ЮБОРИШ (шу жараёнда file_id'лар олинади) ═══
-    try:
-        media_files = await _send_to_reviewers_webapp(ad_id, fields_clean, media_files, user, phone)
-    except Exception as e:
-        logging.error(f"Mini App: reviewer'larga yuborishda xato: {e}")
-    # ДИҚҚАТ: Гуруҳларга ЭНДИ фақат тасдиқлангандан кейин, markazlashgan
-    # review_admins tomonidan (ads.py'даги approve_ad_callback ичида) юборилади.
-
-    # ═══ ad_media ЖАДВАЛИГА file_id'ЛАРНИ САҚЛАШ ═══
+    # ═══ ad_media ЖАДВАЛИГА file_id'ЛАРНИ САҚЛАШ (умумий ёрдамчи) ═══
     def _save_ad_media_sync():
         p = get_placeholder()
         conn = get_connection()
@@ -582,26 +599,95 @@ async def _process_ad_after_insert(
         finally:
             conn.close()
 
-    try:
-        await asyncio.to_thread(_save_ad_media_sync)
-    except Exception:
-        logging.exception(f"Mini App: ad_media сақлашда хатолик (ad_id={ad_id})")
+    if AUTO_APPROVE_ADS:
+        # ═══ АВТОМАТ ТАСДИҚЛАШ (админ кўрмасдан, ads.py'даги _finalize_ad
+        # билан БИР ХИЛ занжир) — қўлда тасдиқлаш занжири (пастда)
+        # ЎЗГАРИШСИЗ қолади, фақат шу флаг бор пайтда четлаб ўтилади ═══
+        review_admin_ids = await get_all_review_admin_ids()
+        scratch_chat_id = review_admin_ids[0] if review_admin_ids else None
+        published = False
+        if scratch_chat_id:
+            try:
+                media_files = await _get_file_ids_via_scratch_upload(media_files, scratch_chat_id)
+                # ДИҚҚАТ: аввал КАНАЛГА ЖОЙЛАЙМИЗ (status ҳали 'pending'), ва
+                # ФАҚАТ муваффақиятли бўлса status='active' қиламиз — акс
+                # ҳолда fallback (қўлда тасдиқлаш) занжири тўғри ишлайверади.
+                # ad_media жадвалига ҳали ёзилмаган — DB'дан эмас, тўғридан-тўғри
+                # шу медиа рўйхатидан фойдалансин (DB'да ҳали ҳеч нарса йўқ).
+                published = await _publish_ad_to_channel_and_groups(
+                    ad_id, fallback_media=media_files
+                )
+                if published:
+                    await approve_ad(ad_id, SYSTEM_BLOCK_ID)
+                    # Фақат МУВАФФАҚИЯТ ҳолатида сақлаймиз — акс ҳолда пастдаги
+                    # fallback (қўлда кўриб чиқиш) занжири ЎЗИ яна сақлайди,
+                    # иккита марта сақлаш (дублик ад_media ёзуви) олдини олиш учун.
+                    await asyncio.to_thread(_save_ad_media_sync)
+            except Exception:
+                logging.exception(f"Mini App: автомат тасдиқлашда хато (ad_id={ad_id})")
 
-    # ═══ ФОЙДАЛАНУВЧИГА ХАБАР (bot orqali, chunki bu HTTP so'rov, message emas) ═══
-    try:
-        await bot.send_message(
-            chat_id=user["id"],
-            text=(
-                f"📩 <b>Эълонингиз қабул қилинди!</b>\n\n"
-                f"Эълонингиз қисқача кўриб чиқилади.\n"
-                f"Тасдиқлангандан кейин @internetmolbozor каналга, шунингдек "
-                f"тегишли вилоят гуруҳ(лар)ига автомат жойланади.\n\n"
-                f"⏳ Одатда бир неча дақиқа ичида жавоб оласиз."
-            ),
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        logging.warning(f"Фойдаланувчига хабар юборилмади: {e}")
+        if published:
+            await _notify_reviewers_auto_published(
+                ad_id=ad_id,
+                animal_type=animal_type, quantity=qty, price=price,
+                description=description, region=region, district=district,
+                mfy=None if mfy == "Кўрсатилмаган" else mfy, phone=phone,
+                passport=fields_clean.get('passport'),
+                user_id=user["id"], user_display=user.get("first_name") or str(user["id"]),
+            )
+        else:
+            # Автомат жойлашда хато чиқса — эски (қўлда тасдиқлаш) занжирга
+            # қайтамиз, эълон йўқолиб қолмасин.
+            logging.error(
+                f"Mini App: автомат жойлаш муваффақиятсиз (ad_id={ad_id}) — "
+                f"қўлда кўриб чиқиш занжирига ўтказилди."
+            )
+            try:
+                media_files = await _send_to_reviewers_webapp(ad_id, fields_clean, media_files, user, phone)
+                await asyncio.to_thread(_save_ad_media_sync)
+            except Exception as e:
+                logging.error(f"Mini App: reviewer'larga yuborishda xato: {e}")
+            try:
+                await bot.send_message(
+                    chat_id=user["id"],
+                    text=(
+                        f"📩 <b>Эълонингиз қабул қилинди!</b>\n\n"
+                        f"Эълонингиз қисқача кўриб чиқилади.\n"
+                        f"⏳ Одатда бир неча дақиқа ичида жавоб оласиз."
+                    ),
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logging.warning(f"Фойдаланувчига хабар юборилмади: {e}")
+    else:
+        # ═══ АДМИНЛАРГА ЮБОРИШ (шу жараёнда file_id'лар олинади) ═══
+        try:
+            media_files = await _send_to_reviewers_webapp(ad_id, fields_clean, media_files, user, phone)
+        except Exception as e:
+            logging.error(f"Mini App: reviewer'larga yuborishda xato: {e}")
+        # ДИҚҚАТ: Гуруҳларга ЭНДИ фақат тасдиқлангандан кейин, markazlashgan
+        # review_admins tomonidan (ads.py'даги approve_ad_callback ичида) юборилади.
+
+        try:
+            await asyncio.to_thread(_save_ad_media_sync)
+        except Exception:
+            logging.exception(f"Mini App: ad_media сақлашда хатолик (ad_id={ad_id})")
+
+        # ═══ ФОЙДАЛАНУВЧИГА ХАБАР (bot orqali, chunki bu HTTP so'rov, message emas) ═══
+        try:
+            await bot.send_message(
+                chat_id=user["id"],
+                text=(
+                    f"📩 <b>Эълонингиз қабул қилинди!</b>\n\n"
+                    f"Эълонингиз қисқача кўриб чиқилади.\n"
+                    f"Тасдиқлангандан кейин @internetmolbozor каналга, шунингдек "
+                    f"тегишли вилоят гуруҳ(лар)ига автомат жойланади.\n\n"
+                    f"⏳ Одатда бир неча дақиқа ичида жавоб оласиз."
+                ),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logging.warning(f"Фойдаланувчига хабар юборилмади: {e}")
 
     # ═══ ПРОФИЛНИ ЯНГИЛАШ (кейинги эълонда авто-тўлдирилсин) ═══
     await save_user(
