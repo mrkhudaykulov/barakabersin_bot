@@ -2588,6 +2588,44 @@ async def block_for_bad_words(user_id: int, ad_id: int = None):
     )
 
 
+# ═══════════════════════════════════════
+# ПРОФИЛГА БИРИКТИРИЛГАН ШАХСИЙ КАНАЛ — 18+ ТЕКШИРУВИ
+# ═══════════════════════════════════════
+# Telegram фойдаланувчилар ўз профилига "шахсий канал"ни кўрсатиш
+# имконига эга (Bot API'да Chat.personal_chat орқали кўринади). Бу
+# рўйхат — ўша каналнинг номи/username'ида очиқ 18+ белгиси борми деб
+# текширадиган калит сўзлар. Асосан лотин алифбосида ёзилади, шунинг
+# учун BAD_WORDS'даги кириллча ҳарф алмаштириш мантиғи керак эмас —
+# оддий пастки регистр substring қидируви етарли.
+ADULT_CHANNEL_KEYWORDS = [
+    "18+", "adult", "xxx", "porn", "porno", "nsfw", "erotic", "onlyfans",
+]
+
+
+def contains_adult_keyword(text: str) -> bool:
+    """Матнда (канал номи/username) очиқ 18+ калит сўзи борми?"""
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(k in lowered for k in ADULT_CHANNEL_KEYWORDS)
+
+
+async def block_for_adult_channel(user_id: int, channel_title: str = None,
+                                  channel_username: str = None, ad_id: int = None):
+    """
+    Профилга бириктирилган шахсий каналнинг номи/username'ида 18+
+    калит сўзи топилганда фойдаланувчини ДАРҲОЛ блоклайди.
+    """
+    detail = f"@{channel_username}" if channel_username else (channel_title or "номаълум")
+    await force_block_user(user_id)
+    await log_block(
+        user_id=user_id,
+        blocked_by=SYSTEM_BLOCK_ID,
+        ad_id=ad_id,
+        reason=f"Профилдаги шахсий канал ({detail}) номида 18+ калит сўзи топилди"
+    )
+
+
 def _ensure_block_log_table():
     with db_connection() as conn:
         cursor = conn.cursor()

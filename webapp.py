@@ -38,6 +38,7 @@ from aiohttp import web
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
 
 from config import bot, BOT_TOKEN
+from handlers.channel_check import check_personal_channel_and_maybe_block
 from database import (
     get_user_profile, save_user, get_connection, get_placeholder,
     contains_bad_word, parse_price_text, AD_EXPIRE_DAYS, save_admin_review_message,
@@ -455,6 +456,15 @@ async def _api_submit_ad_inner(request: web.Request):
                  "error": "🚫 Сиз блокландингиз! Матнда ножўя сўз аниқланди."},
                 status=403
             )
+
+    # ═══ ПРОФИЛГА БИРИКТИРИЛГАН ШАХСИЙ КАНАЛ (18+) ТЕКШИРУВИ ═══
+    if await check_personal_channel_and_maybe_block(user["id"]):
+        return web.json_response(
+            {"ok": False,
+             "error": "🚫 Сиз блокландингиз! Профилингиздаги шахсий канал "
+                      "номида мос бўлмаган (18+) мазмун аниқланди."},
+            status=403
+        )
 
     tg_username = user.get("username")
     db_username = f"@{tg_username}" if tg_username else ""
